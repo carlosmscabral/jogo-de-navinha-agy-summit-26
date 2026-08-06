@@ -52,8 +52,12 @@ export class PtyManagerService {
         const binDir = path.dirname(agyBinaryPath);
         const augmentedPath = `${binDir}:/usr/local/bin:/opt/homebrew/bin:${process.env.PATH || ''}`;
 
+        this.sendOutput('\r\n\x1b[1;32m✓ Antigravity CLI detectado: ' + agyBinaryPath + '\x1b[0m\r\n');
+        this.sendOutput('\x1b[90mIniciando sessão do agente...\x1b[0m\r\n\r\n');
+
         this.activeProcess = spawn(agyBinaryPath, [], {
           cwd: sessionDir,
+          shell: true,
           env: {
             ...process.env,
             BOOTH_SESSION_DIR: sessionDir,
@@ -68,15 +72,19 @@ export class PtyManagerService {
 
         // Pipe stdout -> WebSocket client
         this.activeProcess.stdout?.on('data', (chunk: Buffer) => {
+          const str = chunk.toString('utf8');
+          console.log('[AGY stdout]', str.trim());
           if (this.wsClient && this.wsClient.readyState === WebSocket.OPEN) {
-            this.wsClient.send(JSON.stringify({ type: 'pty_output', data: chunk.toString('utf8') }));
+            this.wsClient.send(JSON.stringify({ type: 'pty_output', data: str }));
           }
         });
 
         // Pipe stderr -> WebSocket client
         this.activeProcess.stderr?.on('data', (chunk: Buffer) => {
+          const str = chunk.toString('utf8');
+          console.log('[AGY stderr]', str.trim());
           if (this.wsClient && this.wsClient.readyState === WebSocket.OPEN) {
-            this.wsClient.send(JSON.stringify({ type: 'pty_output', data: chunk.toString('utf8') }));
+            this.wsClient.send(JSON.stringify({ type: 'pty_output', data: str }));
           }
         });
 
@@ -92,6 +100,14 @@ export class PtyManagerService {
           console.warn('[PtyManager] Real AGY process error, falling back to interactive shell:', err);
           this.startAgyInteractiveShell();
         });
+
+        // Send initial wake-up newline
+        setTimeout(() => {
+          if (this.activeProcess?.stdin?.writable) {
+            console.log('[PtyManager] Sending initial wake-up prompt to agy stdin...');
+            this.activeProcess.stdin.write('\r\n');
+          }
+        }, 500);
 
         return;
       } catch (err) {
