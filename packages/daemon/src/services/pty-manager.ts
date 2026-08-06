@@ -1,4 +1,4 @@
-import * as pty from 'node-pty';
+import { spawn, ChildProcess } from 'node:child_process';
 import { WebSocket } from 'ws';
 import * as os from 'node:os';
 import * as fs from 'node:fs';
@@ -6,7 +6,7 @@ import * as path from 'node:path';
 import { FALLBACK_PRESETS, ShipSpecification, PrimaryWeaponType, SecondaryWeaponType } from '@jogo/shared';
 
 export class PtyManagerService {
-  private activePty?: pty.IPty;
+  private activeProcess?: ChildProcess;
   private wsClient?: WebSocket;
   private isAgyShell = false;
 
@@ -43,63 +43,62 @@ export class PtyManagerService {
       if (companyMatch) this.pilotCompany = companyMatch[1];
     }
 
-    // 3. Detect Shell Binary (Mac / Linux)
-    const shell = fs.existsSync('/bin/zsh')
-      ? '/bin/zsh'
-      : fs.existsSync('/bin/bash')
-      ? '/bin/bash'
-      : process.env.SHELL || '/bin/sh';
-
+    // 3. Check for Real AGY CLI binary on host
     const agyBinaryPath = this.detectAgyBinary();
 
-    try {
-      console.log(`[PtyManager] Spawning shell (${shell}) in session: ${sessionDir}`);
+    if (agyBinaryPath) {
+      console.log(`[PtyManager] Spawning real Antigravity CLI process: ${agyBinaryPath} in ${sessionDir}`);
+      try {
+        const binDir = path.dirname(agyBinaryPath);
+        const augmentedPath = `${binDir}:/usr/local/bin:/opt/homebrew/bin:${process.env.PATH || ''}`;
 
-      const augmentedPath = `/Users/carloscabral/.local/bin:${path.join(os.homedir(), '.local/bin')}:/usr/local/bin:/opt/homebrew/bin:${process.env.PATH || ''}`;
+        this.activeProcess = spawn(agyBinaryPath, [], {
+          cwd: sessionDir,
+          env: {
+            ...process.env,
+            BOOTH_SESSION_DIR: sessionDir,
+            PATH: augmentedPath,
+            FORCE_COLOR: '1',
+            TERM: 'xterm-256color'
+          },
+          stdio: ['pipe', 'pipe', 'pipe']
+        });
 
-      this.activePty = pty.spawn(shell, ['-l'], {
-        name: 'xterm-256color',
-        cols: 80,
-        rows: 24,
-        cwd: sessionDir,
-        env: {
-          ...process.env,
-          BOOTH_SESSION_DIR: sessionDir,
-          PATH: augmentedPath,
-          TERM: 'xterm-256color'
-        }
-      });
+        this.isAgyShell = false;
 
-      this.isAgyShell = false;
+        // Pipe stdout -> WebSocket client
+        this.activeProcess.stdout?.on('data', (chunk: Buffer) => {
+          if (this.wsClient && this.wsClient.readyState === WebSocket.OPEN) {
+            this.wsClient.send(JSON.stringify({ type: 'pty_output', data: chunk.toString('utf8') }));
+          }
+        });
 
-      // Stream stdout from Shell / AGY CLI -> WebSocket
-      this.activePty.onData((data: string) => {
-        if (this.wsClient && this.wsClient.readyState === WebSocket.OPEN) {
-          this.wsClient.send(JSON.stringify({ type: 'pty_output', data }));
-        }
-      });
+        // Pipe stderr -> WebSocket client
+        this.activeProcess.stderr?.on('data', (chunk: Buffer) => {
+          if (this.wsClient && this.wsClient.readyState === WebSocket.OPEN) {
+            this.wsClient.send(JSON.stringify({ type: 'pty_output', data: chunk.toString('utf8') }));
+          }
+        });
 
-      this.activePty.onExit(({ exitCode, signal }) => {
-        console.log(`[PtyManager] Process exited with code ${exitCode}, signal ${signal}`);
-        if (this.wsClient && this.wsClient.readyState === WebSocket.OPEN) {
-          this.wsClient.send(JSON.stringify({ type: 'pty_exit', exitCode, signal }));
-        }
-        this.activePty = undefined;
-      });
+        this.activeProcess.on('exit', (exitCode, signal) => {
+          console.log(`[PtyManager] Real AGY process exited (code=${exitCode}, signal=${signal})`);
+          if (this.wsClient && this.wsClient.readyState === WebSocket.OPEN) {
+            this.wsClient.send(JSON.stringify({ type: 'pty_exit', exitCode, signal }));
+          }
+          this.activeProcess = undefined;
+        });
 
-      // Bootstrap the Real AGY CLI command in the shell
-      const commandToRun = agyBinaryPath ? `${agyBinaryPath}\r` : `agy\r`;
-      console.log(`[PtyManager] Launching real AGY CLI: ${commandToRun.trim()}`);
+        this.activeProcess.on('error', (err) => {
+          console.warn('[PtyManager] Real AGY process error, falling back to interactive shell:', err);
+          this.startAgyInteractiveShell();
+        });
 
-      setTimeout(() => {
-        if (this.activePty) {
-          this.activePty.write(commandToRun);
-        }
-      }, 350);
-
-      return;
-    } catch (err) {
-      console.warn('[PtyManager] Shell PTY spawn failed, using built-in interactive shell fallback:', err);
+        return;
+      } catch (err) {
+        console.warn('[PtyManager] Failed to spawn real agy process, using built-in interactive shell fallback:', err);
+      }
+    } else {
+      console.log('[PtyManager] Real agy binary not found in known paths, using built-in interactive shell.');
     }
 
     // 4. Fallback to Built-in Interactive AGY CLI Shell
@@ -158,8 +157,8 @@ export class PtyManagerService {
   }
 
   writeInput(data: string): void {
-    if (this.activePty) {
-      this.activePty.write(data);
+    if (this.activeProcess && this.activeProcess.stdin?.writable) {
+      this.activeProcess.stdin.write(data);
       return;
     }
 
@@ -456,30 +455,24 @@ export class PtyManagerService {
   }
 
   resize(cols: number, rows: number): void {
-    if (this.activePty) {
-      try {
-        this.activePty.resize(cols, rows);
-      } catch {
-        // Ignored
-      }
-    }
+    // Standard stdio pipe resize is no-op
   }
 
   killSession(): void {
-    if (this.activePty) {
+    if (this.activeProcess) {
       try {
-        const pid = this.activePty.pid;
+        const pid = this.activeProcess.pid;
         if (pid) {
           try {
             process.kill(-pid, 'SIGKILL');
           } catch {
-            this.activePty.kill();
+            this.activeProcess.kill('SIGKILL');
           }
         }
       } catch (err) {
-        console.error('[PtyManager] Error killing session:', err);
+        console.error('[PtyManager] Error killing process:', err);
       }
-      this.activePty = undefined;
+      this.activeProcess = undefined;
     }
     this.isAgyShell = false;
   }
