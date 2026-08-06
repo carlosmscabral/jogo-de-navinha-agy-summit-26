@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { audioManager } from '../audio/AudioManager.js';
+import { ShipTextureFactory } from '../factories/ShipTextureFactory.js';
 
 export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
   maxHp = 15000;
@@ -13,11 +14,9 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
   fireAngle = 0;
   difficultyMultiplier = 1.0;
   shieldGraphic!: Phaser.GameObjects.Graphics;
-  corePulseGraphic!: Phaser.GameObjects.Graphics;
 
-  constructor(scene: Phaser.Scene, x: number, y: number, isHardcore = false) {
-    // Generate texture first before super() instantiation
-    BossOverlord.ensureTextures(scene);
+  constructor(scene: Phaser.Scene, x: number, y = 145, isHardcore = false) {
+    ShipTextureFactory.createBossTexture(scene);
     super(scene, x, y, 'boss_overlord_dreadnought');
 
     this.difficultyMultiplier = isHardcore ? 1.4 : 1.0;
@@ -27,6 +26,8 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
     scene.add.existing(this);
     scene.physics.add.existing(this);
 
+    this.setDepth(15);
+    this.setDisplaySize(340, 170);
     this.setCollideWorldBounds(true);
     this.body?.setSize(280, 130);
 
@@ -34,134 +35,6 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
       defaultKey: 'bullet_boss_plasma',
       maxSize: 400
     });
-
-    this.shieldGraphic = scene.add.graphics();
-    this.corePulseGraphic = scene.add.graphics();
-
-    // Entrance Animation: Dramatic warp descend
-    this.setPosition(x, -160);
-    this.isInvulnerable = true;
-    scene.tweens.add({
-      targets: this,
-      y: 155,
-      duration: 2600,
-      ease: 'Cubic.easeOut',
-      onComplete: () => {
-        this.isInvulnerable = false;
-        scene.cameras.main.shake(600, 0.025);
-        this.triggerEntranceShockwave();
-      }
-    });
-  }
-
-  static ensureTextures(scene: Phaser.Scene): void {
-    if (!scene.textures.exists('boss_overlord_dreadnought')) {
-      const canvas = document.createElement('canvas');
-      canvas.width = 340;
-      canvas.height = 170;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.clearRect(0, 0, 340, 170);
-
-        // 1. Heavy Titanium Outer Wings (Angular Stealth Silhouette)
-        ctx.fillStyle = '#0a0d16';
-        ctx.strokeStyle = '#38bdf8';
-        ctx.lineWidth = 3;
-        ctx.shadowColor = '#38bdf8';
-        ctx.shadowBlur = 12;
-
-        ctx.beginPath();
-        // Nose tip
-        ctx.moveTo(170, 160);
-        // Right wing sweep
-        ctx.lineTo(240, 110);
-        ctx.lineTo(330, 85);
-        ctx.lineTo(315, 30);
-        ctx.lineTo(260, 45);
-        ctx.lineTo(220, 20);
-        ctx.lineTo(170, 40);
-        // Left wing sweep
-        ctx.lineTo(120, 20);
-        ctx.lineTo(80, 45);
-        ctx.lineTo(25, 30);
-        ctx.lineTo(10, 85);
-        ctx.lineTo(100, 110);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        // 2. Armor Plating Plates (Dark Slate Layer)
-        ctx.fillStyle = '#141a29';
-        ctx.strokeStyle = '#ff9e0b';
-        ctx.lineWidth = 2;
-        ctx.shadowColor = '#ff9e0b';
-        ctx.shadowBlur = 14;
-
-        ctx.beginPath();
-        ctx.moveTo(170, 140);
-        ctx.lineTo(225, 95);
-        ctx.lineTo(285, 75);
-        ctx.lineTo(250, 45);
-        ctx.lineTo(170, 60);
-        ctx.lineTo(90, 45);
-        ctx.lineTo(55, 75);
-        ctx.lineTo(115, 95);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        // 3. Quad Heavy Plasma Cannon Barrels
-        ctx.fillStyle = '#0f172a';
-        ctx.strokeStyle = '#38bdf8';
-        ctx.lineWidth = 2;
-        // Far left & right pods
-        ctx.fillRect(40, 65, 18, 45);
-        ctx.strokeRect(40, 65, 18, 45);
-        ctx.fillRect(282, 65, 18, 45);
-        ctx.strokeRect(282, 65, 18, 45);
-        // Inner dual heavy cannons
-        ctx.fillRect(115, 85, 20, 50);
-        ctx.strokeRect(115, 85, 20, 50);
-        ctx.fillRect(205, 85, 20, 50);
-        ctx.strokeRect(205, 85, 20, 50);
-
-        // Muzzle Glow Tips
-        ctx.fillStyle = '#ff9e0b';
-        ctx.fillRect(42, 105, 14, 6);
-        ctx.fillRect(284, 105, 14, 6);
-        ctx.fillRect(117, 130, 16, 6);
-        ctx.fillRect(207, 130, 16, 6);
-
-        // 4. Central Hexagonal Cyber Reactor Core (No more weird circles!)
-        ctx.shadowColor = '#ff9e0b';
-        ctx.shadowBlur = 24;
-        ctx.fillStyle = '#ff9e0b';
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2.5;
-
-        ctx.beginPath();
-        const cX = 170;
-        const cY = 82;
-        const r = 22;
-        for (let i = 0; i < 6; i++) {
-          const angle = (i * Math.PI) / 3;
-          const x = cX + r * Math.cos(angle);
-          const y = cY + r * Math.sin(angle);
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        }
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        // Inner Reactor Heart
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath();
-        ctx.arc(cX, cY, 8, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      scene.textures.addCanvas('boss_overlord_dreadnought', canvas);
-    }
 
     if (!scene.textures.exists('bullet_boss_plasma')) {
       const g = scene.add.graphics();
@@ -182,26 +55,48 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
       g.generateTexture('bullet_boss_laser', 10, 20);
       g.destroy();
     }
+
+    this.shieldGraphic = scene.add.graphics();
+    this.shieldGraphic.setDepth(16);
+
+    // Dramatic warp entrance (scale & alpha flash on screen)
+    this.setScale(0.2);
+    this.setAlpha(0.2);
+    this.isInvulnerable = true;
+
+    scene.tweens.add({
+      targets: this,
+      scale: 1.0,
+      alpha: 1.0,
+      duration: 1200,
+      ease: 'Back.easeOut',
+      onComplete: () => {
+        this.isInvulnerable = false;
+        scene.cameras.main.shake(600, 0.03);
+        this.triggerEntranceShockwave();
+      }
+    });
   }
 
   private triggerEntranceShockwave(): void {
-    const shockwave = this.scene.add.circle(this.x, this.y, 30, 0x38bdf8, 0.8);
+    const shockwave = this.scene.add.circle(this.x, this.y, 30, 0x38bdf8, 0.85);
+    shockwave.setDepth(14);
     this.scene.tweens.add({
       targets: shockwave,
       radius: 450,
       alpha: 0,
-      duration: 1000,
+      duration: 900,
       ease: 'Cubic.easeOut',
       onComplete: () => shockwave.destroy()
     });
   }
 
   update(time: number, delta: number, playerX = 300, playerY = 680): void {
-    if (this.isDead || this.y < 130) return;
+    if (this.isDead || !this.active) return;
 
-    // Tactical Maneuvering (Aggressive wide sweeping + forward dive pressure)
-    const hoverSpeed = this.phase === 3 ? 0.0038 : this.phase === 2 ? 0.0028 : 0.0018;
-    const hoverRange = this.phase === 3 ? 4.8 : this.phase === 2 ? 3.6 : 2.5;
+    // Tactical Maneuvering (Aggressive horizontal sweeping)
+    const hoverSpeed = this.phase === 3 ? 0.0035 : this.phase === 2 ? 0.0025 : 0.0018;
+    const hoverRange = this.phase === 3 ? 4.5 : this.phase === 2 ? 3.5 : 2.5;
     this.x += Math.sin(time * hoverSpeed) * hoverRange;
 
     // Draw Hexagonal Shield Barrier in Phase 1 or during Invulnerability
@@ -214,7 +109,7 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
 
     // High-cadence Bullet Hell Pattern Execution
     const fireCooldown = Math.round(
-      (this.phase === 3 ? 80 : this.phase === 2 ? 115 : 150) / this.difficultyMultiplier
+      (this.phase === 3 ? 80 : this.phase === 2 ? 110 : 140) / this.difficultyMultiplier
     );
 
     if (time - this.lastFireTime > fireCooldown && !this.isInvulnerable) {
@@ -235,7 +130,7 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
 
   private drawHexShield(cx: number, cy: number, radius: number, color: number, alpha: number): void {
     this.shieldGraphic.lineStyle(2.5, color, alpha);
-    this.shieldGraphic.fillStyle(color, 0.05);
+    this.shieldGraphic.fillStyle(color, 0.06);
 
     const points: { x: number; y: number }[] = [];
     for (let i = 0; i < 6; i++) {
@@ -257,7 +152,7 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
   }
 
   private fireAttackPattern(time: number, playerX: number, playerY: number): void {
-    const bulletSpeed = (this.phase === 3 ? 360 : this.phase === 2 ? 320 : 280) * this.difficultyMultiplier;
+    const bulletSpeed = (this.phase === 3 ? 380 : this.phase === 2 ? 340 : 300) * this.difficultyMultiplier;
 
     if (this.phase === 1) {
       // Phase 1: Dual Muzzle Sniper Lasers + 5-Way Plasma Fan
@@ -312,6 +207,7 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
       bullet.setVisible(true);
       bullet.setPosition(x, y);
       bullet.setVelocity(vx, vy);
+      bullet.setDepth(12);
       if (bullet.body) bullet.body.checkCollision.none = false;
     }
   }
@@ -319,8 +215,13 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
   takeDamage(amount: number): boolean {
     if (this.isDead || this.isInvulnerable) return false;
 
+    // Cap single-pellet raw damage to prevent instantaneous multi-bullet melting
+    const cappedPelletDamage = Math.min(45, amount);
+
     // Phase 1 Kinetic Hex Shield absorbs 50% damage
-    const actualDamage = this.phase === 1 ? Math.round(amount * 0.5) : amount;
+    // Phase 2 Titanium Armor absorbs 30% damage
+    const mitigation = this.phase === 1 ? 0.50 : this.phase === 2 ? 0.70 : 1.0;
+    const actualDamage = Math.max(5, Math.round(cappedPelletDamage * mitigation));
     this.currentHp -= actualDamage;
 
     const hpRatio = this.currentHp / this.maxHp;
@@ -355,6 +256,7 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
 
     // EMP Shockwave ring
     const shockwave = this.scene.add.circle(this.x, this.y, 25, newPhase === 3 ? 0xef4444 : 0xff9e0b, 0.95);
+    shockwave.setDepth(14);
     this.scene.tweens.add({
       targets: shockwave,
       radius: 420,
@@ -373,9 +275,6 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
   destroy(fromScene?: boolean): void {
     if (this.shieldGraphic) {
       this.shieldGraphic.destroy();
-    }
-    if (this.corePulseGraphic) {
-      this.corePulseGraphic.destroy();
     }
     super.destroy(fromScene);
   }

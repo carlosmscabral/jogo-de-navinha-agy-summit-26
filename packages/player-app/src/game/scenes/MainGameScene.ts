@@ -86,6 +86,7 @@ export class MainGameScene extends Phaser.Scene {
     const textureKey = `ship_${this.shipSpec.visuals.style_name.replace(/\s+/g, '_')}`;
     ShipTextureFactory.createShipTexture(this, textureKey, this.shipSpec.visuals);
     ShipTextureFactory.createEnemyDroneTexture(this);
+    ShipTextureFactory.createBossTexture(this);
 
     // 3. Create Player Ship
     const startX = this.scale.width / 2;
