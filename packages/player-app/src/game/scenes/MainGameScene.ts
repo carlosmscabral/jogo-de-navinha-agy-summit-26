@@ -380,7 +380,7 @@ export class MainGameScene extends Phaser.Scene {
       color: '#38bdf8'
     });
 
-    this.bossHpNumbersText = this.add.text(width / 2 + 190, 85, '8.500 / 8.500 HP', {
+    this.bossHpNumbersText = this.add.text(width / 2 + 190, 85, '15.000 / 15.000 HP', {
       fontFamily: '"Google Sans Code", monospace',
       fontSize: '11px',
       color: '#ff9e0b'

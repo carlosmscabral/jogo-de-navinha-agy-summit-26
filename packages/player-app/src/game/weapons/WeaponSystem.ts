@@ -78,8 +78,10 @@ export class WeaponSystem {
       this.spawnBullet(x, y - 20, 0, -speed, 'bullet_plasma', balancedDamage);
     } else if (type === 'vulcan_spread') {
       // 3-way spread (slightly reduced per-pellet damage for balance)
-      const spreadDamage = Math.round(balancedDamage * 0.7);
-      const angle = spread_angle || 15;
+      const spreadDamage = Math.round(balancedDamage * 0.65);
+      const angle = (spread_angle && spread_angle < 1.0 && spread_angle > 0)
+        ? Phaser.Math.RadToDeg(spread_angle)
+        : (spread_angle || 15);
       const angles = [-angle, 0, angle];
       for (const a of angles) {
         const rad = Phaser.Math.DegToRad(a - 90);
