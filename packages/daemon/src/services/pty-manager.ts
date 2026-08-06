@@ -3,15 +3,21 @@ import { WebSocket } from 'ws';
 import * as os from 'node:os';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { FALLBACK_PRESETS, ShipSpecification } from '@jogo/shared';
+import { FALLBACK_PRESETS, ShipSpecification, PrimaryWeaponType, SecondaryWeaponType } from '@jogo/shared';
 
 export class PtyManagerService {
   private activePty?: pty.IPty;
   private wsClient?: WebSocket;
-  private isSimulated = false;
-  private simulationState: 'WAITING_WEAPON' | 'WAITING_STYLE' | 'DONE' = 'WAITING_WEAPON';
-  private selectedWeaponIndex = 1;
+  private isAgyShell = false;
+
+  private currentLineBuffer = '';
+  private history: string[] = [];
+  private historyIndex = -1;
+
   private sessionDir = '/tmp/booth_session';
+  private pilotCallsign = 'CYBER_ACE';
+  private pilotCompany = 'Google';
+  private currentSpec: ShipSpecification = JSON.parse(JSON.stringify(FALLBACK_PRESETS.interceptor));
 
   startSession(
     sessionDir: string,
@@ -27,71 +33,45 @@ export class PtyManagerService {
       fs.mkdirSync(sessionDir, { recursive: true });
     }
 
-    // Detect valid shell binary
-    let shell = process.env.SHELL;
-    if (!shell || !fs.existsSync(shell)) {
-      if (fs.existsSync('/bin/zsh')) shell = '/bin/zsh';
-      else if (fs.existsSync('/bin/bash')) shell = '/bin/bash';
-      else if (fs.existsSync('/bin/sh')) shell = '/bin/sh';
-      else shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
+    // Read pilot metadata from GEMINI.md if available
+    const geminiPath = path.join(sessionDir, 'GEMINI.md');
+    if (fs.existsSync(geminiPath)) {
+      const content = fs.readFileSync(geminiPath, 'utf8');
+      const callsignMatch = content.match(/Callsign: "([^"]+)"/);
+      if (callsignMatch) this.pilotCallsign = callsignMatch[1];
+      const companyMatch = content.match(/Empresa: "([^"]+)"/);
+      if (companyMatch) this.pilotCompany = companyMatch[1];
     }
 
-    try {
-      this.activePty = pty.spawn(shell, [], {
-        name: 'xterm-color',
-        cols: 80,
-        rows: 24,
-        cwd: sessionDir,
-        env: {
-          ...process.env,
-          BOOTH_SESSION_DIR: sessionDir,
-          TERM: 'xterm-256color'
-        }
-      });
-
-      this.isSimulated = false;
-
-      // Stream PTY output -> WebSocket client
-      this.activePty.onData((data: string) => {
-        if (this.wsClient && this.wsClient.readyState === WebSocket.OPEN) {
-          this.wsClient.send(JSON.stringify({ type: 'pty_output', data }));
-        }
-      });
-
-      this.activePty.onExit(({ exitCode, signal }) => {
-        if (this.wsClient && this.wsClient.readyState === WebSocket.OPEN) {
-          this.wsClient.send(JSON.stringify({ type: 'pty_exit', exitCode, signal }));
-        }
-        this.activePty = undefined;
-      });
-
-      // Inject initial bootstrap command
-      const bootCommand = `${initialPrompt}\r`;
-      this.activePty.write(bootCommand);
-
-    } catch (err) {
-      console.warn('[PtyManager] Native PTY spawn failed, falling back to Interactive Fast Grill-Me Terminal:', err);
-      this.startInteractiveSimulation();
-    }
+    // Start Interactive AGY CLI Shell
+    this.startAgyInteractiveShell();
   }
 
-  private startInteractiveSimulation(): void {
-    this.isSimulated = true;
-    this.simulationState = 'WAITING_WEAPON';
+  private startAgyInteractiveShell(): void {
+    this.isAgyShell = true;
+    this.currentLineBuffer = '';
 
-    this.sendOutput('\r\n\x1b[1;36m===================================================================\x1b[0m\r\n');
-    this.sendOutput('\x1b[1;33m       ANTIGRAVITY CLI // FORJA DE NAVES ESPACIAIS AGY 2026       \x1b[0m\r\n');
-    this.sendOutput('\x1b[1;36m===================================================================\x1b[0m\r\n\r\n');
-    this.sendOutput('\x1b[1;32m✓ Sub-Agente aesthetic-designer conectado.\x1b[0m\r\n');
-    this.sendOutput('\x1b[1;32m✓ Sub-Agente combat-strategist conectado.\x1b[0m\r\n');
-    this.sendOutput('\x1b[1;32m✓ Servidores MCP carregados: weapons-arsenal, hull-propulsion\x1b[0m\r\n\r\n');
+    this.sendOutput('\r\n\x1b[1;36m===============================================================================\x1b[0m\r\n');
+    this.sendOutput('\x1b[1;33m       ANTIGRAVITY CLI v2.6 // AMBIENTE DE FORJA DE AGENTES ESPACIAIS          \x1b[0m\r\n');
+    this.sendOutput('\x1b[1;36m===============================================================================\x1b[0m\r\n');
+    this.sendOutput(`\x1b[90mPiloto: \x1b[1;37m${this.pilotCallsign}\x1b[90m | Empresa: \x1b[1;37m${this.pilotCompany}\x1b[90m | Workspace: \x1b[1;37m${this.sessionDir}\x1b[0m\r\n\r\n`);
 
-    this.sendOutput('\x1b[1;33m[Fast Grill-Me // Orquestrador AGY]\x1b[0m\r\n');
-    this.sendOutput('Selecione o foco de armamento primário para a sua fuselagem:\r\n');
-    this.sendOutput('  \x1b[36m[1]\x1b[0m Laser Perfurante de Alta Frequência (DPS Contínuo)\r\n');
-    this.sendOutput('  \x1b[36m[2]\x1b[0m Enxame de Mísseis Teleguiados & Plasma Pesado\r\n');
-    this.sendOutput('  \x1b[36m[3]\x1b[0m Vulcan Espalhado em 3 Vias (Dispersão Tática)\r\n\r\n');
-    this.sendOutput('\x1b[1;37mDigite [1, 2 ou 3] e pressione Enter: \x1b[0m');
+    this.sendOutput('\x1b[1;32m✓ Sub-agentes carregados:\x1b[0m aesthetic-designer, combat-strategist, systems-engineer\r\n');
+    this.sendOutput('\x1b[1;32m✓ Servidores MCP conectados:\x1b[0m weapons-arsenal, hull-propulsion, cybernetics-shields\r\n\r\n');
+
+    this.sendOutput('\x1b[1;33m💡 COMANDOS DISPONÍVEIS & PROMPTS:\x1b[0m\r\n');
+    this.sendOutput('  \x1b[36m/help\x1b[0m             - Exibe lista completa de comandos e sintaxe\r\n');
+    this.sendOutput('  \x1b[36m/mcp\x1b[0m              - Inspeciona servidores MCP e ferramentas disponíveis\r\n');
+    this.sendOutput('  \x1b[36m/agents\x1b[0m           - Exibe sub-agentes carregados no workspace\r\n');
+    this.sendOutput('  \x1b[36m/status\x1b[0m           - Visualiza a configuração e matriz de energia atual\r\n');
+    this.sendOutput('  \x1b[36m/forge\x1b[0m            - Executa a síntese autônoma da nave via sub-agentes\r\n');
+    this.sendOutput('  \x1b[35m[Prompt Livre]\x1b[0m    - Digite qualquer instrução (ex: "faça uma nave rápida com lasers")\r\n\r\n');
+
+    this.renderPrompt();
+  }
+
+  private renderPrompt(): void {
+    this.sendOutput(`\x1b[1;32m${this.pilotCallsign.toLowerCase()}@agy-summit\x1b[0m:\x1b[1;34m~/forja\x1b[0m \x1b[1;33m❯\x1b[0m `);
   }
 
   writeInput(data: string): void {
@@ -100,70 +80,295 @@ export class PtyManagerService {
       return;
     }
 
-    if (this.isSimulated) {
-      this.handleSimulatedInput(data);
+    if (this.isAgyShell) {
+      this.handleShellInput(data);
     }
   }
 
-  private handleSimulatedInput(data: string): void {
-    // Echo character
+  private handleShellInput(data: string): void {
+    // 1. Enter key (\r or \n)
     if (data === '\r' || data === '\n') {
       this.sendOutput('\r\n');
-      this.advanceSimulationStep();
-    } else {
-      this.sendOutput(data);
-      if (data === '1' || data === '2' || data === '3') {
-        if (this.simulationState === 'WAITING_WEAPON') {
-          this.selectedWeaponIndex = Number(data);
-        }
+      const command = this.currentLineBuffer.trim();
+      this.currentLineBuffer = '';
+
+      if (command.length > 0) {
+        this.history.push(command);
+        this.historyIndex = this.history.length;
+        this.processCommand(command);
+      } else {
+        this.renderPrompt();
       }
+      return;
+    }
+
+    // 2. Backspace key (\x7f or \b)
+    if (data === '\x7f' || data === '\b') {
+      if (this.currentLineBuffer.length > 0) {
+        this.currentLineBuffer = this.currentLineBuffer.slice(0, -1);
+        this.sendOutput('\b \b');
+      }
+      return;
+    }
+
+    // 3. Arrow Up (History previous)
+    if (data === '\x1b[A') {
+      if (this.history.length > 0 && this.historyIndex > 0) {
+        this.historyIndex--;
+        this.replaceCurrentLine(this.history[this.historyIndex]);
+      }
+      return;
+    }
+
+    // 4. Arrow Down (History next)
+    if (data === '\x1b[B') {
+      if (this.historyIndex < this.history.length - 1) {
+        this.historyIndex++;
+        this.replaceCurrentLine(this.history[this.historyIndex]);
+      } else {
+        this.historyIndex = this.history.length;
+        this.replaceCurrentLine('');
+      }
+      return;
+    }
+
+    // 5. Normal Character Input
+    if (data.length === 1 && data.charCodeAt(0) >= 32) {
+      this.currentLineBuffer += data;
+      this.sendOutput(data);
     }
   }
 
-  private advanceSimulationStep(): void {
-    if (this.simulationState === 'WAITING_WEAPON') {
-      this.simulationState = 'WAITING_STYLE';
-      this.sendOutput('\r\n\x1b[1;33m[Fast Grill-Me // Orquestrador AGY]\x1b[0m\r\n');
-      this.sendOutput('Selecione o estilo visual e assinatura estética:\r\n');
-      this.sendOutput('  \x1b[36m[1]\x1b[0m Neon Synthwave 80s (Ciano & Magenta)\r\n');
-      this.sendOutput('  \x1b[36m[2]\x1b[0m Dark Void Stealth (Cinza Titânio & Ouro)\r\n');
-      this.sendOutput('  \x1b[36m[3]\x1b[0m Cyber Gold Vanguard (Dourado & Esmeralda)\r\n\r\n');
-      this.sendOutput('\x1b[1;37mDigite [1, 2 ou 3] e pressione Enter: \x1b[0m');
-    } else if (this.simulationState === 'WAITING_STYLE') {
-      this.simulationState = 'DONE';
-      this.sendOutput('\r\n\x1b[1;35m[MCP] weapons-arsenal: configure_primary_cannon(type="laser", dps=780)\x1b[0m\r\n');
-      this.sendOutput('\x1b[1;35m[MCP] hull-propulsion: tune_thrusters(speed_px_s=360, hitbox=9px)\x1b[0m\r\n');
-      this.sendOutput('\x1b[1;35m[Sub-Agente aesthetic-designer] Sintetizando fuselagem vetorial SVG...\x1b[0m\r\n');
+  private replaceCurrentLine(newText: string): void {
+    while (this.currentLineBuffer.length > 0) {
+      this.sendOutput('\b \b');
+      this.currentLineBuffer = this.currentLineBuffer.slice(0, -1);
+    }
+    this.currentLineBuffer = newText;
+    this.sendOutput(newText);
+  }
+
+  private processCommand(input: string): void {
+    const lower = input.toLowerCase().trim();
+
+    if (lower === '/help') {
+      this.printHelp();
+    } else if (lower === '/mcp' || lower === '/mcp list') {
+      this.printMcpServers();
+    } else if (lower === '/agents' || lower === '/subagents') {
+      this.printSubagents();
+    } else if (lower === '/status') {
+      this.printStatus();
+    } else if (lower === '/clear') {
+      this.sendOutput('\x1b[2J\x1b[H');
+      this.renderPrompt();
+    } else if (lower.startsWith('/preset')) {
+      this.handlePresetCommand(lower);
+    } else if (lower === '/forge' || lower === '/build') {
+      this.executeAgentForge('Forja padrão balanceada solicitada pelo piloto.');
+    } else {
+      this.executeAgentForge(input);
+    }
+  }
+
+  private printHelp(): void {
+    this.sendOutput('\r\n\x1b[1;33m=== ANTIGRAVITY CLI // GUIA DE COMANDOS ===\x1b[0m\r\n');
+    this.sendOutput('  \x1b[36m/help\x1b[0m                     - Exibe esta mensagem de ajuda\r\n');
+    this.sendOutput('  \x1b[36m/mcp\x1b[0m                      - Inspeciona servidores MCP e ferramentas\r\n');
+    this.sendOutput('  \x1b[36m/agents\x1b[0m                   - Lista os sub-agentes ativos no workspace\r\n');
+    this.sendOutput('  \x1b[36m/status\x1b[0m                   - Mostra os parâmetros atuais da nave\r\n');
+    this.sendOutput('  \x1b[36m/preset <tipo>\x1b[0m            - Carrega preset: interceptor | vanguard | striker\r\n');
+    this.sendOutput('  \x1b[36m/forge\x1b[0m                    - Executa o pipeline de forja autônoma\r\n');
+    this.sendOutput('  \x1b[36m/clear\x1b[0m                    - Limpa a tela do terminal\r\n\r\n');
+    this.sendOutput('\x1b[1;35mExemplos de prompts livres em linguagem natural:\x1b[0m\r\n');
+    this.sendOutput('  • "quero uma nave com lasers azuis, velocidade máxima e escudo duplo"\r\n');
+    this.sendOutput('  • "forje um caça bombardeiro pesado focado em mísseis teleguiados"\r\n');
+    this.sendOutput('  • "estilo cyberpunk gold com canhões vulcan espalhados"\r\n\r\n');
+    this.renderPrompt();
+  }
+
+  private printMcpServers(): void {
+    this.sendOutput('\r\n\x1b[1;33m=== SERVIDORES MCP ATIVOS (.agents/mcp_config.json) ===\x1b[0m\r\n');
+    this.sendOutput('\x1b[1;36m1. weapons-arsenal\x1b[0m\r\n');
+    this.sendOutput('   • configure_primary_cannon(type: "laser"|"plasma"|"vulcan_spread", damage, fire_rate)\r\n');
+    this.sendOutput('   • attach_secondary_ordnance(type: "homing_missiles"|"emp_burst"|"drone_escort")\r\n\r\n');
+
+    this.sendOutput('\x1b[1;36m2. hull-propulsion\x1b[0m\r\n');
+    this.sendOutput('   • tune_thrusters(speed_px_s, agility_accel, banking_tilt)\r\n');
+    this.sendOutput('   • reinforce_hull(armor_plating, max_hp, hitbox_radius)\r\n\r\n');
+
+    this.sendOutput('\x1b[1;36m3. cybernetics-shields\x1b[0m\r\n');
+    this.sendOutput('   • calibrate_shield_matrix(capacity, recharge_delay_s, aura_color)\r\n');
+    this.sendOutput('   • compute_synergy_matrix(offense, speed, defense, tech)\r\n\r\n');
+    this.renderPrompt();
+  }
+
+  private printSubagents(): void {
+    this.sendOutput('\r\n\x1b[1;33m=== SUB-AGENTES REGISTRADOS (.agents/agents/*.md) ===\x1b[0m\r\n');
+    this.sendOutput('  \x1b[1;32m• aesthetic-designer\x1b[0m  - Especialista em fuselagem vetorial SVG, temas e neon\r\n');
+    this.sendOutput('  \x1b[1;32m• combat-strategist\x1b[0m   - Otimizador de DPS balístico e canhões primários/secundários\r\n');
+    this.sendOutput('  \x1b[1;32m• systems-engineer\x1b[0m    - Engenheiro de propulsão, matrizes de blindagem e escudos\r\n\r\n');
+    this.renderPrompt();
+  }
+
+  private printStatus(): void {
+    this.sendOutput('\r\n\x1b[1;33m=== STATUS ATUAL DA NAVE ===\x1b[0m\r\n');
+    this.sendOutput(`  Fuselagem: \x1b[1;37m${this.currentSpec.visuals.style_name}\x1b[0m\r\n`);
+    this.sendOutput(`  Arma Primária: \x1b[1;36m${this.currentSpec.weapons.primary.type.toUpperCase()}\x1b[0m (DPS: ${this.currentSpec.weapons.primary.damage * this.currentSpec.weapons.primary.fire_rate})\r\n`);
+    this.sendOutput(`  Arma Secundária: \x1b[1;35m${this.currentSpec.weapons.secondary.type.toUpperCase()}\x1b[0m\r\n`);
+    this.sendOutput(`  Velocidade: \x1b[1;33m${this.currentSpec.attributes.speed_px_s} px/s\x1b[0m | Blindagem: \x1b[1;32m${this.currentSpec.attributes.max_hp} HP\x1b[0m | Escudo: \x1b[1;36m${this.currentSpec.attributes.shield_capacity}\x1b[0m\r\n\r\n`);
+    this.renderPrompt();
+  }
+
+  private handlePresetCommand(cmd: string): void {
+    const parts = cmd.split(' ');
+    const presetName = parts[1]?.toLowerCase();
+
+    if (presetName === 'vanguard') {
+      this.currentSpec = JSON.parse(JSON.stringify(FALLBACK_PRESETS.vanguard));
+      this.sendOutput('\x1b[1;32m✓ Preset Vanguard carregado com sucesso!\x1b[0m\r\n');
+    } else if (presetName === 'striker') {
+      this.currentSpec = JSON.parse(JSON.stringify(FALLBACK_PRESETS.striker));
+      this.sendOutput('\x1b[1;32m✓ Preset Striker carregado com sucesso!\x1b[0m\r\n');
+    } else {
+      this.currentSpec = JSON.parse(JSON.stringify(FALLBACK_PRESETS.interceptor));
+      this.sendOutput('\x1b[1;32m✓ Preset Interceptor carregado com sucesso!\x1b[0m\r\n');
+    }
+
+    this.writeSpecAndAudit('Preset ' + presetName);
+    this.renderPrompt();
+  }
+
+  private executeAgentForge(userPrompt: string): void {
+    this.sendOutput(`\r\n\x1b[1;34m[Orquestrador AGY]\x1b[0m Interpretando prompt: "\x1b[1;37m${userPrompt}\x1b[0m"...\r\n`);
+
+    const lower = userPrompt.toLowerCase();
+
+    let weaponType: PrimaryWeaponType = 'laser';
+    let secondaryType: SecondaryWeaponType = 'homing_missiles';
+    let styleName = 'Cyber Custom Interceptor';
+    let primaryColor = '#00f3ff';
+    let secondaryColor = '#ff0055';
+    let speed = 350;
+    let hp = 4;
+    let shield = 2;
+
+    if (lower.includes('vulcan') || lower.includes('triplo') || lower.includes('espalhado')) {
+      weaponType = 'vulcan_spread';
+      secondaryType = 'emp_burst';
+      styleName = 'Heavy Vulcan Raider';
+      primaryColor = '#ffd700';
+      secondaryColor = '#00ff88';
+      speed = 310;
+      hp = 5;
+      shield = 2;
+    } else if (lower.includes('míssil') || lower.includes('plasma') || lower.includes('bombardeiro') || lower.includes('striker')) {
+      weaponType = 'plasma';
+      secondaryType = 'homing_missiles';
+      styleName = 'Plasma Striker MK-II';
+      primaryColor = '#ff0055';
+      secondaryColor = '#00f3ff';
+      speed = 330;
+      hp = 4;
+      shield = 3;
+    } else {
+      weaponType = 'laser';
+      secondaryType = 'drone_escort';
+      styleName = 'Neon Interceptor Prime';
+      primaryColor = '#00f3ff';
+      secondaryColor = '#ff0055';
+      speed = 380;
+      hp = 3;
+      shield = 2;
+    }
+
+    setTimeout(() => {
+      this.sendOutput('\x1b[1;32m[Orquestrador AGY]\x1b[0m Delegando tarefas para sub-agentes...\r\n');
+      this.sendOutput('  \x1b[36m→ Invocando sub-agente combat-strategist...\x1b[0m\r\n');
 
       setTimeout(() => {
-        this.sendOutput('\x1b[1;32m✓ ship_spec.json gravado com sucesso no workspace!\x1b[0m\r\n');
-        this.sendOutput('\x1b[1;33m>> SISTEMAS ONLINE // PRONTO PARA LANÇAMENTO! <<\x1b[0m\r\n');
+        this.sendOutput(`  \x1b[35m[MCP weapons-arsenal]\x1b[0m configure_primary_cannon(type="${weaponType}", fire_rate=8) → \x1b[32mOK\x1b[0m\r\n`);
+        this.sendOutput(`  \x1b[35m[MCP weapons-arsenal]\x1b[0m attach_secondary_ordnance(type="${secondaryType}") → \x1b[32mOK\x1b[0m\r\n`);
 
-        // Write real ship_spec.json to disk so FileWatcher triggers
-        const chosenPreset: ShipSpecification =
-          this.selectedWeaponIndex === 2
-            ? FALLBACK_PRESETS.striker
-            : this.selectedWeaponIndex === 3
-            ? FALLBACK_PRESETS.vanguard
-            : FALLBACK_PRESETS.interceptor;
+        setTimeout(() => {
+          this.sendOutput('  \x1b[36m→ Invocando sub-agente systems-engineer...\x1b[0m\r\n');
+          this.sendOutput(`  \x1b[35m[MCP hull-propulsion]\x1b[0m tune_thrusters(speed=${speed}px/s, hitbox=10px) → \x1b[32mOK\x1b[0m\r\n`);
+          this.sendOutput(`  \x1b[35m[MCP cybernetics-shields]\x1b[0m calibrate_shield_matrix(capacity=${shield}, hp=${hp}) → \x1b[32mOK\x1b[0m\r\n`);
 
-        const specFile = path.join(this.sessionDir, 'ship_spec.json');
-        fs.writeFileSync(specFile, JSON.stringify(chosenPreset, null, 2), 'utf8');
+          setTimeout(() => {
+            this.sendOutput('  \x1b[36m→ Invocando sub-agente aesthetic-designer...\x1b[0m\r\n');
+            this.sendOutput(`  \x1b[35m[Sub-Agente aesthetic-designer]\x1b[0m Gerando fuselagem SVG para "${styleName}" → \x1b[32mOK\x1b[0m\r\n\r\n`);
 
-        // Write audit log
-        const auditFile = path.join(this.sessionDir, 'mcp_audit.log');
-        fs.appendFileSync(
-          auditFile,
-          `[${new Date().toISOString()}] weapons-arsenal/configure_primary_cannon executed\n[${new Date().toISOString()}] hull-propulsion/tune_thrusters executed\n`,
-          'utf8'
-        );
-      }, 800);
-    }
+            this.currentSpec = {
+              $schema: 'https://json-schema.org/draft-07/schema#',
+              pilot: {
+                callsign: this.pilotCallsign,
+                company_raw: this.pilotCompany,
+                company_canonical: this.pilotCompany
+              },
+              build_metadata: {
+                selected_mcps: ['weapons-arsenal', 'hull-propulsion', 'cybernetics-shields'],
+                selected_subagents: ['aesthetic-designer', 'combat-strategist'],
+                energy_sliders: { offense: 30, speed: 35, defense: 20, tech: 15 },
+                fast_grill_me_choices: {
+                  weapon_focus: weaponType === 'vulcan_spread' ? 'vulcan_spread' : weaponType === 'plasma' ? 'missile_barrage' : 'laser_piercing',
+                  visual_theme: lower.includes('dark') ? 'dark_void_stealth' : lower.includes('gold') ? 'cyberpunk_gold' : 'synthwave_80s'
+                },
+                synergies_unlocked: ['Balanced Ace']
+              },
+              attributes: {
+                speed_px_s: speed,
+                max_hp: hp,
+                shield_capacity: shield,
+                hitbox_radius: 10
+              },
+              weapons: {
+                primary: {
+                  type: weaponType,
+                  damage: weaponType === 'laser' ? 45 : weaponType === 'plasma' ? 60 : 35,
+                  fire_rate: weaponType === 'laser' ? 8 : weaponType === 'plasma' ? 6 : 10,
+                  bullet_speed: 750,
+                  spread_angle: weaponType === 'vulcan_spread' ? 0.25 : 0
+                },
+                secondary: {
+                  type: secondaryType,
+                  damage: 120,
+                  cooldown_seconds: 4
+                }
+              },
+              visuals: {
+                style_name: styleName,
+                primary_color: primaryColor,
+                secondary_color: secondaryColor,
+                engine_trail_color: '#00f3ff',
+                svg_path_data: 'M 64 10 L 114 110 L 64 85 L 14 110 Z'
+              }
+            };
+
+            this.writeSpecAndAudit(userPrompt);
+
+            this.sendOutput('\x1b[1;32m✓ ship_spec.json gravado com sucesso no workspace!\x1b[0m\r\n');
+            this.sendOutput('\x1b[1;33m>> SISTEMAS DA NAVE ONLINE // PRONTO PARA LANÇAMENTO! <<\x1b[0m\r\n\r\n');
+            this.renderPrompt();
+          }, 300);
+        }, 300);
+      }, 300);
+    }, 200);
   }
 
-  private sendOutput(text: string): void {
-    if (this.wsClient && this.wsClient.readyState === WebSocket.OPEN) {
-      this.wsClient.send(JSON.stringify({ type: 'pty_output', data: text }));
+  private writeSpecAndAudit(reason: string): void {
+    try {
+      const specFile = path.join(this.sessionDir, 'ship_spec.json');
+      fs.writeFileSync(specFile, JSON.stringify(this.currentSpec, null, 2), 'utf8');
+
+      const auditFile = path.join(this.sessionDir, 'mcp_audit.log');
+      fs.appendFileSync(
+        auditFile,
+        `[${new Date().toISOString()}] Prompt: "${reason}" | weapons-arsenal/configure_primary_cannon executed | hull-propulsion/tune_thrusters executed\n`,
+        'utf8'
+      );
+    } catch (err) {
+      console.error('[PtyManager] Error saving spec/audit:', err);
     }
   }
 
@@ -193,6 +398,12 @@ export class PtyManagerService {
       }
       this.activePty = undefined;
     }
-    this.isSimulated = false;
+    this.isAgyShell = false;
+  }
+
+  private sendOutput(text: string): void {
+    if (this.wsClient && this.wsClient.readyState === WebSocket.OPEN) {
+      this.wsClient.send(JSON.stringify({ type: 'pty_output', data: text }));
+    }
   }
 }
