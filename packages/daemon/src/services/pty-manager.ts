@@ -43,51 +43,63 @@ export class PtyManagerService {
       if (companyMatch) this.pilotCompany = companyMatch[1];
     }
 
-    // 3. Check for Real AGY CLI binary on host
+    // 3. Detect Shell Binary (Mac / Linux)
+    const shell = fs.existsSync('/bin/zsh')
+      ? '/bin/zsh'
+      : fs.existsSync('/bin/bash')
+      ? '/bin/bash'
+      : process.env.SHELL || '/bin/sh';
+
     const agyBinaryPath = this.detectAgyBinary();
 
-    if (agyBinaryPath) {
-      console.log(`[PtyManager] Real Antigravity CLI binary found at: ${agyBinaryPath}. Spawning native PTY session...`);
-      try {
-        const binDir = path.dirname(agyBinaryPath);
-        const augmentedPath = `${binDir}:${process.env.PATH || ''}`;
+    try {
+      console.log(`[PtyManager] Spawning shell (${shell}) in session: ${sessionDir}`);
 
-        this.activePty = pty.spawn(agyBinaryPath, [], {
-          name: 'xterm-color',
-          cols: 80,
-          rows: 24,
-          cwd: sessionDir,
-          env: {
-            ...process.env,
-            BOOTH_SESSION_DIR: sessionDir,
-            PATH: augmentedPath,
-            TERM: 'xterm-256color'
-          }
-        });
+      const augmentedPath = `/Users/carloscabral/.local/bin:${path.join(os.homedir(), '.local/bin')}:/usr/local/bin:/opt/homebrew/bin:${process.env.PATH || ''}`;
 
-        this.isAgyShell = false;
+      this.activePty = pty.spawn(shell, ['-l'], {
+        name: 'xterm-256color',
+        cols: 80,
+        rows: 24,
+        cwd: sessionDir,
+        env: {
+          ...process.env,
+          BOOTH_SESSION_DIR: sessionDir,
+          PATH: augmentedPath,
+          TERM: 'xterm-256color'
+        }
+      });
 
-        // Pipe real CLI stdout -> WebSocket
-        this.activePty.onData((data: string) => {
-          if (this.wsClient && this.wsClient.readyState === WebSocket.OPEN) {
-            this.wsClient.send(JSON.stringify({ type: 'pty_output', data }));
-          }
-        });
+      this.isAgyShell = false;
 
-        this.activePty.onExit(({ exitCode, signal }) => {
-          console.log(`[PtyManager] Real AGY CLI exited with code ${exitCode}, signal ${signal}`);
-          if (this.wsClient && this.wsClient.readyState === WebSocket.OPEN) {
-            this.wsClient.send(JSON.stringify({ type: 'pty_exit', exitCode, signal }));
-          }
-          this.activePty = undefined;
-        });
+      // Stream stdout from Shell / AGY CLI -> WebSocket
+      this.activePty.onData((data: string) => {
+        if (this.wsClient && this.wsClient.readyState === WebSocket.OPEN) {
+          this.wsClient.send(JSON.stringify({ type: 'pty_output', data }));
+        }
+      });
 
-        return;
-      } catch (err) {
-        console.warn('[PtyManager] Failed to spawn real agy binary via PTY, falling back to built-in interactive shell:', err);
-      }
-    } else {
-      console.log('[PtyManager] Real agy binary not found in known paths, using built-in interactive shell.');
+      this.activePty.onExit(({ exitCode, signal }) => {
+        console.log(`[PtyManager] Process exited with code ${exitCode}, signal ${signal}`);
+        if (this.wsClient && this.wsClient.readyState === WebSocket.OPEN) {
+          this.wsClient.send(JSON.stringify({ type: 'pty_exit', exitCode, signal }));
+        }
+        this.activePty = undefined;
+      });
+
+      // Bootstrap the Real AGY CLI command in the shell
+      const commandToRun = agyBinaryPath ? `${agyBinaryPath}\r` : `agy\r`;
+      console.log(`[PtyManager] Launching real AGY CLI: ${commandToRun.trim()}`);
+
+      setTimeout(() => {
+        if (this.activePty) {
+          this.activePty.write(commandToRun);
+        }
+      }, 350);
+
+      return;
+    } catch (err) {
+      console.warn('[PtyManager] Shell PTY spawn failed, using built-in interactive shell fallback:', err);
     }
 
     // 4. Fallback to Built-in Interactive AGY CLI Shell
