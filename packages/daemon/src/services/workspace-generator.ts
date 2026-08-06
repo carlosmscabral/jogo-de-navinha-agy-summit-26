@@ -19,10 +19,20 @@ export class WorkspaceGeneratorService {
   static generateWorkspace(config: SessionWorkspaceConfig): string {
     const sessionDir = config.sessionDir || '/tmp/booth_session';
 
-    // 1. Purge & Recreate session workspace
-    if (fs.existsSync(sessionDir)) {
-      fs.rmSync(sessionDir, { recursive: true, force: true });
+    // 1. Clean contents inside sessionDir WITHOUT deleting the root directory inode (prevents uv_cwd ENOENT in open terminals)
+    if (!fs.existsSync(sessionDir)) {
+      fs.mkdirSync(sessionDir, { recursive: true });
+    } else {
+      try {
+        const entries = fs.readdirSync(sessionDir);
+        for (const entry of entries) {
+          fs.rmSync(path.join(sessionDir, entry), { recursive: true, force: true });
+        }
+      } catch (err) {
+        console.warn('[WorkspaceGenerator] Warning cleaning existing session files:', err);
+      }
     }
+
     fs.mkdirSync(path.join(sessionDir, '.agents', 'agents'), { recursive: true });
 
     // 2. Generate .agents/mcp_config.json
