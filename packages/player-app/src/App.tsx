@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FALLBACK_PRESETS } from '@jogo/shared';
 import { createGameInstance } from './game/index.js';
-import { Rocket, Crosshair } from 'lucide-react';
+import { Rocket, Crosshair, Shield, Zap, Sparkles, Activity } from 'lucide-react';
 
 export function App() {
   const [selectedPreset, setSelectedPreset] = useState<'interceptor' | 'vanguard' | 'striker'>('interceptor');
@@ -33,87 +33,133 @@ export function App() {
     }
   };
 
+  const currentSpec = FALLBACK_PRESETS[selectedPreset];
+
   return (
-    <div className="flex h-screen w-screen bg-[#050510] text-white crt-scanlines overflow-hidden">
-      {/* Lateral Control & Preset Selector Panel */}
-      <div className="w-96 border-r border-[#00f3ff]/30 p-6 flex flex-col justify-between bg-[#0a0a1a]/90 backdrop-blur-md">
-        <div>
-          <div className="flex items-center space-x-3 mb-6">
-            <Rocket className="text-[#00f3ff] w-8 h-8 animate-pulse" />
+    <div className="flex h-screen w-screen bg-[#03020a] text-white overflow-hidden select-none font-mono">
+      {/* Lateral Modern Cyber Glass Panel */}
+      <aside className="w-[420px] glass-panel border-r border-[#00f3ff]/20 p-6 flex flex-col justify-between z-10">
+        <div className="space-y-6">
+          {/* Header */}
+          <div className="flex items-center space-x-3 pb-4 border-b border-white/10">
+            <div className="p-2.5 rounded-xl bg-gradient-to-br from-[#00f3ff]/20 to-[#ff0055]/20 border border-[#00f3ff]/40 shadow-lg shadow-[#00f3ff]/10">
+              <Rocket className="text-[#00f3ff] w-7 h-7 animate-pulse" />
+            </div>
             <div>
-              <h1 className="text-xl font-bold neon-text-cyan tracking-wider">SPACE SHOOTER</h1>
-              <p className="text-xs text-[#00f3ff]/60">Google Cloud Summit // AGY 2026</p>
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-[#00f3ff] via-[#ffffff] to-[#ff0055]">
+                  SPACE SHOOTER
+                </h1>
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#00f3ff]/20 text-[#00f3ff] font-bold border border-[#00f3ff]/30">
+                  AGY '26
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-400">Google Cloud Summit // Showcase</p>
             </div>
           </div>
 
-          <div className="border border-[#00f3ff]/20 bg-[#001020]/60 p-4 rounded-lg mb-6">
-            <h2 className="text-sm font-semibold text-[#ffd700] mb-2 flex items-center gap-2">
-              <Crosshair className="w-4 h-4" /> CHECKPOINT 1: ARENA DE TESTE
-            </h2>
+          {/* Status Box */}
+          <div className="rounded-xl p-4 bg-black/40 border border-[#ffd700]/30 shadow-inner">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs font-bold text-[#ffd700] flex items-center gap-2">
+                <Crosshair className="w-4 h-4 text-[#ffd700]" /> ARENA DE PILOTAGEM
+              </span>
+              <span className="flex items-center gap-1 text-[10px] text-[#00ff88]">
+                <Activity className="w-3 h-3 animate-pulse" /> 60 FPS
+              </span>
+            </div>
             <p className="text-xs text-gray-300 leading-relaxed">
-              Teste a resposta da nave e dos canhões no teclado físico antes da integração do terminal.
+              Teste a resposta de voo, canhões primários e manobras com teclado físico antes da forja no Antigravity CLI.
             </p>
           </div>
 
-          {/* Preset Selector */}
-          <div className="space-y-3 mb-6">
-            <label className="text-xs text-[#00f3ff] uppercase font-bold tracking-wider">
-              Arquétipos de Nave
-            </label>
-            {(['interceptor', 'vanguard', 'striker'] as const).map((preset) => (
-              <button
-                key={preset}
-                onClick={() => handleSelectPreset(preset)}
-                className={`w-full p-3 rounded border text-left text-xs transition-all ${
-                  selectedPreset === preset
-                    ? 'border-[#00f3ff] bg-[#00f3ff]/20 neon-glow-cyan text-white font-bold'
-                    : 'border-white/10 bg-black/40 text-gray-400 hover:border-white/30'
-                }`}
-              >
-                <div className="flex justify-between items-center mb-1">
-                  <span className="uppercase">{FALLBACK_PRESETS[preset].visuals.style_name}</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#00f3ff]/30 text-[#00f3ff]">
-                    {FALLBACK_PRESETS[preset].weapons.primary.type}
-                  </span>
-                </div>
-                <div className="text-[11px] text-gray-300 flex gap-3">
-                  <span>SPD: {FALLBACK_PRESETS[preset].attributes.speed_px_s}</span>
-                  <span>HP: {FALLBACK_PRESETS[preset].attributes.max_hp}</span>
-                  <span>SHD: {FALLBACK_PRESETS[preset].attributes.shield_capacity}</span>
-                </div>
-              </button>
-            ))}
+          {/* Archetype Selector */}
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <label className="text-xs text-[#00f3ff] font-bold tracking-wider uppercase">
+                Arquétipos Disponíveis
+              </label>
+              <span className="text-[10px] text-gray-400">3 Presets Calibrados</span>
+            </div>
+
+            <div className="space-y-2.5">
+              {(['interceptor', 'vanguard', 'striker'] as const).map((preset) => {
+                const spec = FALLBACK_PRESETS[preset];
+                const isSelected = selectedPreset === preset;
+
+                return (
+                  <button
+                    key={preset}
+                    onClick={() => handleSelectPreset(preset)}
+                    className={`w-full p-3.5 rounded-xl border text-left transition-all duration-200 ${
+                      isSelected
+                        ? 'border-[#00f3ff] bg-gradient-to-r from-[#00f3ff]/20 to-[#00f3ff]/5 neon-glow-cyan text-white scale-[1.02]'
+                        : 'border-white/10 bg-white/[0.02] text-gray-400 hover:border-white/25 hover:bg-white/[0.05]'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center mb-1.5">
+                      <span className={`text-xs font-bold uppercase ${isSelected ? 'text-[#00f3ff]' : 'text-gray-200'}`}>
+                        {spec.visuals.style_name}
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#00f3ff]/20 text-[#00f3ff] font-bold border border-[#00f3ff]/40">
+                        {spec.weapons.primary.type}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 text-[11px] text-gray-300 pt-1 border-t border-white/5">
+                      <div className="flex items-center gap-1">
+                        <Zap className="w-3 h-3 text-[#ffd700]" />
+                        <span>SPD: <b>{spec.attributes.speed_px_s}</b></span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Shield className="w-3 h-3 text-[#00ff88]" />
+                        <span>HP: <b>{spec.attributes.max_hp}</b></span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-[#00f3ff]" />
+                        <span>SHD: <b>{spec.attributes.shield_capacity}</b></span>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          {/* Controls Help */}
-          <div className="border border-white/10 rounded-lg p-4 bg-black/40 text-xs space-y-2">
-            <div className="text-[#ffd700] font-bold">CONTROLES DO TECLADO:</div>
-            <div className="flex justify-between text-gray-300">
-              <span>Mover Nave:</span>
-              <span className="text-[#00f3ff]">WASD ou Setas</span>
+          {/* Keyboard Controls */}
+          <div className="rounded-xl p-4 bg-black/50 border border-white/10 text-xs space-y-2.5">
+            <div className="text-[#ffd700] font-bold flex items-center gap-1.5">
+              <span>🎮 COMANDOS DO TECLADO:</span>
             </div>
-            <div className="flex justify-between text-gray-300">
-              <span>Disparo Primário:</span>
-              <span className="text-[#00f3ff]">Barra de Espaço</span>
-            </div>
-            <div className="flex justify-between text-gray-300">
-              <span>Arma Secundária:</span>
-              <span className="text-[#ff0055]">Tecla Shift</span>
+            <div className="space-y-1.5 text-gray-300">
+              <div className="flex justify-between items-center py-0.5 border-b border-white/5">
+                <span>Manobra de Voo:</span>
+                <span className="text-[#00f3ff] font-bold bg-[#00f3ff]/10 px-2 py-0.5 rounded">WASD / Setas</span>
+              </div>
+              <div className="flex justify-between items-center py-0.5 border-b border-white/5">
+                <span>Disparo Primário:</span>
+                <span className="text-[#00f3ff] font-bold bg-[#00f3ff]/10 px-2 py-0.5 rounded">Espaço (Hold)</span>
+              </div>
+              <div className="flex justify-between items-center py-0.5">
+                <span>Arma Secundária:</span>
+                <span className="text-[#ff0055] font-bold bg-[#ff0055]/10 px-2 py-0.5 rounded">Shift</span>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="text-[11px] text-center text-gray-500 border-t border-white/10 pt-4">
-          Antigravity Engine // 60 FPS Arcade Mode
+        {/* Footer */}
+        <div className="text-[11px] text-center text-gray-400 pt-4 border-t border-white/10">
+          Antigravity Engine // Arcade 60 FPS
         </div>
-      </div>
+      </aside>
 
-      {/* Center Game Arena */}
-      <div className="flex-1 flex flex-col items-center justify-center p-4 bg-[#030308]">
-        <div className="relative border-2 border-[#00f3ff]/50 rounded-xl overflow-hidden neon-glow-cyan">
+      {/* Main Game Stage */}
+      <main className="flex-1 flex flex-col items-center justify-center p-6 relative bg-radial from-[#100826] via-[#050310] to-[#020108]">
+        <div className="relative rounded-2xl overflow-hidden border border-[#00f3ff]/40 shadow-2xl shadow-[#00f3ff]/20">
           <div id="game-container" ref={gameContainerRef} className="w-[600px] h-[800px]" />
         </div>
-      </div>
+      </main>
     </div>
   );
 }

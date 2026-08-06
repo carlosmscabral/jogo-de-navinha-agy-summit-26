@@ -1,14 +1,18 @@
 import Phaser from 'phaser';
-import { ShipAttributes, ShipWeapons } from '@jogo/shared';
+import { ShipAttributes, ShipWeapons, ShipVisuals } from '@jogo/shared';
 import { WeaponSystem } from '../weapons/WeaponSystem.js';
 
 export class PlayerShip extends Phaser.Physics.Arcade.Sprite {
   attributes: ShipAttributes;
   weaponSystem: WeaponSystem;
+  visuals: ShipVisuals;
 
   currentHp: number;
   currentShield: number;
   isInvulnerable = false;
+
+  shieldGraphics?: Phaser.GameObjects.Graphics;
+  thrusterEmitter?: Phaser.GameObjects.Particles.ParticleEmitter;
 
   cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   keyW!: Phaser.Input.Keyboard.Key;
@@ -18,26 +22,26 @@ export class PlayerShip extends Phaser.Physics.Arcade.Sprite {
   keySpace!: Phaser.Input.Keyboard.Key;
   keyShift!: Phaser.Input.Keyboard.Key;
 
-  exhaustEmitter?: Phaser.GameObjects.Particles.ParticleEmitter;
-
   constructor(
     scene: Phaser.Scene,
     x: number,
     y: number,
     textureKey: string,
     attributes: ShipAttributes,
-    weapons: ShipWeapons
+    weapons: ShipWeapons,
+    visuals: ShipVisuals
   ) {
     super(scene, x, y, textureKey);
 
     this.attributes = attributes;
+    this.visuals = visuals;
     this.currentHp = attributes.max_hp;
     this.currentShield = attributes.shield_capacity;
 
     scene.add.existing(this);
     scene.physics.add.existing(this);
 
-    this.setScale(0.5); // Visual 64x64 from 128x128 texture
+    this.setScale(0.65); // Crisp 83px scale
     this.setCollideWorldBounds(true);
 
     // Circular graze body at cockpit center (8 to 16px radius)
@@ -45,7 +49,40 @@ export class PlayerShip extends Phaser.Physics.Arcade.Sprite {
     this.body?.setCircle(radius, (this.width - radius * 2) / 2, (this.height - radius * 2) / 2);
 
     this.weaponSystem = new WeaponSystem(scene, weapons);
+    this.setupThrusters();
+    this.setupShieldGraphics();
     this.setupControls();
+  }
+
+  private setupThrusters(): void {
+    // Generate particle texture if needed
+    if (!this.scene.textures.exists('particle_flame')) {
+      const g = this.scene.add.graphics();
+      g.fillStyle(0xffffff, 1);
+      g.fillCircle(4, 4, 3);
+      g.generateTexture('particle_flame', 8, 8);
+      g.destroy();
+    }
+
+    const flameColor = Phaser.Display.Color.HexStringToColor(this.visuals.engine_trail_color || '#00f3ff').color;
+
+    const particles = this.scene.add.particles(0, 0, 'particle_flame', {
+      speedY: { min: 80, max: 180 },
+      speedX: { min: -15, max: 15 },
+      scale: { start: 0.8, end: 0 },
+      alpha: { start: 0.9, end: 0 },
+      tint: flameColor,
+      lifespan: 250,
+      blendMode: 'ADD',
+      frequency: 20
+    });
+
+    particles.startFollow(this, 0, 30);
+    this.scene.events.once('shutdown', () => particles.destroy());
+  }
+
+  private setupShieldGraphics(): void {
+    this.shieldGraphics = this.scene.add.graphics();
   }
 
   private setupControls(): void {
@@ -63,17 +100,39 @@ export class PlayerShip extends Phaser.Physics.Arcade.Sprite {
   update(time: number, delta: number): void {
     this.weaponSystem.update();
 
-    // Movement
+    // Movement & Banking
     const speed = this.attributes.speed_px_s;
     let vx = 0;
     let vy = 0;
+    let targetAngle = 0;
 
-    if (this.cursors.left.isDown || this.keyA.isDown) vx -= speed;
-    if (this.cursors.right.isDown || this.keyD.isDown) vx += speed;
+    if (this.cursors.left.isDown || this.keyA.isDown) {
+      vx -= speed;
+      targetAngle = -12; // Bank left
+    }
+    if (this.cursors.right.isDown || this.keyD.isDown) {
+      vx += speed;
+      targetAngle = 12; // Bank right
+    }
     if (this.cursors.up.isDown || this.keyW.isDown) vy -= speed;
     if (this.cursors.down.isDown || this.keyS.isDown) vy += speed;
 
     this.setVelocity(vx, vy);
+
+    // Smooth tilt banking
+    this.angle = Phaser.Math.Linear(this.angle, targetAngle, 0.2);
+
+    // Draw Shield Aura if active
+    if (this.shieldGraphics) {
+      this.shieldGraphics.clear();
+      if (this.currentShield > 0) {
+        const pulse = Math.sin(time * 0.008) * 3;
+        this.shieldGraphics.lineStyle(2, 0x00f3ff, 0.75);
+        this.shieldGraphics.fillStyle(0x00f3ff, 0.08);
+        this.shieldGraphics.strokeCircle(this.x, this.y, 45 + pulse);
+        this.shieldGraphics.fillCircle(this.x, this.y, 45 + pulse);
+      }
+    }
 
     // Primary fire (Spacebar)
     if (this.keySpace.isDown || this.cursors.space.isDown) {
@@ -100,10 +159,10 @@ export class PlayerShip extends Phaser.Physics.Arcade.Sprite {
     this.isInvulnerable = true;
     this.scene.tweens.add({
       targets: this,
-      alpha: 0.2,
+      alpha: 0.25,
       yoyo: true,
-      repeat: 5,
-      duration: 150,
+      repeat: 4,
+      duration: 120,
       onComplete: () => {
         this.setAlpha(1);
         this.isInvulnerable = false;
@@ -111,5 +170,12 @@ export class PlayerShip extends Phaser.Physics.Arcade.Sprite {
     });
 
     return this.currentHp <= 0;
+  }
+
+  destroy(fromScene?: boolean): void {
+    if (this.shieldGraphics) {
+      this.shieldGraphics.destroy();
+    }
+    super.destroy(fromScene);
   }
 }
