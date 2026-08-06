@@ -2,10 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { FALLBACK_PRESETS } from '@jogo/shared';
 import { createGameInstance } from './game/index.js';
 import { audioManager } from './game/audio/AudioManager.js';
-import { Rocket, Crosshair, Shield, Zap, Sparkles, Activity, Volume2, VolumeX } from 'lucide-react';
+import { Rocket, Crosshair, Shield, Zap, Sparkles, Activity, Volume2, VolumeX, Flame } from 'lucide-react';
 
 export function App() {
   const [selectedPreset, setSelectedPreset] = useState<'interceptor' | 'vanguard' | 'striker'>('interceptor');
+  const [isHardcore, setIsHardcore] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const gameContainerRef = useRef<HTMLDivElement>(null);
   const gameInstanceRef = useRef<Phaser.Game | null>(null);
@@ -13,7 +14,7 @@ export function App() {
   useEffect(() => {
     if (gameContainerRef.current && !gameInstanceRef.current) {
       const spec = FALLBACK_PRESETS[selectedPreset];
-      gameInstanceRef.current = createGameInstance(gameContainerRef.current, spec);
+      gameInstanceRef.current = createGameInstance(gameContainerRef.current, spec, isHardcore);
     }
 
     return () => {
@@ -31,7 +32,19 @@ export function App() {
     if (gameInstanceRef.current) {
       const scene = gameInstanceRef.current.scene.getScenes(true)[0];
       if (scene) {
-        scene.scene.restart({ shipSpec: spec });
+        scene.scene.restart({ shipSpec: spec, isHardcore });
+      }
+    }
+  };
+
+  const handleToggleHardcore = () => {
+    const newHardcore = !isHardcore;
+    setIsHardcore(newHardcore);
+    const spec = FALLBACK_PRESETS[selectedPreset];
+    if (gameInstanceRef.current) {
+      const scene = gameInstanceRef.current.scene.getScenes(true)[0];
+      if (scene) {
+        scene.scene.restart({ shipSpec: spec, isHardcore: newHardcore });
       }
     }
   };
@@ -65,7 +78,7 @@ export function App() {
               </div>
             </div>
 
-            {/* Audio Toggle Button */}
+            {/* Audio Toggle */}
             <button
               onClick={handleToggleMute}
               title={isMuted ? 'Ativar Áudio & Música' : 'Mutar Áudio'}
@@ -75,19 +88,30 @@ export function App() {
             </button>
           </div>
 
-          {/* Status Box */}
-          <div className="rounded-xl p-4 bg-black/40 border border-[#ffd700]/30 shadow-inner">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-xs font-bold text-[#ffd700] flex items-center gap-2">
-                <Crosshair className="w-4 h-4 text-[#ffd700]" /> ARENA DE PILOTAGEM
-              </span>
-              <span className="flex items-center gap-1 text-[10px] text-[#00ff88]">
-                <Activity className="w-3 h-3 animate-pulse" /> 60 FPS
-              </span>
+          {/* Difficulty Selector Switch */}
+          <div className="rounded-xl p-3 bg-black/40 border border-white/10 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Flame className={`w-4 h-4 ${isHardcore ? 'text-[#ff0055] animate-bounce' : 'text-[#ffd700]'}`} />
+              <div>
+                <div className="text-xs font-bold text-gray-200">
+                  {isHardcore ? 'MODO HARDCORE (BULLET HELL)' : 'MODO ARCADE NORMAL'}
+                </div>
+                <div className="text-[10px] text-gray-400">
+                  {isHardcore ? 'Tiros inimigos densos +30% velozes' : 'Desafio arcade equilibrado'}
+                </div>
+              </div>
             </div>
-            <p className="text-xs text-gray-300 leading-relaxed">
-              Partida completa de 90s: enfrente esquadrões de drones, cruzadores de elite e a Boss Fight aos 60s com trilha Synthwave 80s procedural.
-            </p>
+
+            <button
+              onClick={handleToggleHardcore}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+                isHardcore
+                  ? 'bg-[#ff0055]/20 border-[#ff0055] text-[#ff0055] shadow-lg shadow-[#ff0055]/20'
+                  : 'bg-[#00f3ff]/20 border-[#00f3ff] text-[#00f3ff]'
+              }`}
+            >
+              {isHardcore ? 'HARDCORE' : 'NORMAL'}
+            </button>
           </div>
 
           {/* Archetype Selector */}
@@ -171,7 +195,7 @@ export function App() {
 
         {/* Footer */}
         <div className="text-[11px] text-center text-gray-400 pt-3 border-t border-white/10">
-          Antigravity Engine // Synthwave Retro Audio
+          Antigravity Engine // Bullet Hell Mode
         </div>
       </aside>
 

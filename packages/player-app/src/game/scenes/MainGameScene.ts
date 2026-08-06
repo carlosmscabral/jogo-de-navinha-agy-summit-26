@@ -17,16 +17,18 @@ interface StarPoint {
 
 export class MainGameScene extends Phaser.Scene {
   shipSpec: ShipSpecification = FALLBACK_PRESETS.interceptor;
+  isHardcore = false;
   player!: PlayerShip;
   boss?: BossOverlord;
   scoreCalculator = new ScoreCalculator();
 
-  matchTimer = 90; // 90-second match
+  matchTimer = 90;
   elapsedSeconds = 0;
   isGameOver = false;
   isVictory = false;
 
   enemies!: Phaser.Physics.Arcade.Group;
+  enemyBullets!: Phaser.Physics.Arcade.Group;
   stars: StarPoint[] = [];
   starfieldGraphics!: Phaser.GameObjects.Graphics;
   nebulaGraphics!: Phaser.GameObjects.Graphics;
@@ -48,10 +50,11 @@ export class MainGameScene extends Phaser.Scene {
     super({ key: 'MainGameScene' });
   }
 
-  init(data: { shipSpec?: ShipSpecification }): void {
+  init(data: { shipSpec?: ShipSpecification; isHardcore?: boolean }): void {
     if (data?.shipSpec) {
       this.shipSpec = data.shipSpec;
     }
+    this.isHardcore = !!data?.isHardcore;
     this.isGameOver = false;
     this.isVictory = false;
     this.elapsedSeconds = 0;
@@ -83,10 +86,25 @@ export class MainGameScene extends Phaser.Scene {
       this.shipSpec.visuals
     );
 
-    // 4. Enemy Pool
+    // 4. Enemy and Enemy Bullet Pools
     this.enemies = this.physics.add.group({
       defaultKey: 'drone_tex',
-      maxSize: 35
+      maxSize: 45
+    });
+
+    if (!this.textures.exists('bullet_enemy')) {
+      const g = this.add.graphics();
+      g.fillStyle(0xff0044, 1);
+      g.fillCircle(5, 5, 5);
+      g.fillStyle(0xffffff, 1);
+      g.fillCircle(5, 5, 2);
+      g.generateTexture('bullet_enemy', 10, 10);
+      g.destroy();
+    }
+
+    this.enemyBullets = this.physics.add.group({
+      defaultKey: 'bullet_enemy',
+      maxSize: 100
     });
 
     // 5. Collisions & Weapon Overlaps
@@ -95,19 +113,30 @@ export class MainGameScene extends Phaser.Scene {
     // 6. Modern Sci-Fi HUD
     this.setupModernHud();
 
-    // 7. Match Timeline Clock (1-second tick)
+    // 7. Match Clock
     this.time.addEvent({
       delay: 1000,
       callback: () => this.handleMatchTick(),
       loop: true
     });
 
-    // 8. Enemy Wave Spawner
+    // 8. Dynamic Enemy Wave Spawner
     this.time.addEvent({
-      delay: 900,
+      delay: this.isHardcore ? 550 : 750,
       callback: () => {
         if (!this.isGameOver && !this.isVictory && this.elapsedSeconds < 60) {
           this.spawnWaveEnemies();
+        }
+      },
+      loop: true
+    });
+
+    // 9. Enemy Firing Event (Drones return fire at player!)
+    this.time.addEvent({
+      delay: this.isHardcore ? 800 : 1200,
+      callback: () => {
+        if (!this.isGameOver && !this.isVictory && this.elapsedSeconds < 60) {
+          this.triggerEnemyShots();
         }
       },
       loop: true
@@ -117,7 +146,7 @@ export class MainGameScene extends Phaser.Scene {
     if (this.input.keyboard) {
       this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R).on('down', () => {
         if (this.isGameOver || this.isVictory) {
-          this.scene.restart({ shipSpec: this.shipSpec });
+          this.scene.restart({ shipSpec: this.shipSpec, isHardcore: this.isHardcore });
         }
       });
     }
@@ -127,7 +156,7 @@ export class MainGameScene extends Phaser.Scene {
     this.input.on('pointerdown', () => {
       audioManager.unlockAudio();
       if (this.isGameOver || this.isVictory) {
-        this.scene.restart({ shipSpec: this.shipSpec });
+        this.scene.restart({ shipSpec: this.shipSpec, isHardcore: this.isHardcore });
       }
     });
 
@@ -140,47 +169,107 @@ export class MainGameScene extends Phaser.Scene {
     this.elapsedSeconds += 1;
     this.matchTimer = Math.max(0, 90 - this.elapsedSeconds);
 
-    // Trigger Boss Warning at 58s, Spawn Boss at 60s
     if (this.elapsedSeconds === 58) {
       this.triggerBossWarning();
     } else if (this.elapsedSeconds === 60) {
       this.spawnBoss();
     }
 
-    // Match Timeout
     if (this.matchTimer <= 0 && !this.isVictory) {
       this.triggerTimeoutEnd();
     }
   }
 
   private spawnWaveEnemies(): void {
-    const x = Phaser.Math.Between(60, this.scale.width - 60);
-    const drone = this.enemies.get(x, -40, 'drone_tex') as Phaser.Physics.Arcade.Sprite;
+    const isWave2 = this.elapsedSeconds >= 25;
+    const squadType = Phaser.Math.Between(1, 3);
+
+    if (squadType === 1) {
+      // V-Formation (3 Drones)
+      const centerX = Phaser.Math.Between(120, this.scale.width - 120);
+      this.createSingleDrone(centerX, -30, 0, 190, 30, 'drone');
+      this.createSingleDrone(centerX - 45, -60, -20, 190, 30, 'drone');
+      this.createSingleDrone(centerX + 45, -60, 20, 190, 30, 'drone');
+    } else if (squadType === 2 && isWave2) {
+      // Elite Cruiser + Escorts
+      const x = Phaser.Math.Between(100, this.scale.width - 100);
+      this.createSingleDrone(x, -40, 0, 130, 140, 'cruiser');
+      this.createSingleDrone(x - 50, -20, -15, 200, 30, 'drone');
+      this.createSingleDrone(x + 50, -20, 15, 200, 30, 'drone');
+    } else {
+      // Kamikaze Fast Dive Squadron (2 Drones)
+      const x1 = Phaser.Math.Between(80, this.scale.width / 2 - 20);
+      const x2 = Phaser.Math.Between(this.scale.width / 2 + 20, this.scale.width - 80);
+      this.createSingleDrone(x1, -30, 15, 320, 25, 'kamikaze');
+      this.createSingleDrone(x2, -30, -15, 320, 25, 'kamikaze');
+    }
+  }
+
+  private createSingleDrone(x: number, y: number, vx: number, vy: number, hp: number, type: string): void {
+    const drone = this.enemies.get(x, y, 'drone_tex') as Phaser.Physics.Arcade.Sprite;
     if (drone) {
       drone.setActive(true);
       drone.setVisible(true);
-      drone.setPosition(x, -40);
+      drone.setPosition(x, y);
+      drone.setData('hp', this.isHardcore ? Math.round(hp * 1.3) : hp);
+      drone.setData('type', type);
 
-      const isElite = this.elapsedSeconds >= 25 && Math.random() > 0.6;
-      if (isElite) {
-        drone.setScale(1.2);
+      if (type === 'cruiser') {
+        drone.setScale(1.3);
         drone.setTint(0xffaa00);
-        drone.setData('hp', 80);
-        drone.setData('type', 'cruiser');
-        drone.setVelocity(Phaser.Math.Between(-15, 15), 140);
+      } else if (type === 'kamikaze') {
+        drone.setScale(0.75);
+        drone.setTint(0xff00ff);
       } else {
-        drone.setScale(0.8);
+        drone.setScale(0.85);
         drone.clearTint();
-        drone.setData('hp', 30);
-        drone.setData('type', 'drone');
-        drone.setVelocity(Phaser.Math.Between(-25, 25), Phaser.Math.Between(180, 260));
       }
+
+      drone.setVelocity(vx, this.isHardcore ? vy * 1.2 : vy);
+    }
+  }
+
+  private triggerEnemyShots(): void {
+    const pX = this.player.x;
+    const pY = this.player.y;
+
+    this.enemies.children.iterate((child) => {
+      const e = child as Phaser.Physics.Arcade.Sprite;
+      if (e && e.active && e.y > 20 && e.y < this.scale.height - 180) {
+        const type = e.getData('type') as string;
+        const angle = Phaser.Math.Angle.Between(e.x, e.y, pX, pY);
+        const bulletSpeed = this.isHardcore ? 280 : 220;
+
+        if (type === 'cruiser') {
+          // 3-way aimed fan
+          const spreads = [-0.25, 0, 0.25];
+          for (const s of spreads) {
+            const rad = angle + s;
+            this.spawnEnemyBullet(e.x, e.y + 10, Math.cos(rad) * bulletSpeed, Math.sin(rad) * bulletSpeed);
+          }
+        } else if (type !== 'kamikaze' && Math.random() > 0.4) {
+          // Aimed single shot
+          this.spawnEnemyBullet(e.x, e.y + 10, Math.cos(angle) * bulletSpeed, Math.sin(angle) * bulletSpeed);
+        }
+      }
+      return true;
+    });
+  }
+
+  private spawnEnemyBullet(x: number, y: number, vx: number, vy: number): void {
+    const bullet = this.enemyBullets.get(x, y, 'bullet_enemy') as Phaser.Physics.Arcade.Sprite;
+    if (bullet) {
+      bullet.setActive(true);
+      bullet.setVisible(true);
+      bullet.setPosition(x, y);
+      bullet.setVelocity(vx, vy);
+      if (bullet.body) bullet.body.checkCollision.none = false;
     }
   }
 
   private triggerBossWarning(): void {
     audioManager.playBossWarning();
-    this.cameras.main.shake(400, 0.015);
+    this.cameras.main.shake(500, 0.02);
 
     const banner = this.add.text(this.scale.width / 2, 200, '⚠️ BOSS DETECTED: THE CYBER OVERLORD ⚠️', {
       fontFamily: '"Share Tech Mono", monospace',
@@ -200,10 +289,10 @@ export class MainGameScene extends Phaser.Scene {
 
   private spawnBoss(): void {
     audioManager.setBossMode(true);
-    this.boss = new BossOverlord(this, this.scale.width / 2, 140);
+    this.boss = new BossOverlord(this, this.scale.width / 2, 140, this.isHardcore);
     this.setupBossHud();
 
-    // Setup Boss collision with player bullets
+    // Player bullets vs Boss
     this.physics.add.overlap(
       this.player.weaponSystem.primaryBullets,
       this.boss,
@@ -276,7 +365,7 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     this.scoreCalculator.registerKill('boss');
-    this.cameras.main.shake(800, 0.02);
+    this.cameras.main.shake(800, 0.025);
 
     this.time.delayedCall(1000, () => this.showVictoryOverlay());
   }
@@ -460,6 +549,7 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private setupCollisions(): void {
+    // Player Bullets vs Enemies
     this.physics.add.overlap(
       this.player.weaponSystem.primaryBullets,
       this.enemies,
@@ -490,6 +580,23 @@ export class MainGameScene extends Phaser.Scene {
       }
     );
 
+    // Enemy Bullets vs Player Ship
+    this.physics.add.overlap(this.player, this.enemyBullets, (_, bulletObj) => {
+      if (this.isGameOver || this.isVictory) return;
+      const bullet = bulletObj as Phaser.Physics.Arcade.Sprite;
+      bullet.setActive(false);
+      bullet.setVisible(false);
+
+      const isDead = this.player.takeDamage(1);
+      this.scoreCalculator.registerDamageTaken();
+      audioManager.playHit();
+
+      if (isDead) {
+        this.triggerPlayerDeath();
+      }
+    });
+
+    // Enemy Ramming vs Player Ship
     this.physics.add.overlap(this.player, this.enemies, (_, enemyObj) => {
       if (this.isGameOver || this.isVictory) return;
       const enemy = enemyObj as Phaser.Physics.Arcade.Sprite;
@@ -599,7 +706,6 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number): void {
-    // Stars scroll
     this.starfieldGraphics.clear();
     for (const star of this.stars) {
       star.y += star.speed;
@@ -611,19 +717,27 @@ export class MainGameScene extends Phaser.Scene {
       this.starfieldGraphics.fillCircle(star.x, star.y, star.size);
     }
 
-    // Update Player if alive
     if (!this.isGameOver && !this.isVictory && this.player && this.player.active) {
       this.player.update(time, delta);
     }
 
-    // Update Boss if active
     if (this.boss && this.boss.active) {
-      this.boss.update(time, delta);
+      this.boss.update(time, delta, this.player.x, this.player.y);
       if (this.bossHpBarFill) {
         const pct = Math.max(0, this.boss.currentHp / this.boss.maxHp);
         this.bossHpBarFill.width = 352 * pct;
       }
     }
+
+    // Clean off-screen enemy bullets
+    this.enemyBullets.children.iterate((child) => {
+      const b = child as Phaser.Physics.Arcade.Sprite;
+      if (b && b.active && (b.y > this.scale.height + 30 || b.y < -30 || b.x < -30 || b.x > this.scale.width + 30)) {
+        b.setActive(false);
+        b.setVisible(false);
+      }
+      return true;
+    });
 
     // Clean off-screen enemies
     this.enemies.children.iterate((child) => {
@@ -635,7 +749,6 @@ export class MainGameScene extends Phaser.Scene {
       return true;
     });
 
-    // Update HUD
     if (this.hudTextScore) {
       this.hudTextScore.setText(`SCORE: ${this.scoreCalculator.currentScore.toLocaleString()}`);
       this.hudTextTimer.setText(`${this.matchTimer}s`);
