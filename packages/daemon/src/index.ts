@@ -38,6 +38,11 @@ app.get('/api/companies', (req, res) => {
   res.json({ companies });
 });
 
+app.get('/api/leaderboard', (req, res) => {
+  const data = sqliteBuffer.getLeaderboardData();
+  res.json(data);
+});
+
 app.get('/api/session/spec', (req, res) => {
   const spec = fileWatcher.getCurrentSpec();
   if (spec) {
@@ -122,7 +127,23 @@ app.post('/api/matches', (req, res) => {
   try {
     const matchRecord = req.body;
     sqliteBuffer.saveMatch(matchRecord);
-    res.json({ status: 'SAVED_LOCALLY', match_id: matchRecord.match_id });
+
+    const updatedLeaderboard = sqliteBuffer.getLeaderboardData();
+
+    // Broadcast real-time leaderboard update to TV display clients
+    const payload = JSON.stringify({
+      type: 'EVENT_LEADERBOARD_UPDATE',
+      data: updatedLeaderboard,
+      newMatch: matchRecord
+    });
+
+    for (const client of activeClients) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(payload);
+      }
+    }
+
+    res.json({ status: 'SAVED_LOCALLY', match_id: matchRecord.match_id, leaderboard: updatedLeaderboard });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
@@ -142,6 +163,10 @@ app.post('/api/session/reset', (req, res) => {
 wss.on('connection', (ws) => {
   activeClients.add(ws);
   console.log(`[Daemon WS] Client connected (Total: ${activeClients.size})`);
+
+  // Send current leaderboard snapshot immediately on connect
+  const initialLeaderboard = sqliteBuffer.getLeaderboardData();
+  ws.send(JSON.stringify({ type: 'EVENT_LEADERBOARD_UPDATE', data: initialLeaderboard }));
 
   // If a spec already exists when connecting, send it
   const existingSpec = fileWatcher.getCurrentSpec();
