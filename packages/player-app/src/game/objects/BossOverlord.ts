@@ -1,6 +1,5 @@
 import Phaser from 'phaser';
 import { audioManager } from '../audio/AudioManager.js';
-import { ShipTextureFactory } from '../factories/ShipTextureFactory.js';
 
 export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
   maxHp = 15000;
@@ -15,8 +14,8 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
   difficultyMultiplier = 1.0;
   shieldGraphic!: Phaser.GameObjects.Graphics;
 
-  constructor(scene: Phaser.Scene, x: number, y = 145, isHardcore = false) {
-    ShipTextureFactory.createBossTexture(scene);
+  constructor(scene: Phaser.Scene, x: number, y = 150, isHardcore = false) {
+    BossOverlord.generateBossTextures(scene);
     super(scene, x, y, 'boss_overlord_dreadnought');
 
     this.difficultyMultiplier = isHardcore ? 1.4 : 1.0;
@@ -27,17 +26,119 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
     scene.physics.add.existing(this);
 
     this.setDepth(15);
-    this.setDisplaySize(340, 170);
+    this.setDisplaySize(340, 180);
     this.setCollideWorldBounds(true);
-    this.body?.setSize(280, 130);
+    if (this.body) {
+      this.body.setSize(300, 140);
+      this.body.enable = true;
+    }
 
+    // Boss Bullets Pool
     this.bullets = scene.physics.add.group({
       defaultKey: 'bullet_boss_plasma',
-      maxSize: 400
+      maxSize: 300
     });
 
+    this.shieldGraphic = scene.add.graphics();
+    this.shieldGraphic.setDepth(16);
+
+    // Warp Entrance Flash
+    this.setScale(1.0);
+    this.setAlpha(1.0);
+    this.isInvulnerable = false;
+    this.triggerEntranceShockwave();
+    scene.cameras.main.shake(600, 0.03);
+  }
+
+  static generateBossTextures(scene: Phaser.Scene): void {
+    if (!scene.textures.exists('boss_overlord_dreadnought')) {
+      const g = scene.make.graphics({ x: 0, y: 0 });
+
+      // 1. Titanium Dark Stealth Wings
+      g.fillStyle(0x0a0d16, 1);
+      g.lineStyle(3, 0x38bdf8, 1);
+      g.beginPath();
+      g.moveTo(170, 170); // Nose tip
+      g.lineTo(240, 120);
+      g.lineTo(335, 90);  // Right wing tip
+      g.lineTo(320, 30);
+      g.lineTo(260, 45);
+      g.lineTo(220, 20);
+      g.lineTo(170, 40);  // Center top
+      g.lineTo(120, 20);
+      g.lineTo(80, 45);
+      g.lineTo(20, 30);
+      g.lineTo(5, 90);   // Left wing tip
+      g.lineTo(100, 120);
+      g.closePath();
+      g.fillPath();
+      g.strokePath();
+
+      // 2. Armor Plating Panels (Amber Facets)
+      g.fillStyle(0x141a29, 1);
+      g.lineStyle(2, 0xff9e0b, 1);
+      g.beginPath();
+      g.moveTo(170, 145);
+      g.lineTo(230, 100);
+      g.lineTo(290, 80);
+      g.lineTo(255, 50);
+      g.lineTo(170, 65);
+      g.lineTo(85, 50);
+      g.lineTo(50, 80);
+      g.lineTo(110, 100);
+      g.closePath();
+      g.fillPath();
+      g.strokePath();
+
+      // 3. Quad Heavy Plasma Cannon Pods
+      g.fillStyle(0x0f172a, 1);
+      g.lineStyle(2, 0x38bdf8, 1);
+      // Wingtip Pods
+      g.fillRect(35, 65, 18, 50);
+      g.strokeRect(35, 65, 18, 50);
+      g.fillRect(287, 65, 18, 50);
+      g.strokeRect(287, 65, 18, 50);
+      // Inner Cannons
+      g.fillRect(110, 85, 22, 55);
+      g.strokeRect(110, 85, 22, 55);
+      g.fillRect(208, 85, 22, 55);
+      g.strokeRect(208, 85, 22, 55);
+
+      // Cannon Muzzle Glowing Tips
+      g.fillStyle(0xff9e0b, 1);
+      g.fillRect(37, 108, 14, 7);
+      g.fillRect(289, 108, 14, 7);
+      g.fillRect(112, 133, 18, 7);
+      g.fillRect(210, 133, 18, 7);
+
+      // 4. Central Hexagonal Cyber Reactor Core
+      g.fillStyle(0xff9e0b, 1);
+      g.lineStyle(2.5, 0xffffff, 1);
+      const cX = 170;
+      const cY = 82;
+      const r = 24;
+      g.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const angle = (i * Math.PI) / 3;
+        const x = cX + r * Math.cos(angle);
+        const y = cY + (r * 0.85) * Math.sin(angle);
+        if (i === 0) g.moveTo(x, y);
+        else g.lineTo(x, y);
+      }
+      g.closePath();
+      g.fillPath();
+      g.strokePath();
+
+      // Inner Glowing Core
+      g.fillStyle(0xffffff, 1);
+      g.fillCircle(cX, cY, 8);
+
+      g.generateTexture('boss_overlord_dreadnought', 340, 180);
+      g.destroy();
+    }
+
     if (!scene.textures.exists('bullet_boss_plasma')) {
-      const g = scene.add.graphics();
+      const g = scene.make.graphics({ x: 0, y: 0 });
       g.fillStyle(0xff9e0b, 1);
       g.fillCircle(8, 8, 8);
       g.fillStyle(0xffffff, 1);
@@ -47,45 +148,24 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
     }
 
     if (!scene.textures.exists('bullet_boss_laser')) {
-      const g = scene.add.graphics();
+      const g = scene.make.graphics({ x: 0, y: 0 });
       g.fillStyle(0x38bdf8, 1);
-      g.fillRect(2, 0, 6, 20);
+      g.fillRect(2, 0, 6, 22);
       g.fillStyle(0xffffff, 1);
-      g.fillRect(3, 2, 4, 16);
-      g.generateTexture('bullet_boss_laser', 10, 20);
+      g.fillRect(3, 2, 4, 18);
+      g.generateTexture('bullet_boss_laser', 10, 22);
       g.destroy();
     }
-
-    this.shieldGraphic = scene.add.graphics();
-    this.shieldGraphic.setDepth(16);
-
-    // Dramatic warp entrance (scale & alpha flash on screen)
-    this.setScale(0.2);
-    this.setAlpha(0.2);
-    this.isInvulnerable = true;
-
-    scene.tweens.add({
-      targets: this,
-      scale: 1.0,
-      alpha: 1.0,
-      duration: 1200,
-      ease: 'Back.easeOut',
-      onComplete: () => {
-        this.isInvulnerable = false;
-        scene.cameras.main.shake(600, 0.03);
-        this.triggerEntranceShockwave();
-      }
-    });
   }
 
   private triggerEntranceShockwave(): void {
-    const shockwave = this.scene.add.circle(this.x, this.y, 30, 0x38bdf8, 0.85);
+    const shockwave = this.scene.add.circle(this.x, this.y, 30, 0x38bdf8, 0.9);
     shockwave.setDepth(14);
     this.scene.tweens.add({
       targets: shockwave,
-      radius: 450,
+      radius: 480,
       alpha: 0,
-      duration: 900,
+      duration: 850,
       ease: 'Cubic.easeOut',
       onComplete: () => shockwave.destroy()
     });
@@ -205,10 +285,13 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
     if (bullet) {
       bullet.setActive(true);
       bullet.setVisible(true);
-      bullet.setPosition(x, y);
-      bullet.setVelocity(vx, vy);
       bullet.setDepth(12);
-      if (bullet.body) bullet.body.checkCollision.none = false;
+      if (bullet.body) {
+        bullet.body.reset(x, y);
+        bullet.body.enable = true;
+        bullet.body.checkCollision.none = false;
+      }
+      bullet.setVelocity(vx, vy);
     }
   }
 
