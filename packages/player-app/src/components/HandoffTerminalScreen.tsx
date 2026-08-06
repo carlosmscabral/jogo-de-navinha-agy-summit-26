@@ -312,19 +312,23 @@ export function HandoffTerminalScreen({
         ) : (
           /* WAITING FOR TERMINAL INSTRUCTIONS */
           <div className="space-y-4">
-            {/* Step 1: Terminal Command */}
+            {/* Step 1: Terminal Station Callout */}
             <div className="space-y-1.5">
-              <span className="text-xs font-bold text-[#ff9e0b] uppercase tracking-wider block font-mono">
-                1. No seu terminal aberto, acesse o workspace e digite:
+              <span className="text-xs font-bold text-[#ff9e0b] uppercase tracking-wider block font-mono flex items-center gap-1.5">
+                <Terminal className="w-4 h-4 text-[#ff9e0b]" /> 1. Olhe para a Tela 2 (Estação de Terminal ao lado):
               </span>
-              <div className="flex items-center justify-between p-3.5 rounded-xl bg-slate-950/90 border border-slate-800 text-white font-mono text-sm">
-                <code className="text-[#38bdf8]">{sessionCmd}</code>
+              <div className="p-3.5 rounded-xl bg-slate-950/90 border border-[#ff9e0b]/40 text-slate-200 font-mono text-xs flex items-center justify-between">
+                <div>
+                  <div className="font-bold text-[#ff9e0b]">SESSÃO AUTORIZADA NO ANTIGRAVITY CLI!</div>
+                  <div className="text-[11px] text-slate-400">O terminal na Tela 2 já carregou seu piloto e sliders automaticamente.</div>
+                </div>
                 <button
                   onClick={() => copyToClipboard(sessionCmd)}
-                  className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-all flex items-center gap-1.5 text-xs font-mono"
+                  title="Copiar comando caso queira abrir manualmente"
+                  className="p-1.5 px-2.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-all flex items-center gap-1 text-[11px] font-mono"
                 >
-                  {copiedCmd ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                  <span>{copiedCmd ? 'Copiado!' : 'Copiar'}</span>
+                  {copiedCmd ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedCmd ? 'Copiado!' : 'Copiar cd'}</span>
                 </button>
               </div>
             </div>
@@ -332,7 +336,7 @@ export function HandoffTerminalScreen({
             {/* Step 2: Natural Language Prompt */}
             <div className="space-y-1.5">
               <span className="text-xs font-bold text-[#38bdf8] uppercase tracking-wider block font-mono">
-                2. Converse com os sub-agentes no AGY:
+                2. Na Tela 2, dê as ordens para a Forja (ou use o prompt sugerido):
               </span>
               <div className="p-3.5 rounded-xl bg-slate-950/90 border border-slate-800 text-slate-300 font-mono text-xs relative space-y-2">
                 <p className="italic text-slate-200 leading-relaxed">

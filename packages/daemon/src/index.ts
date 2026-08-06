@@ -26,6 +26,8 @@ const fileWatcher = new FileWatcherService();
 const activeClients = new Set<WebSocket>();
 const sessionDir = process.env.BOOTH_SESSION_DIR || '/tmp/booth_session';
 
+let currentSessionMetadata: any = null;
+
 // --- REST Endpoints ---
 
 app.get('/api/health', (req, res) => {
@@ -41,6 +43,16 @@ app.get('/api/companies', (req, res) => {
 app.get('/api/leaderboard', (req, res) => {
   const data = sqliteBuffer.getLeaderboardData();
   res.json(data);
+});
+
+app.get('/api/session/status', (req, res) => {
+  const activeFile = path.join(sessionDir, '.session_active');
+  const isActive = fs.existsSync(activeFile);
+  res.json({
+    active: isActive,
+    metadata: currentSessionMetadata,
+    sessionDir
+  });
 });
 
 app.get('/api/session/spec', (req, res) => {
@@ -87,6 +99,21 @@ app.post('/api/session/start', (req, res) => {
       selected_subagents: selected_subagents || ['aesthetic-designer', 'combat-strategist'],
       mcpsDistDir
     });
+
+    currentSessionMetadata = {
+      pilot: fullPilot,
+      energy_sliders,
+      selected_mcps,
+      selected_subagents,
+      started_at: new Date().toISOString()
+    };
+
+    // Write .session_active flag for the booth-terminal supervisor script
+    fs.writeFileSync(
+      path.join(sessionDir, '.session_active'),
+      JSON.stringify(currentSessionMetadata, null, 2),
+      'utf8'
+    );
 
     // 2. Start File Watcher on /tmp/booth_session/ship_spec.json and mcp_audit.log
     fileWatcher.startWatching(
@@ -152,6 +179,44 @@ app.post('/api/matches', (req, res) => {
 app.post('/api/session/reset', (req, res) => {
   try {
     fileWatcher.stopWatching();
+    currentSessionMetadata = null;
+
+    // 1. Remove active session indicator
+    const activeFile = path.join(sessionDir, '.session_active');
+    if (fs.existsSync(activeFile)) {
+      try { fs.unlinkSync(activeFile); } catch {}
+    }
+
+    // 2. Kill running AGY process in the booth terminal if PID exists
+    const pidFile = path.join(sessionDir, '.agy_pid');
+    if (fs.existsSync(pidFile)) {
+      try {
+        const pid = Number(fs.readFileSync(pidFile, 'utf8').trim());
+        if (!isNaN(pid) && pid > 0) {
+          console.log(`[Daemon Reset] Terminating active terminal AGY process (PID: ${pid})...`);
+          process.kill(pid, 'SIGINT');
+          setTimeout(() => {
+            try { process.kill(pid, 'SIGKILL'); } catch {}
+          }, 600);
+        }
+        fs.unlinkSync(pidFile);
+      } catch (err) {
+        // Process might already be dead
+      }
+    }
+
+    // 3. Remove old generated session files
+    const specFile = path.join(sessionDir, 'ship_spec.json');
+    if (fs.existsSync(specFile)) {
+      try { fs.unlinkSync(specFile); } catch {}
+    }
+
+    const auditFile = path.join(sessionDir, 'mcp_audit.log');
+    if (fs.existsSync(auditFile)) {
+      try { fs.unlinkSync(auditFile); } catch {}
+    }
+
+    console.log('[Daemon Reset] Session cleared successfully.');
     res.json({ status: 'RESET_COMPLETE' });
   } catch (err) {
     res.status(500).json({ error: String(err) });
