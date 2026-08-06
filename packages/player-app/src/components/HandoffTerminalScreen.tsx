@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Terminal, Copy, Check, Rocket, Cpu, Sparkles, AlertCircle, RefreshCw, Flame, Shield, Gauge, Layers, Play } from 'lucide-react';
+import { Terminal, Copy, Check, Rocket, Cpu, Sparkles, AlertCircle, RefreshCw, Flame, Shield, Gauge, Layers, Play, CheckCircle2, Activity } from 'lucide-react';
 import { PilotInfo, EnergySliders, McpServerName, SubagentName, ShipSpecification, FALLBACK_PRESETS } from '@jogo/shared';
 
 interface HandoffTerminalScreenProps {
@@ -9,6 +9,16 @@ interface HandoffTerminalScreenProps {
   selectedSubagents: SubagentName[];
   onShipReady: (spec: ShipSpecification) => void;
   onEmergencyFallback: () => void;
+}
+
+export interface McpActivityItem {
+  timestamp: string;
+  server?: string;
+  server_name?: string;
+  tool?: string;
+  tool_name?: string;
+  args?: any;
+  result?: any;
 }
 
 export function HandoffTerminalScreen({
@@ -22,7 +32,7 @@ export function HandoffTerminalScreen({
   const [copiedCmd, setCopiedCmd] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [detectedSpec, setDetectedSpec] = useState<ShipSpecification | null>(null);
-  const [mcpActivities, setMcpActivities] = useState<{ id: string; tool_name: string; timestamp: string; server_name?: string }[]>([]);
+  const [mcpActivities, setMcpActivities] = useState<McpActivityItem[]>([]);
 
   const sessionCmd = 'cd /tmp/booth_session && agy';
   const recommendedPrompt = `Sou o piloto ${pilot.callsign} (${pilot.company_canonical}). Forje uma nave de combate calibrando as armas primárias vulcan espalhadas, mísseis secundários pesados e blindagem reforçada com os servidores MCP disponíveis.`;
@@ -40,7 +50,12 @@ export function HandoffTerminalScreen({
           if (msg.type === 'EVENT_SHIP_READY' && msg.spec) {
             setDetectedSpec(msg.spec);
           } else if (msg.type === 'EVENT_MCP_ACTIVITY' && msg.data) {
-            setMcpActivities((prev) => [msg.data, ...prev.slice(0, 7)]);
+            setMcpActivities((prev) => {
+              // Avoid duplicate logs if identical timestamp and tool
+              const exists = prev.some((p) => p.timestamp === msg.data.timestamp && (p.tool === msg.data.tool || p.tool_name === msg.data.tool));
+              if (exists) return prev;
+              return [msg.data, ...prev.slice(0, 7)];
+            });
           }
         } catch {
           // Ignored
@@ -50,7 +65,7 @@ export function HandoffTerminalScreen({
       // Ignored
     }
 
-    // Polling fallback every 800ms
+    // Polling fallback every 600ms
     pollInterval = setInterval(async () => {
       try {
         const res = await fetch('http://localhost:3000/api/session/spec');
@@ -64,14 +79,14 @@ export function HandoffTerminalScreen({
         const actRes = await fetch('http://localhost:3000/api/session/activity');
         if (actRes.ok) {
           const actData = await actRes.json();
-          if (actData.activity && actData.activity.length > 0) {
-            setMcpActivities(actData.activity.slice(0, 8));
+          if (actData.activity && Array.isArray(actData.activity) && actData.activity.length > 0) {
+            setMcpActivities(actData.activity.slice(-8).reverse());
           }
         }
       } catch {
         // Ignored
       }
-    }, 800);
+    }, 600);
 
     return () => {
       if (ws) ws.close();
@@ -99,6 +114,62 @@ export function HandoffTerminalScreen({
       setCopiedCmd(true);
       setTimeout(() => setCopiedCmd(false), 2000);
     }
+  };
+
+  const getServerBadge = (serverName: string) => {
+    const s = (serverName || '').toLowerCase();
+    if (s.includes('weapon')) {
+      return {
+        name: 'WEAPONS ARSENAL',
+        badgeClass: 'bg-[#ff9e0b]/20 text-[#ff9e0b] border-[#ff9e0b]/40',
+        borderClass: 'border-[#ff9e0b]/30 bg-[#ff9e0b]/5',
+        icon: Flame
+      };
+    }
+    if (s.includes('hull') || s.includes('propulsion')) {
+      return {
+        name: 'HULL & PROPULSION',
+        badgeClass: 'bg-[#38bdf8]/20 text-[#38bdf8] border-[#38bdf8]/40',
+        borderClass: 'border-[#38bdf8]/30 bg-[#38bdf8]/5',
+        icon: Gauge
+      };
+    }
+    return {
+      name: 'CYBERNETICS & SHIELDS',
+      badgeClass: 'bg-[#10b981]/20 text-[#10b981] border-[#10b981]/40',
+      borderClass: 'border-[#10b981]/30 bg-[#10b981]/5',
+      icon: Shield
+    };
+  };
+
+  const getToolSummary = (act: McpActivityItem): string => {
+    const tool = act.tool || act.tool_name || '';
+    const result = act.result;
+    const args = act.args;
+
+    if (tool === 'configure_primary_cannon') {
+      return `Tipo: ${result?.type || args?.type || 'Canhão'} • Dano: ${result?.damage || 35} • Cadência: ${result?.fire_rate || 8}/s • DPS: ${result?.dps_estimate || 280}`;
+    }
+    if (tool === 'attach_secondary_ordnance') {
+      return `Secundária: ${result?.type || args?.type || 'Mísseis'} • Dano: ${result?.damage || 100} • Recarga: ${result?.cooldown_seconds || 2}s`;
+    }
+    if (tool === 'tune_thrusters') {
+      return `Velocidade: ${result?.speed_px_s || 320} px/s • Hitbox: ${result?.hitbox_radius || 12}px • Aceleração: ${result?.acceleration || 800}`;
+    }
+    if (tool === 'reinforce_plating') {
+      return `Blindagem: ${result?.armor_type || 'Titânio'} • HP Máximo: ${result?.max_hp || 3} • Resistência: ${result?.collision_resistance || '45%'}`;
+    }
+    if (tool === 'calibrate_energy_barrier') {
+      return `Escudo: ${result?.shield_type || 'Defletor'} • Capacidade: ${result?.shield_capacity ?? 1} Escudo(s) • Absorção: 100%`;
+    }
+    if (tool === 'install_overclock_module') {
+      return `Sinergia: ${result?.synergy_name || args?.synergy_candidate || 'Overclock'} (${result?.status || 'UNLOCKED'}) • Modificador: ${result?.modifier_applied || '+20%'} • Bônus: +${result?.bonus_score_pts || 1500} PTS`;
+    }
+
+    if (result && typeof result === 'object') {
+      return Object.entries(result).slice(0, 3).map(([k, v]) => `${k}: ${v}`).join(' • ');
+    }
+    return 'Calibração e telemetria sincronizadas com sucesso.';
   };
 
   return (
@@ -187,7 +258,7 @@ export function HandoffTerminalScreen({
                     {detectedSpec.weapons?.primary?.type || 'Laser Contínuo'}
                   </div>
                   <div className="text-[10px] text-[#ff9e0b]">
-                    {detectedSpec.weapons?.primary?.damage || 35} DMG / {detectedSpec.weapons?.primary?.fire_rate || 60} RPM
+                    {detectedSpec.weapons?.primary?.damage || 35} DMG / {detectedSpec.weapons?.primary?.fire_rate || 8} RPS
                   </div>
                 </div>
 
@@ -199,7 +270,7 @@ export function HandoffTerminalScreen({
                     {detectedSpec.weapons?.secondary?.type || 'Mísseis Teleguiados'}
                   </div>
                   <div className="text-[10px] text-[#38bdf8]">
-                    Dano: {detectedSpec.weapons?.secondary?.damage || 120} | Cooldown: {detectedSpec.weapons?.secondary?.cooldown_seconds || 2}s
+                    Dano: {detectedSpec.weapons?.secondary?.damage || 100} | Recarga: {detectedSpec.weapons?.secondary?.cooldown_seconds || 2}s
                   </div>
                 </div>
 
@@ -232,7 +303,7 @@ export function HandoffTerminalScreen({
             {/* Big Launch Button */}
             <button
               onClick={() => onShipReady(detectedSpec)}
-              className="w-full p-4 rounded-2xl bg-gradient-to-r from-[#10b981] to-[#38bdf8] text-black font-black text-sm uppercase tracking-widest hover:scale-[1.02] transition-all shadow-[0_0_35px_rgba(16,185,129,0.6)] flex items-center justify-center gap-3"
+              className="w-full p-4 rounded-2xl bg-gradient-to-r from-[#10b981] to-[#38bdf8] text-black font-black text-sm uppercase tracking-widest hover:scale-[1.02] transition-all shadow-[0_0_35px_rgba(16,185,129,0.6)] flex items-center justify-center gap-3 font-mono"
             >
               <Play className="w-5 h-5 fill-black" />
               <span>PRESSIONE [ ESPAÇO ] OU CLIQUE PARA DECOLAR AGORA!</span>
@@ -279,35 +350,74 @@ export function HandoffTerminalScreen({
               </div>
             </div>
 
-            {/* Live MCP Activity Telemetry */}
-            <div className="space-y-2 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
-              <div className="flex items-center justify-between font-mono">
-                <span className="text-xs font-bold text-[#ff9e0b] uppercase flex items-center gap-1.5">
-                  <Cpu className="w-4 h-4" /> Telemetria de Calibração MCP ao Vivo:
-                </span>
-                <span className="text-[10px] text-slate-400 flex items-center gap-1">
-                  <RefreshCw className="w-3 h-3 animate-spin text-[#38bdf8]" /> Monitorando mcp_audit.log
-                </span>
+            {/* LIVE MCP ACTIVITY TELEMETRY FEED */}
+            <div className="space-y-3 bg-slate-950/90 p-5 rounded-2xl border border-slate-800 shadow-inner">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-800 font-mono">
+                <div className="flex items-center gap-2">
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10b981] opacity-75" />
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-[#10b981]" />
+                  </span>
+                  <span className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
+                    <Activity className="w-4 h-4 text-[#ff9e0b]" /> Telemetria de Uso dos Servidores MCP
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 text-[10px] text-slate-400 font-mono">
+                  <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300">
+                    {mcpActivities.length} {mcpActivities.length === 1 ? 'execução' : 'execuções'}
+                  </span>
+                  <span className="flex items-center gap-1 text-[#38bdf8]">
+                    <RefreshCw className="w-3 h-3 animate-spin" /> mcp_audit.log
+                  </span>
+                </div>
               </div>
 
               {mcpActivities.length === 0 ? (
-                <div className="text-center py-4 text-xs text-slate-500 italic font-mono">
-                  Aguardando execução de ferramentas no terminal AGY...
+                <div className="text-center py-6 text-xs text-slate-500 italic font-mono space-y-1">
+                  <div>Aguardando sub-agentes executarem ferramentas MCP no terminal...</div>
+                  <div className="text-[10px] text-slate-600">As calibrações de canhões, propulsão e escudos aparecerão aqui em tempo real.</div>
                 </div>
               ) : (
-                <div className="space-y-1.5 font-mono text-xs max-h-32 overflow-y-auto">
-                  {mcpActivities.map((act) => (
-                    <div key={act.id} className="flex items-center justify-between p-2 rounded-lg bg-slate-950/80 border border-slate-800">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-[#10b981] animate-ping" />
-                        <span className="font-bold text-[#38bdf8]">{act.tool_name}</span>
-                        <span className="text-[10px] text-slate-400">({act.server_name || 'mcp'})</span>
+                <div className="space-y-2.5 font-mono max-h-48 overflow-y-auto pr-1">
+                  {mcpActivities.map((act, index) => {
+                    const serverName = act.server || act.server_name || 'mcp';
+                    const toolName = act.tool || act.tool_name || 'ferramenta';
+                    const badge = getServerBadge(serverName);
+                    const Icon = badge.icon;
+                    const summary = getToolSummary(act);
+                    const timeStr = act.timestamp ? new Date(act.timestamp).toLocaleTimeString() : '';
+
+                    return (
+                      <div
+                        key={`${act.timestamp}-${index}`}
+                        className={`p-3 rounded-xl border transition-all animate-fadeIn ${badge.borderClass}`}
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-md border uppercase flex items-center gap-1 ${badge.badgeClass}`}>
+                              <Icon className="w-3 h-3" /> {badge.name}
+                            </span>
+                            <span className="text-xs font-bold text-white tracking-wide">
+                              {toolName}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-[#10b981] bg-[#10b981]/15 px-2 py-0.5 rounded border border-[#10b981]/30 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" /> EXECUTADO
+                            </span>
+                            {timeStr && <span className="text-[10px] text-slate-500">{timeStr}</span>}
+                          </div>
+                        </div>
+
+                        {/* Parameter Summary */}
+                        <div className="text-[11px] text-slate-300 bg-slate-950/80 p-2 rounded-lg border border-slate-800/80">
+                          {summary}
+                        </div>
                       </div>
-                      <span className="text-[10px] text-slate-500">
-                        {new Date(act.timestamp).toLocaleTimeString()}
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
