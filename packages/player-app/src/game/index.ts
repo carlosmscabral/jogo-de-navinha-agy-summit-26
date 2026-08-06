@@ -18,6 +18,10 @@ export function createGameInstance(container: HTMLElement | string, shipSpec?: S
     width: 600,
     height: 800,
     backgroundColor: '#050512',
+    scale: {
+      mode: Phaser.Scale.FIT,
+      autoCenter: Phaser.Scale.CENTER_BOTH
+    },
     physics: {
       default: 'arcade',
       arcade: {

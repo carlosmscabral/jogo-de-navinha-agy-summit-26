@@ -18,6 +18,7 @@ export class MainGameScene extends Phaser.Scene {
   shipSpec: ShipSpecification = FALLBACK_PRESETS.interceptor;
   player!: PlayerShip;
   scoreCalculator = new ScoreCalculator();
+  isGameOver = false;
 
   enemies!: Phaser.Physics.Arcade.Group;
   stars: StarPoint[] = [];
@@ -29,6 +30,7 @@ export class MainGameScene extends Phaser.Scene {
   hudTextCombo!: Phaser.GameObjects.Text;
   hudHpBars: Phaser.GameObjects.Rectangle[] = [];
   hudShieldBars: Phaser.GameObjects.Rectangle[] = [];
+  gameOverContainer?: Phaser.GameObjects.Container;
 
   constructor() {
     super({ key: 'MainGameScene' });
@@ -38,6 +40,8 @@ export class MainGameScene extends Phaser.Scene {
     if (data?.shipSpec) {
       this.shipSpec = data.shipSpec;
     }
+    this.isGameOver = false;
+    this.scoreCalculator = new ScoreCalculator();
   }
 
   create(): void {
@@ -71,25 +75,36 @@ export class MainGameScene extends Phaser.Scene {
     // 6. Modern Sci-Fi HUD
     this.setupModernHud();
 
+    // 7. Restart key (R)
+    if (this.input.keyboard) {
+      this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R).on('down', () => {
+        if (this.isGameOver) {
+          this.scene.restart({ shipSpec: this.shipSpec });
+        }
+      });
+    }
+
     // Unlock audio on interaction
     this.input.keyboard?.on('keydown', () => audioManager.unlockAudio());
-    this.input.on('pointerdown', () => audioManager.unlockAudio());
+    this.input.on('pointerdown', () => {
+      audioManager.unlockAudio();
+      if (this.isGameOver) {
+        this.scene.restart({ shipSpec: this.shipSpec });
+      }
+    });
   }
 
   private createCosmicBackground(): void {
-    // Draw subtle nebula glow at top/center
     this.nebulaGraphics = this.add.graphics();
     this.nebulaGraphics.fillStyle(0x0a0520, 1);
     this.nebulaGraphics.fillRect(0, 0, this.scale.width, this.scale.height);
 
-    // Subtle cyan/purple nebula radial glow
     const g = this.add.graphics();
     g.fillStyle(0x1a0b36, 0.4);
     g.fillCircle(this.scale.width / 2, 200, 260);
     g.fillStyle(0x002244, 0.3);
     g.fillCircle(this.scale.width / 2 - 100, 500, 220);
 
-    // Initialize 80 natural organic stars
     this.starfieldGraphics = this.add.graphics();
     this.stars = [];
     for (let i = 0; i < 80; i++) {
@@ -111,10 +126,11 @@ export class MainGameScene extends Phaser.Scene {
       maxSize: 30
     });
 
-    // Spawn drone squads periodically
     this.time.addEvent({
       delay: 1000,
-      callback: () => this.spawnDroneSquad(),
+      callback: () => {
+        if (!this.isGameOver) this.spawnDroneSquad();
+      },
       loop: true
     });
   }
@@ -138,6 +154,7 @@ export class MainGameScene extends Phaser.Scene {
       this.player.weaponSystem.primaryBullets,
       this.enemies,
       (bulletObj, enemyObj) => {
+        if (this.isGameOver) return;
         const bullet = bulletObj as Phaser.Physics.Arcade.Sprite;
         const enemy = enemyObj as Phaser.Physics.Arcade.Sprite;
         const damage = (bullet.getData('damage') as number) || 30;
@@ -164,40 +181,125 @@ export class MainGameScene extends Phaser.Scene {
 
     // Player vs Enemy collision
     this.physics.add.overlap(this.player, this.enemies, (_, enemyObj) => {
+      if (this.isGameOver) return;
       const enemy = enemyObj as Phaser.Physics.Arcade.Sprite;
       this.createExplosionFX(enemy.x, enemy.y);
       enemy.setActive(false);
       enemy.setVisible(false);
 
-      this.player.takeDamage(1);
+      const isDead = this.player.takeDamage(1);
       this.scoreCalculator.registerDamageTaken();
       audioManager.playHit();
+
+      if (isDead) {
+        this.triggerPlayerDeath();
+      }
     });
   }
 
-  private createExplosionFX(x: number, y: number): void {
-    // Shockwave ring
-    const ring = this.add.circle(x, y, 8, 0xff0055, 0.8);
+  private triggerPlayerDeath(): void {
+    this.isGameOver = true;
+
+    // Massive Player Explosion
+    this.createExplosionFX(this.player.x, this.player.y, true);
+    audioManager.playExplosion();
+
+    this.player.setActive(false);
+    this.player.setVisible(false);
+
+    // Show Game Over Glass Overlay
+    this.time.delayedCall(500, () => this.showGameOverOverlay());
+  }
+
+  private showGameOverOverlay(): void {
+    const width = this.scale.width;
+    const height = this.scale.height;
+
+    this.gameOverContainer = this.add.container(0, 0);
+
+    // Dark backdrop
+    const bg = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.75);
+
+    // Glass Card
+    const card = this.add.graphics();
+    card.fillStyle(0x0a0a20, 0.95);
+    card.lineStyle(2, 0xff0055, 0.8);
+    card.fillRoundedRect(width / 2 - 220, height / 2 - 160, 440, 320, 16);
+    card.strokeRoundedRect(width / 2 - 220, height / 2 - 160, 440, 320, 16);
+
+    const title = this.add.text(width / 2, height / 2 - 100, 'SINAL PERDIDO', {
+      fontFamily: '"Share Tech Mono", monospace',
+      fontSize: '32px',
+      color: '#ff0055'
+    }).setOrigin(0.5);
+
+    const subtitle = this.add.text(width / 2, height / 2 - 60, 'FUSELAGEM DESTRUÍDA EM COMBATE', {
+      fontFamily: '"Share Tech Mono", monospace',
+      fontSize: '12px',
+      color: '#ff88aa'
+    }).setOrigin(0.5);
+
+    const finalScore = this.add.text(
+      width / 2,
+      height / 2,
+      `PONTUAÇÃO: ${this.scoreCalculator.currentScore.toLocaleString()}`,
+      {
+        fontFamily: '"Share Tech Mono", monospace',
+        fontSize: '22px',
+        color: '#00f3ff'
+      }
+    ).setOrigin(0.5);
+
+    const kills = this.add.text(
+      width / 2,
+      height / 2 + 40,
+      `ALVOS ABATIDOS: ${this.scoreCalculator.totalKills} | COMBO MÁXIMO: ${this.scoreCalculator.comboMultiplier.toFixed(1)}x`,
+      {
+        fontFamily: '"Share Tech Mono", monospace',
+        fontSize: '13px',
+        color: '#ffd700'
+      }
+    ).setOrigin(0.5);
+
+    const restartPrompt = this.add.text(width / 2, height / 2 + 105, '▶ PRESSIONE [ R ] OU CLIQUE PARA REINICIAR', {
+      fontFamily: '"Share Tech Mono", monospace',
+      fontSize: '13px',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+
+    this.tweens.add({
+      targets: restartPrompt,
+      alpha: 0.2,
+      yoyo: true,
+      repeat: -1,
+      duration: 500
+    });
+
+    this.gameOverContainer.add([bg, card, title, subtitle, finalScore, kills, restartPrompt]);
+  }
+
+  private createExplosionFX(x: number, y: number, isMajor = false): void {
+    const ring = this.add.circle(x, y, 8, isMajor ? 0x00f3ff : 0xff0055, 0.8);
     this.tweens.add({
       targets: ring,
-      radius: 40,
+      radius: isMajor ? 90 : 40,
       alpha: 0,
-      duration: 300,
+      duration: isMajor ? 450 : 300,
       onComplete: () => ring.destroy()
     });
 
-    // Spark bursts
-    for (let i = 0; i < 6; i++) {
-      const spark = this.add.circle(x, y, Phaser.Math.Between(2, 4), 0xffe600, 1);
-      const angle = (i / 6) * Math.PI * 2;
-      const dist = Phaser.Math.Between(25, 50);
+    const sparkCount = isMajor ? 16 : 6;
+    for (let i = 0; i < sparkCount; i++) {
+      const spark = this.add.circle(x, y, Phaser.Math.Between(2, 5), isMajor ? 0x00f3ff : 0xffe600, 1);
+      const angle = (i / sparkCount) * Math.PI * 2;
+      const dist = isMajor ? Phaser.Math.Between(40, 100) : Phaser.Math.Between(25, 50);
       this.tweens.add({
         targets: spark,
         x: x + Math.cos(angle) * dist,
         y: y + Math.sin(angle) * dist,
         alpha: 0,
         scale: 0.2,
-        duration: 250,
+        duration: isMajor ? 400 : 250,
         onComplete: () => spark.destroy()
       });
     }
@@ -215,35 +317,30 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private setupModernHud(): void {
-    // Top Bar Glass Background
     const hudBg = this.add.graphics();
     hudBg.fillStyle(0x050515, 0.85);
     hudBg.lineStyle(1, 0x00f3ff, 0.3);
     hudBg.fillRoundedRect(16, 12, this.scale.width - 32, 60, 8);
     hudBg.strokeRoundedRect(16, 12, this.scale.width - 32, 60, 8);
 
-    // Score Display
     this.hudTextScore = this.add.text(32, 22, 'SCORE: 0', {
       fontFamily: '"Share Tech Mono", monospace',
       fontSize: '22px',
       color: '#00f3ff'
     });
 
-    // Combo Badge
     this.hudTextCombo = this.add.text(this.scale.width - 150, 22, '1.0x COMBO', {
       fontFamily: '"Share Tech Mono", monospace',
       fontSize: '18px',
       color: '#ff0055'
     });
 
-    // HP Segments Label
     this.add.text(32, 50, 'HULL:', {
       fontFamily: '"Share Tech Mono", monospace',
       fontSize: '11px',
       color: '#88aacc'
     });
 
-    // Render HP Bars
     this.hudHpBars = [];
     const maxHp = this.shipSpec.attributes.max_hp;
     for (let i = 0; i < maxHp; i++) {
@@ -251,14 +348,12 @@ export class MainGameScene extends Phaser.Scene {
       this.hudHpBars.push(bar);
     }
 
-    // Shield Segments Label
     this.add.text(220, 50, 'SHIELD:', {
       fontFamily: '"Share Tech Mono", monospace',
       fontSize: '11px',
       color: '#88aacc'
     });
 
-    // Render Shield Bars
     this.hudShieldBars = [];
     const maxShield = this.shipSpec.attributes.shield_capacity;
     for (let i = 0; i < 3; i++) {
@@ -269,7 +364,7 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number): void {
-    // Draw animated cosmic stars
+    // Stars scroll
     this.starfieldGraphics.clear();
     for (const star of this.stars) {
       star.y += star.speed;
@@ -281,8 +376,8 @@ export class MainGameScene extends Phaser.Scene {
       this.starfieldGraphics.fillCircle(star.x, star.y, star.size);
     }
 
-    // Update Player
-    if (this.player && this.player.active) {
+    // Update Player if alive
+    if (!this.isGameOver && this.player && this.player.active) {
       this.player.update(time, delta);
     }
 
@@ -301,12 +396,10 @@ export class MainGameScene extends Phaser.Scene {
       this.hudTextScore.setText(`SCORE: ${this.scoreCalculator.currentScore.toLocaleString()}`);
       this.hudTextCombo.setText(`${this.scoreCalculator.comboMultiplier.toFixed(1)}x COMBO`);
 
-      // Update HP Bars
       for (let i = 0; i < this.hudHpBars.length; i++) {
         this.hudHpBars[i].setFillStyle(i < this.player.currentHp ? 0x00ff88 : 0x333344);
       }
 
-      // Update Shield Bars
       for (let i = 0; i < this.hudShieldBars.length; i++) {
         this.hudShieldBars[i].setFillStyle(i < this.player.currentShield ? 0x00f3ff : 0x223344);
       }

@@ -33,12 +33,10 @@ export function App() {
     }
   };
 
-  const currentSpec = FALLBACK_PRESETS[selectedPreset];
-
   return (
     <div className="flex h-screen w-screen bg-[#03020a] text-white overflow-hidden select-none font-mono">
       {/* Lateral Modern Cyber Glass Panel */}
-      <aside className="w-[420px] glass-panel border-r border-[#00f3ff]/20 p-6 flex flex-col justify-between z-10">
+      <aside className="w-[380px] xl:w-[420px] glass-panel border-r border-[#00f3ff]/20 p-6 flex flex-col justify-between z-10 shrink-0">
         <div className="space-y-6">
           {/* Header */}
           <div className="flex items-center space-x-3 pb-4 border-b border-white/10">
@@ -91,13 +89,13 @@ export function App() {
                   <button
                     key={preset}
                     onClick={() => handleSelectPreset(preset)}
-                    className={`w-full p-3.5 rounded-xl border text-left transition-all duration-200 ${
+                    className={`w-full p-3 rounded-xl border text-left transition-all duration-200 ${
                       isSelected
                         ? 'border-[#00f3ff] bg-gradient-to-r from-[#00f3ff]/20 to-[#00f3ff]/5 neon-glow-cyan text-white scale-[1.02]'
                         : 'border-white/10 bg-white/[0.02] text-gray-400 hover:border-white/25 hover:bg-white/[0.05]'
                     }`}
                   >
-                    <div className="flex justify-between items-center mb-1.5">
+                    <div className="flex justify-between items-center mb-1">
                       <span className={`text-xs font-bold uppercase ${isSelected ? 'text-[#00f3ff]' : 'text-gray-200'}`}>
                         {spec.visuals.style_name}
                       </span>
@@ -127,7 +125,7 @@ export function App() {
           </div>
 
           {/* Keyboard Controls */}
-          <div className="rounded-xl p-4 bg-black/50 border border-white/10 text-xs space-y-2.5">
+          <div className="rounded-xl p-4 bg-black/50 border border-white/10 text-xs space-y-2">
             <div className="text-[#ffd700] font-bold flex items-center gap-1.5">
               <span>🎮 COMANDOS DO TECLADO:</span>
             </div>
@@ -140,24 +138,28 @@ export function App() {
                 <span>Disparo Primário:</span>
                 <span className="text-[#00f3ff] font-bold bg-[#00f3ff]/10 px-2 py-0.5 rounded">Espaço (Hold)</span>
               </div>
-              <div className="flex justify-between items-center py-0.5">
+              <div className="flex justify-between items-center py-0.5 border-b border-white/5">
                 <span>Arma Secundária:</span>
                 <span className="text-[#ff0055] font-bold bg-[#ff0055]/10 px-2 py-0.5 rounded">Shift</span>
+              </div>
+              <div className="flex justify-between items-center py-0.5">
+                <span>Reiniciar Partida:</span>
+                <span className="text-[#ffd700] font-bold bg-[#ffd700]/10 px-2 py-0.5 rounded">Tecla R</span>
               </div>
             </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="text-[11px] text-center text-gray-400 pt-4 border-t border-white/10">
-          Antigravity Engine // Arcade 60 FPS
+        <div className="text-[11px] text-center text-gray-400 pt-3 border-t border-white/10">
+          Antigravity Engine // Vertical Mode Ready
         </div>
       </aside>
 
-      {/* Main Game Stage */}
-      <main className="flex-1 flex flex-col items-center justify-center p-6 relative bg-radial from-[#100826] via-[#050310] to-[#020108]">
-        <div className="relative rounded-2xl overflow-hidden border border-[#00f3ff]/40 shadow-2xl shadow-[#00f3ff]/20">
-          <div id="game-container" ref={gameContainerRef} className="w-[600px] h-[800px]" />
+      {/* Main Game Stage (Responsive Portrait Scale) */}
+      <main className="flex-1 flex flex-col items-center justify-center p-4 relative bg-radial from-[#100826] via-[#050310] to-[#020108] overflow-hidden">
+        <div className="h-full max-h-[94vh] aspect-[3/4] relative rounded-2xl overflow-hidden border border-[#00f3ff]/40 shadow-2xl shadow-[#00f3ff]/20">
+          <div id="game-container" ref={gameContainerRef} className="w-full h-full" />
         </div>
       </main>
     </div>
