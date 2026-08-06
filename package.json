@@ -7,13 +7,17 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces",
+    "build:shared": "npm run build --workspace=packages/shared",
+    "build:mcps": "npm run build --workspace=packages/mcps",
+    "build:player": "npm run build --workspace=packages/player-app",
+    "build": "npm run build:shared && npm run build:mcps && npm run build:player",
     "test": "npm run test --workspaces",
-    "dev:player": "npm run dev --workspace=packages/player-app",
-    "dev:leaderboard": "npm run dev --workspace=packages/leaderboard-app",
-    "dev:daemon": "npm run dev --workspace=packages/daemon"
+    "dev:player": "npm run build:shared && npm run dev --workspace=packages/player-app",
+    "dev:leaderboard": "npm run build:shared && npm run dev --workspace=packages/leaderboard-app",
+    "dev:daemon": "npm run build:shared && npm run dev --workspace=packages/daemon"
   },
   "devDependencies": {
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vite": "^6.2.0"
   }
 }
