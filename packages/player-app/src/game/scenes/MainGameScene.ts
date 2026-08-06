@@ -43,6 +43,8 @@ export class MainGameScene extends Phaser.Scene {
   // Boss HUD
   bossHudContainer?: Phaser.GameObjects.Container;
   bossHpBarFill?: Phaser.GameObjects.Rectangle;
+  bossPhaseText?: Phaser.GameObjects.Text;
+  bossHpNumbersText?: Phaser.GameObjects.Text;
 
   overlayContainer?: Phaser.GameObjects.Container;
 
@@ -104,7 +106,7 @@ export class MainGameScene extends Phaser.Scene {
 
     this.enemyBullets = this.physics.add.group({
       defaultKey: 'bullet_enemy',
-      maxSize: 100
+      maxSize: 120
     });
 
     // 5. Collisions & Weapon Overlaps
@@ -120,22 +122,22 @@ export class MainGameScene extends Phaser.Scene {
       loop: true
     });
 
-    // 8. Dynamic Enemy Wave Spawner
+    // 8. Dynamic Enemy Wave Spawner (until boss spawns at 45s)
     this.time.addEvent({
       delay: this.isHardcore ? 550 : 750,
       callback: () => {
-        if (!this.isGameOver && !this.isVictory && this.elapsedSeconds < 60) {
+        if (!this.isGameOver && !this.isVictory && this.elapsedSeconds < 45) {
           this.spawnWaveEnemies();
         }
       },
       loop: true
     });
 
-    // 9. Enemy Firing Event (Drones return fire at player!)
+    // 9. Enemy Firing Event
     this.time.addEvent({
       delay: this.isHardcore ? 800 : 1200,
       callback: () => {
-        if (!this.isGameOver && !this.isVictory && this.elapsedSeconds < 60) {
+        if (!this.isGameOver && !this.isVictory && this.elapsedSeconds < 45) {
           this.triggerEnemyShots();
         }
       },
@@ -169,9 +171,10 @@ export class MainGameScene extends Phaser.Scene {
     this.elapsedSeconds += 1;
     this.matchTimer = Math.max(0, 90 - this.elapsedSeconds);
 
-    if (this.elapsedSeconds === 58) {
+    // Boss appears at 45 seconds (42s warning)
+    if (this.elapsedSeconds === 42) {
       this.triggerBossWarning();
-    } else if (this.elapsedSeconds === 60) {
+    } else if (this.elapsedSeconds === 45) {
       this.spawnBoss();
     }
 
@@ -181,7 +184,7 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private spawnWaveEnemies(): void {
-    const isWave2 = this.elapsedSeconds >= 25;
+    const isWave2 = this.elapsedSeconds >= 20;
     const squadType = Phaser.Math.Between(1, 3);
 
     if (squadType === 1) {
@@ -241,14 +244,12 @@ export class MainGameScene extends Phaser.Scene {
         const bulletSpeed = this.isHardcore ? 280 : 220;
 
         if (type === 'cruiser') {
-          // 3-way aimed fan
           const spreads = [-0.25, 0, 0.25];
           for (const s of spreads) {
             const rad = angle + s;
             this.spawnEnemyBullet(e.x, e.y + 10, Math.cos(rad) * bulletSpeed, Math.sin(rad) * bulletSpeed);
           }
         } else if (type !== 'kamikaze' && Math.random() > 0.4) {
-          // Aimed single shot
           this.spawnEnemyBullet(e.x, e.y + 10, Math.cos(angle) * bulletSpeed, Math.sin(angle) * bulletSpeed);
         }
       }
@@ -269,20 +270,20 @@ export class MainGameScene extends Phaser.Scene {
 
   private triggerBossWarning(): void {
     audioManager.playBossWarning();
-    this.cameras.main.shake(500, 0.02);
+    this.cameras.main.shake(600, 0.025);
 
-    const banner = this.add.text(this.scale.width / 2, 200, '⚠️ BOSS DETECTED: THE CYBER OVERLORD ⚠️', {
-      fontFamily: '"Share Tech Mono", monospace',
-      fontSize: '18px',
+    const banner = this.add.text(this.scale.width / 2, 220, '⚠️ AVISO: AMEAÇA NÍVEL OMEGA // THE CYBER OVERLORD ⚠️', {
+      fontFamily: '"Google Sans Flex", "Share Tech Mono", sans-serif',
+      fontSize: '16px',
       color: '#ff0055'
     }).setOrigin(0.5);
 
     this.tweens.add({
       targets: banner,
-      alpha: 0.2,
+      alpha: 0.1,
       yoyo: true,
-      repeat: 4,
-      duration: 200,
+      repeat: 5,
+      duration: 180,
       onComplete: () => banner.destroy()
     });
   }
@@ -292,7 +293,7 @@ export class MainGameScene extends Phaser.Scene {
     this.boss = new BossOverlord(this, this.scale.width / 2, 140, this.isHardcore);
     this.setupBossHud();
 
-    // Player bullets vs Boss
+    // Primary Bullets vs Boss
     this.physics.add.overlap(
       this.player.weaponSystem.primaryBullets,
       this.boss,
@@ -314,7 +315,29 @@ export class MainGameScene extends Phaser.Scene {
       }
     );
 
-    // Boss bullets vs Player
+    // Secondary Missiles vs Boss
+    this.physics.add.overlap(
+      this.player.weaponSystem.secondaryMissiles,
+      this.boss,
+      (missileObj) => {
+        if (!this.boss || this.boss.isDead) return;
+        const missile = missileObj as Phaser.Physics.Arcade.Sprite;
+        const damage = (missile.getData('damage') as number) || 120;
+
+        missile.setActive(false);
+        missile.setVisible(false);
+
+        this.createExplosionFX(missile.x, missile.y, true);
+        const isKilled = this.boss.takeDamage(damage);
+        audioManager.playExplosion();
+
+        if (isKilled) {
+          this.triggerBossDefeated();
+        }
+      }
+    );
+
+    // Boss Bullets vs Player
     this.physics.add.overlap(this.player, this.boss.bullets, (_, bulletObj) => {
       if (this.isGameOver || this.isVictory) return;
       const bullet = bulletObj as Phaser.Physics.Arcade.Sprite;
@@ -336,19 +359,25 @@ export class MainGameScene extends Phaser.Scene {
     this.bossHudContainer = this.add.container(0, 0);
 
     const bg = this.add.graphics();
-    bg.fillStyle(0x050515, 0.9);
-    bg.lineStyle(1, 0xff0055, 0.5);
-    bg.fillRoundedRect(width / 2 - 180, 80, 360, 26, 6);
-    bg.strokeRoundedRect(width / 2 - 180, 80, 360, 26, 6);
+    bg.fillStyle(0x050515, 0.92);
+    bg.lineStyle(1.5, 0xff0055, 0.7);
+    bg.fillRoundedRect(width / 2 - 200, 80, 400, 32, 8);
+    bg.strokeRoundedRect(width / 2 - 200, 80, 400, 32, 8);
 
-    const label = this.add.text(width / 2, 70, 'THE CYBER OVERLORD // 2.000 HP', {
-      fontFamily: '"Share Tech Mono", monospace',
+    this.bossPhaseText = this.add.text(width / 2 - 190, 85, 'FASE 1 // ESCUDO CINÉTICO', {
+      fontFamily: '"Google Sans Code", monospace',
       fontSize: '11px',
-      color: '#ff0055'
-    }).setOrigin(0.5);
+      color: '#00f3ff'
+    });
 
-    this.bossHpBarFill = this.add.rectangle(width / 2 - 176, 84, 352, 18, 0xff0055).setOrigin(0, 0);
-    this.bossHudContainer.add([bg, label, this.bossHpBarFill]);
+    this.bossHpNumbersText = this.add.text(width / 2 + 190, 85, '7.500 / 7.500 HP', {
+      fontFamily: '"Google Sans Code", monospace',
+      fontSize: '11px',
+      color: '#ffd700'
+    }).setOrigin(1, 0);
+
+    this.bossHpBarFill = this.add.rectangle(width / 2 - 194, 98, 388, 10, 0x00f3ff).setOrigin(0, 0);
+    this.bossHudContainer.add([bg, this.bossPhaseText, this.bossHpNumbersText, this.bossHpBarFill]);
   }
 
   private triggerBossDefeated(): void {
@@ -358,16 +387,17 @@ export class MainGameScene extends Phaser.Scene {
 
     if (this.boss) {
       this.createExplosionFX(this.boss.x, this.boss.y, true);
-      this.createExplosionFX(this.boss.x - 60, this.boss.y + 20, true);
-      this.createExplosionFX(this.boss.x + 60, this.boss.y + 20, true);
+      this.createExplosionFX(this.boss.x - 70, this.boss.y + 20, true);
+      this.createExplosionFX(this.boss.x + 70, this.boss.y + 20, true);
+      this.createExplosionFX(this.boss.x, this.boss.y - 40, true);
       this.boss.setActive(false);
       this.boss.setVisible(false);
     }
 
     this.scoreCalculator.registerKill('boss');
-    this.cameras.main.shake(800, 0.025);
+    this.cameras.main.shake(1000, 0.035);
 
-    this.time.delayedCall(1000, () => this.showVictoryOverlay());
+    this.time.delayedCall(1200, () => this.showVictoryOverlay());
   }
 
   private showVictoryOverlay(): void {
@@ -381,22 +411,22 @@ export class MainGameScene extends Phaser.Scene {
     });
 
     this.overlayContainer = this.add.container(0, 0);
-    const bg = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.8);
+    const bg = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.85);
 
     const card = this.add.graphics();
     card.fillStyle(0x0a0a25, 0.96);
     card.lineStyle(2, 0x00ff88, 0.9);
-    card.fillRoundedRect(width / 2 - 230, height / 2 - 190, 460, 380, 16);
-    card.strokeRoundedRect(width / 2 - 230, height / 2 - 190, 460, 380, 16);
+    card.fillRoundedRect(width / 2 - 240, height / 2 - 200, 480, 400, 16);
+    card.strokeRoundedRect(width / 2 - 240, height / 2 - 200, 480, 400, 16);
 
-    const title = this.add.text(width / 2, height / 2 - 140, 'MISSÃO CUMPRIDA!', {
-      fontFamily: '"Share Tech Mono", monospace',
-      fontSize: '28px',
+    const title = this.add.text(width / 2, height / 2 - 150, 'MISSÃO CUMPRIDA!', {
+      fontFamily: '"Google Sans Flex", sans-serif',
+      fontSize: '30px',
       color: '#00ff88'
     }).setOrigin(0.5);
 
-    const subtitle = this.add.text(width / 2, height / 2 - 105, 'OVERLORD DESTRUÍDO // FORJA SUPREMA', {
-      fontFamily: '"Share Tech Mono", monospace',
+    const subtitle = this.add.text(width / 2, height / 2 - 110, 'CYBER OVERLORD DESTRUÍDO // FORJA SUPREMA', {
+      fontFamily: '"Google Sans Code", monospace',
       fontSize: '12px',
       color: '#00f3ff'
     }).setOrigin(0.5);
@@ -404,28 +434,28 @@ export class MainGameScene extends Phaser.Scene {
     const finalScore = this.add.text(
       width / 2,
       height / 2 - 50,
-      `PONTUAÇÃO FINAL: ${scoreResult.finalScore.toLocaleString()} PTS`,
+      `PONTUAÇÃO: ${scoreResult.finalScore.toLocaleString()} PTS`,
       {
-        fontFamily: '"Share Tech Mono", monospace',
-        fontSize: '20px',
+        fontFamily: '"Google Sans Flex", sans-serif',
+        fontSize: '24px',
         color: '#ffd700'
       }
     ).setOrigin(0.5);
 
     const breakdown = this.add.text(
       width / 2,
-      height / 2 + 20,
-      `Combate: ${scoreResult.breakdown.combatScore.toLocaleString()} | Boss: +5.000\nBônus Tempo: +${scoreResult.breakdown.timeBonus} (${this.matchTimer}s)\nSobrevivência: +${scoreResult.breakdown.survivalBonus} (${this.player.currentHp} HP)`,
+      height / 2 + 25,
+      `Combate: ${scoreResult.breakdown.combatScore.toLocaleString()} | Boss: +10.000\nBônus Tempo: +${scoreResult.breakdown.timeBonus} (${this.matchTimer}s restantes)\nSobrevivência: +${scoreResult.breakdown.survivalBonus} (${this.player.currentHp} HP)`,
       {
-        fontFamily: '"Share Tech Mono", monospace',
+        fontFamily: '"Google Sans Code", monospace',
         fontSize: '12px',
         color: '#cceeff',
         align: 'center'
       }
     ).setOrigin(0.5);
 
-    const restartPrompt = this.add.text(width / 2, height / 2 + 130, '▶ PRESSIONE [ R ] OU CLIQUE PARA NOVA PARTIDA', {
-      fontFamily: '"Share Tech Mono", monospace',
+    const restartPrompt = this.add.text(width / 2, height / 2 + 140, '▶ PRESSIONE [ R ] OU CLIQUE PARA NOVA PARTIDA', {
+      fontFamily: '"Google Sans Code", monospace',
       fontSize: '13px',
       color: '#ffffff'
     }).setOrigin(0.5);
@@ -463,22 +493,22 @@ export class MainGameScene extends Phaser.Scene {
     const height = this.scale.height;
 
     this.overlayContainer = this.add.container(0, 0);
-    const bg = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.78);
+    const bg = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.82);
 
     const card = this.add.graphics();
     card.fillStyle(0x0a0a20, 0.95);
     card.lineStyle(2, 0xff0055, 0.8);
-    card.fillRoundedRect(width / 2 - 220, height / 2 - 160, 440, 320, 16);
-    card.strokeRoundedRect(width / 2 - 220, height / 2 - 160, 440, 320, 16);
+    card.fillRoundedRect(width / 2 - 230, height / 2 - 170, 460, 340, 16);
+    card.strokeRoundedRect(width / 2 - 230, height / 2 - 170, 460, 340, 16);
 
-    const title = this.add.text(width / 2, height / 2 - 100, titleText, {
-      fontFamily: '"Share Tech Mono", monospace',
+    const title = this.add.text(width / 2, height / 2 - 110, titleText, {
+      fontFamily: '"Google Sans Flex", sans-serif',
       fontSize: '32px',
       color: '#ff0055'
     }).setOrigin(0.5);
 
-    const subtitle = this.add.text(width / 2, height / 2 - 60, subtitleText, {
-      fontFamily: '"Share Tech Mono", monospace',
+    const subtitle = this.add.text(width / 2, height / 2 - 70, subtitleText, {
+      fontFamily: '"Google Sans Code", monospace',
       fontSize: '12px',
       color: '#ff88aa'
     }).setOrigin(0.5);
@@ -488,25 +518,25 @@ export class MainGameScene extends Phaser.Scene {
       height / 2,
       `PONTUAÇÃO: ${this.scoreCalculator.currentScore.toLocaleString()} PTS`,
       {
-        fontFamily: '"Share Tech Mono", monospace',
-        fontSize: '22px',
+        fontFamily: '"Google Sans Flex", sans-serif',
+        fontSize: '24px',
         color: '#00f3ff'
       }
     ).setOrigin(0.5);
 
     const kills = this.add.text(
       width / 2,
-      height / 2 + 40,
+      height / 2 + 45,
       `ALVOS ABATIDOS: ${this.scoreCalculator.totalKills} | COMBO: ${this.scoreCalculator.comboMultiplier.toFixed(1)}x`,
       {
-        fontFamily: '"Share Tech Mono", monospace',
+        fontFamily: '"Google Sans Code", monospace',
         fontSize: '13px',
         color: '#ffd700'
       }
     ).setOrigin(0.5);
 
-    const restartPrompt = this.add.text(width / 2, height / 2 + 105, '▶ PRESSIONE [ R ] OU CLIQUE PARA REINICIAR', {
-      fontFamily: '"Share Tech Mono", monospace',
+    const restartPrompt = this.add.text(width / 2, height / 2 + 115, '▶ PRESSIONE [ R ] OU CLIQUE PARA REINICIAR', {
+      fontFamily: '"Google Sans Code", monospace',
       fontSize: '13px',
       color: '#ffffff'
     }).setOrigin(0.5);
@@ -654,31 +684,31 @@ export class MainGameScene extends Phaser.Scene {
 
   private setupModernHud(): void {
     const hudBg = this.add.graphics();
-    hudBg.fillStyle(0x050515, 0.85);
+    hudBg.fillStyle(0x050515, 0.88);
     hudBg.lineStyle(1, 0x00f3ff, 0.3);
     hudBg.fillRoundedRect(16, 12, this.scale.width - 32, 60, 8);
     hudBg.strokeRoundedRect(16, 12, this.scale.width - 32, 60, 8);
 
     this.hudTextScore = this.add.text(32, 22, 'SCORE: 0', {
-      fontFamily: '"Share Tech Mono", monospace',
+      fontFamily: '"Google Sans Code", monospace',
       fontSize: '20px',
       color: '#00f3ff'
     });
 
     this.hudTextTimer = this.add.text(this.scale.width / 2, 22, '90s', {
-      fontFamily: '"Share Tech Mono", monospace',
-      fontSize: '20px',
+      fontFamily: '"Google Sans Flex", sans-serif',
+      fontSize: '22px',
       color: '#ffd700'
     }).setOrigin(0.5, 0);
 
     this.hudTextCombo = this.add.text(this.scale.width - 150, 22, '1.0x COMBO', {
-      fontFamily: '"Share Tech Mono", monospace',
+      fontFamily: '"Google Sans Code", monospace',
       fontSize: '18px',
       color: '#ff0055'
     });
 
     this.add.text(32, 50, 'HULL:', {
-      fontFamily: '"Share Tech Mono", monospace',
+      fontFamily: '"Google Sans Code", monospace',
       fontSize: '11px',
       color: '#88aacc'
     });
@@ -691,7 +721,7 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     this.add.text(220, 50, 'SHIELD:', {
-      fontFamily: '"Share Tech Mono", monospace',
+      fontFamily: '"Google Sans Code", monospace',
       fontSize: '11px',
       color: '#88aacc'
     });
@@ -725,7 +755,25 @@ export class MainGameScene extends Phaser.Scene {
       this.boss.update(time, delta, this.player.x, this.player.y);
       if (this.bossHpBarFill) {
         const pct = Math.max(0, this.boss.currentHp / this.boss.maxHp);
-        this.bossHpBarFill.width = 352 * pct;
+        this.bossHpBarFill.width = 388 * pct;
+
+        if (this.boss.phase === 1) {
+          this.bossHpBarFill.setFillStyle(0x00f3ff);
+          this.bossPhaseText?.setText('FASE 1 // ESCUDO CINÉTICO');
+          this.bossPhaseText?.setColor('#00f3ff');
+        } else if (this.boss.phase === 2) {
+          this.bossHpBarFill.setFillStyle(0xffd700);
+          this.bossPhaseText?.setText('FASE 2 // BLINDAGEM REFORÇADA');
+          this.bossPhaseText?.setColor('#ffd700');
+        } else {
+          this.bossHpBarFill.setFillStyle(0xff0055);
+          this.bossPhaseText?.setText('FASE 3 // NÚCLEO BERSERK');
+          this.bossPhaseText?.setColor('#ff0055');
+        }
+
+        this.bossHpNumbersText?.setText(
+          `${this.boss.currentHp.toLocaleString()} / ${this.boss.maxHp.toLocaleString()} HP`
+        );
       }
     }
 
