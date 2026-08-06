@@ -9,7 +9,7 @@ export class ScoreCalculator {
   registerKill(enemyType: 'drone' | 'cruiser' | 'boss'): number {
     let basePoints = 100;
     if (enemyType === 'cruiser') basePoints = 500;
-    if (enemyType === 'boss') basePoints = 5000;
+    if (enemyType === 'boss') basePoints = 10000;
 
     const earned = Math.round(basePoints * this.comboMultiplier);
     this.currentScore += earned;
@@ -30,32 +30,44 @@ export class ScoreCalculator {
     remainingTimeSeconds: number;
     remainingHp: number;
     synergyBonusUnlocked: boolean;
+    mcpCount?: number;
   }): {
     finalScore: number;
+    mcpMultiplier: number;
     breakdown: {
       combatScore: number;
       bossBonus: number;
       timeBonus: number;
       survivalBonus: number;
       synergyBonus: number;
+      mcpMultiplier: number;
     };
   } {
     const combatScore = this.currentScore;
-    const bossBonus = params.bossDefeated ? 5000 : 0;
-    const timeBonus = params.bossDefeated ? Math.max(0, Math.round(params.remainingTimeSeconds * 50)) : 0;
-    const survivalBonus = Math.max(0, params.remainingHp * 1000);
-    const synergyBonus = params.synergyBonusUnlocked ? 1500 : 0;
+    const bossBonus = params.bossDefeated ? 10000 : 0;
+    const timeBonus = params.bossDefeated ? Math.max(0, Math.round(params.remainingTimeSeconds * 80)) : 0;
+    const survivalBonus = Math.max(0, params.remainingHp * 1200);
+    const synergyBonus = params.synergyBonusUnlocked ? 2000 : 0;
 
-    const finalScore = combatScore + bossBonus + timeBonus + survivalBonus + synergyBonus;
+    const rawTotal = combatScore + bossBonus + timeBonus + survivalBonus + synergyBonus;
+
+    // Gamification Tradeoff: Specialization Multiplier
+    let mcpMultiplier = 1.0;
+    if (params.mcpCount === 1) mcpMultiplier = 1.25;
+    else if (params.mcpCount === 2) mcpMultiplier = 1.10;
+
+    const finalScore = Math.round(rawTotal * mcpMultiplier);
 
     return {
       finalScore,
+      mcpMultiplier,
       breakdown: {
         combatScore,
         bossBonus,
         timeBonus,
         survivalBonus,
-        synergyBonus
+        synergyBonus,
+        mcpMultiplier
       }
     };
   }

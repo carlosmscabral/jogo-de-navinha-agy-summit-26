@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { EnergySliders, McpServerName, SubagentName, PilotInfo } from '@jogo/shared';
-import { Zap, Shield, Sparkles, Crosshair, ChevronRight, CheckCircle2, Cpu, HelpCircle, Flame, Gauge, Layers } from 'lucide-react';
+import { Zap, Shield, Sparkles, Crosshair, ChevronRight, CheckCircle2, Cpu, Flame, Gauge, Layers, Award, ArrowLeft, Info } from 'lucide-react';
 
 interface EnergySlidersBuilderProps {
   pilot: PilotInfo;
@@ -28,11 +28,23 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
 
   const [selectedTacticalAgent, setSelectedTacticalAgent] = useState<'combat-strategist' | 'systems-engineer'>('combat-strategist');
 
-  // Live Projected Stats calculations based on 100 PU sliders
-  const projectedDps = Math.round(sliders.offense * 35);
-  const projectedSpeed = Math.round(180 + sliders.speed * 5.2);
+  // Gamification Tradeoff Calculations:
+  // 1 MCP = +20% Overclock + 1.25x Score Multiplier
+  // 2 MCPs = +10% Overclock + 1.10x Score Multiplier
+  // 3 MCPs = Full Versatility + 1.00x Score Multiplier
+  const mcpCount = selectedMcps.length;
+  const overclockMultiplier = mcpCount === 1 ? 1.2 : mcpCount === 2 ? 1.1 : 1.0;
+  const scoreMultiplier = mcpCount === 1 ? 1.25 : mcpCount === 2 ? 1.1 : 1.0;
+
+  // Live Projected Stats calculations based on 100 PU sliders + Overclock
+  const rawDps = Math.round(sliders.offense * 35);
+  const projectedDps = selectedMcps.includes('weapons-arsenal') ? Math.round(rawDps * overclockMultiplier) : rawDps;
+
+  const rawSpeed = Math.round(180 + sliders.speed * 5.2);
+  const projectedSpeed = selectedMcps.includes('hull-propulsion') ? Math.round(rawSpeed * (mcpCount === 1 ? 1.15 : 1.0)) : rawSpeed;
+
   const projectedHp = Math.max(2, Math.min(8, Math.round(sliders.defense / 6)));
-  const projectedShields = Math.max(1, Math.min(3, Math.round(sliders.tech / 13)));
+  const projectedShields = Math.max(1, Math.min(3, Math.round(sliders.tech / 13))) + (mcpCount === 1 && selectedMcps.includes('cybernetics-shields') ? 1 : 0);
 
   // Detect active synergy
   let detectedSynergy = 'Custom Build';
@@ -89,16 +101,19 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center p-6 bg-radial from-[#15082e] via-[#080214] to-[#020108] select-none overflow-y-auto font-sans">
-      <div className="w-full max-w-3xl glass-panel p-7 rounded-3xl border border-[#00f3ff]/30 shadow-2xl space-y-6 my-4">
+      <div className="w-full max-w-4xl glass-panel p-7 rounded-3xl border border-[#00f3ff]/30 shadow-2xl space-y-6 my-4">
         {/* Header */}
         <div className="flex justify-between items-center pb-4 border-b border-white/10">
           <div>
-            <h2 className="text-2xl font-black text-[#00f3ff] tracking-wider uppercase">
-              FORJA DE ENERGIA & AGENTES
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#00f3ff]/20 text-[#00f3ff] border border-[#00f3ff]/30 uppercase tracking-widest">
+                Etapa 3 de 4 // Configuração da Nave
+              </span>
+              <span className="text-xs text-gray-400">Google Cloud Summit 2026</span>
+            </div>
+            <h2 className="text-2xl font-black text-white tracking-wider uppercase">
+              FORJA DE ENERGIA & SERVIDORES MCP
             </h2>
-            <p className="text-xs text-gray-300">
-              Piloto: <b className="text-[#ffd700]">{pilot.callsign}</b> // Empresa: <b className="text-[#00f3ff]">{pilot.company_raw}</b>
-            </p>
           </div>
 
           <div className="px-3.5 py-1.5 rounded-xl bg-[#00f3ff]/10 border border-[#00f3ff]/40 text-[#00f3ff] text-xs font-bold flex items-center gap-1.5">
@@ -110,7 +125,7 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
         {/* Quick Presets */}
         <div className="space-y-2">
           <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block">
-            Arquétipos Rápidos (Clique para calibrar os 100 PU):
+            Arquétipos Rápidos (100 PU de Energia Total):
           </span>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <button
@@ -251,9 +266,16 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
 
           {/* Live Projected Stats Gauge (5 cols) */}
           <div className="md:col-span-5 flex flex-col justify-between bg-black/40 p-5 rounded-2xl border border-white/10">
-            <span className="text-xs font-bold text-gray-300 uppercase tracking-wider block mb-2">
-              Telemetria Projetada
-            </span>
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-xs font-bold text-gray-300 uppercase tracking-wider">
+                Telemetria Projetada
+              </span>
+              {mcpCount === 1 && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#ffd700]/20 text-[#ffd700] border border-[#ffd700]/40 animate-pulse">
+                  ⚡ +20% OVERCLOCK
+                </span>
+              )}
+            </div>
 
             <div className="space-y-2.5 font-mono text-xs">
               <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/5 flex items-center justify-between">
@@ -285,69 +307,116 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
               </div>
             </div>
 
-            <div className="mt-3 p-2.5 rounded-xl bg-[#00f3ff]/5 border border-[#00f3ff]/20 text-[10px] text-gray-400 leading-snug">
-              💡 Os números são limites energéticos base calculados pelos MCPs.
+            <div className="mt-3 p-2.5 rounded-xl bg-[#00f3ff]/5 border border-[#00f3ff]/20 flex items-center justify-between text-xs">
+              <span className="text-gray-300 font-bold flex items-center gap-1.5">
+                <Award className="w-4 h-4 text-[#ffd700]" /> Multiplicador Placar:
+              </span>
+              <span className="font-mono font-black text-[#ffd700] text-sm">
+                {scoreMultiplier.toFixed(2)}x
+              </span>
             </div>
           </div>
         </div>
 
-        {/* Explanatory Banner: Como os Sliders e o Prompt se conectam */}
-        <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-950/40 via-black/60 to-cyan-950/40 border border-[#00f3ff]/20 space-y-2">
-          <div className="flex items-center gap-2 text-xs font-bold text-[#ffd700] uppercase tracking-wider">
-            <HelpCircle className="w-4 h-4" />
-            <span>Como o Prompt no AGY molda sua Nave:</span>
+        {/* MCP Selection & GAMIFICATION TRADEOFF EXPLAINER */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-[#ffd700] uppercase tracking-wider flex items-center gap-2">
+              <Cpu className="w-4 h-4" />
+              Servidores MCP & Tradeoffs de Especialização (Clique para Ativar/Desativar):
+            </span>
+            <span className="text-[10px] text-gray-400">
+              {mcpCount === 1 ? '🔥 Modo Ultra-Especialista (+20% Overclock & 1.25x Placar)' : mcpCount === 2 ? '⚡ Modo Foco Tático (+10% Overclock & 1.10x Placar)' : '🌐 Modo Generalista Completo (Versatilidade Total & 1.00x Placar)'}
+            </span>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-gray-300">
-            <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/5">
-              <b className="text-[#00f3ff]">1. Os Sliders (100 PU)</b> definem o <span className="text-white font-semibold">orçamento e física base</span> (teto de DPS, velocidade máxima e vida).
-            </div>
-            <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/5">
-              <b className="text-[#ff0055]">2. O Prompt no AGY</b> escolhe a <span className="text-white font-semibold">tecnologia e visual</span> (Laser/Vulcan/Mísseis, fuselagem SVG e estilo).
-            </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {/* weapons-arsenal */}
+            <button
+              type="button"
+              onClick={() => toggleMcp('weapons-arsenal')}
+              className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between gap-2 ${
+                selectedMcps.includes('weapons-arsenal')
+                  ? 'border-[#ff0055] bg-[#ff0055]/15 text-white shadow-lg shadow-[#ff0055]/10'
+                  : 'border-white/10 bg-white/[0.02] text-gray-400 hover:border-white/20'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-mono font-bold text-xs text-[#ff0055]">weapons-arsenal</span>
+                {selectedMcps.includes('weapons-arsenal') && <CheckCircle2 className="w-4 h-4 text-[#ff0055]" />}
+              </div>
+              <p className="text-[11px] text-gray-300 leading-snug">
+                Canhões primários (Laser, Vulcan, Plasma) e mísseis secundários.
+              </p>
+              {mcpCount === 1 && selectedMcps.includes('weapons-arsenal') && (
+                <span className="text-[10px] font-bold text-[#ffd700]">⚡ Overclock: +20% DPS Ativo!</span>
+              )}
+            </button>
+
+            {/* hull-propulsion */}
+            <button
+              type="button"
+              onClick={() => toggleMcp('hull-propulsion')}
+              className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between gap-2 ${
+                selectedMcps.includes('hull-propulsion')
+                  ? 'border-[#ffd700] bg-[#ffd700]/15 text-white shadow-lg shadow-[#ffd700]/10'
+                  : 'border-white/10 bg-white/[0.02] text-gray-400 hover:border-white/20'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-mono font-bold text-xs text-[#ffd700]">hull-propulsion</span>
+                {selectedMcps.includes('hull-propulsion') && <CheckCircle2 className="w-4 h-4 text-[#ffd700]" />}
+              </div>
+              <p className="text-[11px] text-gray-300 leading-snug">
+                Propulsores de esquiva rápida, aceleração turbo e peso do casco.
+              </p>
+              {mcpCount === 1 && selectedMcps.includes('hull-propulsion') && (
+                <span className="text-[10px] font-bold text-[#ffd700]">⚡ Overclock: +20% Velocidade Ativo!</span>
+              )}
+            </button>
+
+            {/* cybernetics-shields */}
+            <button
+              type="button"
+              onClick={() => toggleMcp('cybernetics-shields')}
+              className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between gap-2 ${
+                selectedMcps.includes('cybernetics-shields')
+                  ? 'border-[#00f3ff] bg-[#00f3ff]/15 text-white shadow-lg shadow-[#00f3ff]/10'
+                  : 'border-white/10 bg-white/[0.02] text-gray-400 hover:border-white/20'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-mono font-bold text-xs text-[#00f3ff]">cybernetics-shields</span>
+                {selectedMcps.includes('cybernetics-shields') && <CheckCircle2 className="w-4 h-4 text-[#00f3ff]" />}
+              </div>
+              <p className="text-[11px] text-gray-300 leading-snug">
+                Camadas de escudos energéticos e módulos de sinergia matricial.
+              </p>
+              {mcpCount === 1 && selectedMcps.includes('cybernetics-shields') && (
+                <span className="text-[10px] font-bold text-[#ffd700]">⚡ Overclock: +1 Escudo Extra Ativo!</span>
+              )}
+            </button>
           </div>
         </div>
 
-        {/* MCP & Subagents Selector */}
-        <div className="grid grid-cols-2 gap-4">
-          {/* MCP Tools */}
-          <div className="space-y-2 bg-black/40 p-4 rounded-2xl border border-white/10">
-            <span className="text-xs font-bold text-[#ffd700] uppercase block">Servidores MCP Ativos</span>
-            {(['weapons-arsenal', 'hull-propulsion', 'cybernetics-shields'] as const).map((mcp) => {
-              const isSelected = selectedMcps.includes(mcp);
-              return (
-                <button
-                  key={mcp}
-                  type="button"
-                  onClick={() => toggleMcp(mcp)}
-                  className={`w-full p-2.5 rounded-xl border text-left text-xs flex justify-between items-center transition-all ${
-                    isSelected
-                      ? 'border-[#00f3ff] bg-[#00f3ff]/15 text-white font-bold'
-                      : 'border-white/10 text-gray-400 hover:border-white/20'
-                  }`}
-                >
-                  <span className="font-mono text-[11px]">{mcp}</span>
-                  {isSelected && <CheckCircle2 className="w-4 h-4 text-[#00f3ff]" />}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Subagent Selection */}
-          <div className="space-y-2 bg-black/40 p-4 rounded-2xl border border-white/10">
-            <span className="text-xs font-bold text-[#00f3ff] uppercase block">Sub-Agente Tático</span>
-
+        {/* Subagent Selection */}
+        <div className="space-y-2 bg-black/40 p-4 rounded-2xl border border-white/10">
+          <span className="text-xs font-bold text-[#00f3ff] uppercase block">
+            Sub-Agente Tático para Forja no Terminal
+          </span>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <button
               type="button"
               onClick={() => setSelectedTacticalAgent('combat-strategist')}
-              className={`w-full p-2.5 rounded-xl border text-left text-xs flex justify-between items-center transition-all ${
+              className={`p-3 rounded-xl border text-left text-xs flex justify-between items-center transition-all ${
                 selectedTacticalAgent === 'combat-strategist'
                   ? 'border-[#ff0055] bg-[#ff0055]/15 text-white font-bold'
                   : 'border-white/10 text-gray-400 hover:border-white/20'
               }`}
             >
               <div>
-                <div className="text-[11px] font-bold">combat-strategist</div>
-                <div className="text-[9px] text-gray-400">Foco em DPS e Canhões</div>
+                <div className="text-xs font-bold text-white">combat-strategist</div>
+                <div className="text-[10px] text-gray-400">Especialista em canhões, cadência e mísseis</div>
               </div>
               {selectedTacticalAgent === 'combat-strategist' && <CheckCircle2 className="w-4 h-4 text-[#ff0055]" />}
             </button>
@@ -355,15 +424,15 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
             <button
               type="button"
               onClick={() => setSelectedTacticalAgent('systems-engineer')}
-              className={`w-full p-2.5 rounded-xl border text-left text-xs flex justify-between items-center transition-all ${
+              className={`p-3 rounded-xl border text-left text-xs flex justify-between items-center transition-all ${
                 selectedTacticalAgent === 'systems-engineer'
                   ? 'border-[#00ff88] bg-[#00ff88]/15 text-white font-bold'
                   : 'border-white/10 text-gray-400 hover:border-white/20'
               }`}
             >
               <div>
-                <div className="text-[11px] font-bold">systems-engineer</div>
-                <div className="text-[9px] text-gray-400">Foco em Blindagem e Escudos</div>
+                <div className="text-xs font-bold text-white">systems-engineer</div>
+                <div className="text-[10px] text-gray-400">Especialista em blindagem, velocidade e escudos</div>
               </div>
               {selectedTacticalAgent === 'systems-engineer' && <CheckCircle2 className="w-4 h-4 text-[#00ff88]" />}
             </button>
@@ -375,9 +444,10 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
           <button
             type="button"
             onClick={onBack}
-            className="w-1/3 p-3.5 rounded-xl border border-white/15 text-gray-300 text-xs font-bold uppercase hover:bg-white/5 transition-all"
+            className="w-1/3 p-3.5 rounded-xl border border-white/15 text-gray-300 text-xs font-bold uppercase hover:bg-white/5 transition-all flex items-center justify-center gap-2"
           >
-            Voltar
+            <ArrowLeft className="w-4 h-4" />
+            <span>Voltar às Instruções</span>
           </button>
           <button
             type="button"

@@ -4,12 +4,13 @@ import { createGameInstance } from './game/index.js';
 import { audioManager } from './game/audio/AudioManager.js';
 import { AttractScreen } from './components/AttractScreen.js';
 import { RegistrationForm } from './components/RegistrationForm.js';
+import { InstructionsPromptScreen } from './components/InstructionsPromptScreen.js';
 import { EnergySlidersBuilder } from './components/EnergySlidersBuilder.js';
 import { HandoffTerminalScreen } from './components/HandoffTerminalScreen.js';
 import { DebriefScreen } from './components/DebriefScreen.js';
 import { Volume2, VolumeX, RotateCcw } from 'lucide-react';
 
-type AppStage = 'ATTRACT' | 'REGISTER' | 'BUILDER' | 'HANDOFF' | 'GAMEPLAY' | 'DEBRIEF';
+type AppStage = 'ATTRACT' | 'REGISTER' | 'INSTRUCTIONS' | 'BUILDER' | 'HANDOFF' | 'GAMEPLAY' | 'DEBRIEF';
 
 export function App() {
   const [stage, setStage] = useState<AppStage>('ATTRACT');
@@ -59,6 +60,10 @@ export function App() {
 
   const handleRegister = (pilotData: PilotInfo) => {
     setPilot(pilotData);
+    setStage('INSTRUCTIONS');
+  };
+
+  const handleProceedFromInstructions = () => {
     setStage('BUILDER');
   };
 
@@ -134,7 +139,7 @@ export function App() {
   };
 
   return (
-    <div className="flex h-screen w-screen bg-[#03020a] text-white overflow-hidden select-none font-mono">
+    <div className="flex h-screen w-screen bg-[#03020a] text-white overflow-hidden select-none font-sans">
       {/* Top Floating Controls Bar */}
       <div className="absolute top-4 right-4 z-50 flex items-center gap-3">
         {/* Reset Button */}
@@ -142,7 +147,7 @@ export function App() {
           <button
             onClick={handleReset}
             title="Resetar Experiência (Ctrl+Shift+F12)"
-            className="p-2.5 rounded-xl bg-black/60 border border-white/15 hover:border-[#ff0055] hover:bg-[#ff0055]/15 transition-all text-gray-300 hover:text-[#ff0055] shadow-lg backdrop-blur-md flex items-center gap-1.5 text-xs font-bold"
+            className="p-2.5 rounded-xl bg-black/60 border border-white/15 hover:border-[#ff0055] hover:bg-[#ff0055]/15 transition-all text-gray-300 hover:text-[#ff0055] shadow-lg backdrop-blur-md flex items-center gap-1.5 text-xs font-bold font-mono"
           >
             <RotateCcw className="w-4 h-4" />
             <span>RESET</span>
@@ -166,11 +171,19 @@ export function App() {
         <RegistrationForm onRegister={handleRegister} onBack={handleReset} />
       )}
 
+      {stage === 'INSTRUCTIONS' && (
+        <InstructionsPromptScreen
+          pilot={pilot}
+          onProceed={handleProceedFromInstructions}
+          onBack={() => setStage('REGISTER')}
+        />
+      )}
+
       {stage === 'BUILDER' && (
         <EnergySlidersBuilder
           pilot={pilot}
           onProceedToTerminal={handleProceedToTerminal}
-          onBack={() => setStage('REGISTER')}
+          onBack={() => setStage('INSTRUCTIONS')}
         />
       )}
 
