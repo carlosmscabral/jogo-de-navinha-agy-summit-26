@@ -13,12 +13,12 @@ export function createCyberneticsShieldsServer(): McpServer {
     'calibrate_energy_barrier',
     'Calibra o campo de força energético e a capacidade de escudos da nave.',
     {
-      tech_level: z.union([z.number(), z.string()]).optional().describe('Nível do slider de tecnologia/tech (10 a 50)'),
-      shield_type: z.string().optional().describe('Tipo de escudo (plasma_bubble, hardlight_barrier, deflector_mesh)')
+      tech_level: z.any().optional().nullable().describe('Nível do slider de tecnologia/tech (10 a 50)'),
+      shield_type: z.any().optional().nullable().describe('Tipo de escudo (plasma_bubble, hardlight_barrier, deflector_mesh)')
     },
     async (args) => {
-      const techNum = Number(args.tech_level ?? 25);
-      const shieldType = String(args.shield_type || 'deflector_mesh');
+      const techNum = typeof args?.tech_level === 'number' ? args.tech_level : Number(args?.tech_level) || 25;
+      const shieldType = args?.shield_type ? String(args.shield_type) : 'deflector_mesh';
 
       let shield_capacity = 0;
       if (techNum < 20) shield_capacity = 0;
@@ -50,32 +50,28 @@ export function createCyberneticsShieldsServer(): McpServer {
     'install_overclock_module',
     'Configura módulos cibernéticos e computa sinergias ativadas entre componentes.',
     {
-      synergy_candidate: z.string().optional().describe('Nome da sinergia candidata (ex: Glass Cannon, Titan Fortress, Ghost Interceptor, Balanced Ace)'),
-      active_sliders: z.union([
-        z.record(z.any()),
-        z.number(),
-        z.string()
-      ]).optional().describe('Sliders de energia atuais ou valor de overclock'),
-      offense: z.union([z.number(), z.string()]).optional().describe('Nível de ataque'),
-      speed: z.union([z.number(), z.string()]).optional().describe('Nível de velocidade'),
-      defense: z.union([z.number(), z.string()]).optional().describe('Nível de defesa'),
-      tech: z.union([z.number(), z.string()]).optional().describe('Nível de tecnologia')
+      synergy_candidate: z.any().optional().nullable().describe('Nome da sinergia candidata (ex: Glass Cannon, Titan Fortress, Ghost Interceptor, Balanced Ace)'),
+      active_sliders: z.any().optional().nullable().describe('Sliders de energia atuais ou valor de overclock'),
+      offense: z.any().optional().nullable().describe('Nível de ataque'),
+      speed: z.any().optional().nullable().describe('Nível de velocidade'),
+      defense: z.any().optional().nullable().describe('Nível de defesa'),
+      tech: z.any().optional().nullable().describe('Nível de tecnologia')
     },
     async (args) => {
-      const synergyCandidate = String(args.synergy_candidate || 'Balanced Ace');
+      const synergyCandidate = args?.synergy_candidate ? String(args.synergy_candidate) : 'Balanced Ace';
 
-      let off = Number(args.offense ?? 25);
-      let spd = Number(args.speed ?? 25);
-      let def = Number(args.defense ?? 25);
-      let tch = Number(args.tech ?? 25);
+      let off = Number(args?.offense) || 25;
+      let spd = Number(args?.speed) || 25;
+      let def = Number(args?.defense) || 25;
+      let tch = Number(args?.tech) || 25;
 
-      if (typeof args.active_sliders === 'number') {
+      if (typeof args?.active_sliders === 'number') {
         off = args.active_sliders;
-      } else if (typeof args.active_sliders === 'object' && args.active_sliders !== null) {
-        off = Number((args.active_sliders as any).offense ?? off);
-        spd = Number((args.active_sliders as any).speed ?? spd);
-        def = Number((args.active_sliders as any).defense ?? def);
-        tch = Number((args.active_sliders as any).tech ?? tch);
+      } else if (typeof args?.active_sliders === 'object' && args?.active_sliders !== null) {
+        off = Number(args.active_sliders.offense) || off;
+        spd = Number(args.active_sliders.speed) || spd;
+        def = Number(args.active_sliders.defense) || def;
+        tch = Number(args.active_sliders.tech) || tch;
       }
 
       let isUnlocked = false;

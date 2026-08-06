@@ -13,12 +13,12 @@ export function createHullPropulsionServer(): McpServer {
     'tune_thrusters',
     'Calibra os propulsores de voo da nave, velocidade máxima de deslocamento e raio da hitbox central.',
     {
-      speed_level: z.union([z.number(), z.string()]).optional().describe('Nível do slider de velocidade (10 a 50)'),
-      agility_factor: z.union([z.number(), z.string()]).optional().describe('Fator de agilidade na esquiva lateral')
+      speed_level: z.any().optional().nullable().describe('Nível do slider de velocidade (10 a 50)'),
+      agility_factor: z.any().optional().nullable().describe('Fator de agilidade na esquiva lateral')
     },
     async (args) => {
-      const speed_level = Number(args.speed_level ?? 25);
-      const agility_factor = Number(args.agility_factor ?? 1.0);
+      const speed_level = Number(args?.speed_level) || 25;
+      const agility_factor = Number(args?.agility_factor) || 1.0;
 
       // Map 10-50 to 180-380 px/s
       const speed_px_s = Math.round(180 + ((speed_level - 10) / 40) * 200);
@@ -49,12 +49,12 @@ export function createHullPropulsionServer(): McpServer {
     'reinforce_plating',
     'Instala blindagem estrutural na fuselagem para absorção de dano físico.',
     {
-      defense_level: z.union([z.number(), z.string()]).optional().describe('Nível do slider de defesa (10 a 50)'),
-      armor_type: z.string().optional().describe('Tipo de blindagem (lightweight_alloy, titanium_mesh, nanite_composite)')
+      defense_level: z.any().optional().nullable().describe('Nível do slider de defesa (10 a 50)'),
+      armor_type: z.any().optional().nullable().describe('Tipo de blindagem (lightweight_alloy, titanium_mesh, nanite_composite)')
     },
     async (args) => {
-      const defense_level = Number(args.defense_level ?? 25);
-      const armor_type = String(args.armor_type || 'titanium_mesh');
+      const defense_level = Number(args?.defense_level) || 25;
+      const armor_type = String(args?.armor_type || 'titanium_mesh');
 
       // Map 10-50 to 2-5 max HP
       let max_hp = 3;

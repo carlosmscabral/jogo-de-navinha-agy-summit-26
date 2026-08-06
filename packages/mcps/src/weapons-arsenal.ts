@@ -13,14 +13,14 @@ export function createWeaponsArsenalServer(): McpServer {
     'configure_primary_cannon',
     'Configura o canhão primário da nave calculando dano, cadência de tiro e velocidade dos projéteis.',
     {
-      type: z.string().optional().describe('Tipo de armamento primário (plasma, laser, vulcan_spread)'),
-      fire_rate: z.union([z.number(), z.string()]).optional().describe('Cadência de tiro em disparos por segundo'),
-      damage_multiplier: z.union([z.number(), z.string()]).optional().describe('Multiplicador de dano baseado no slider de ataque')
+      type: z.any().optional().nullable().describe('Tipo de armamento primário (plasma, laser, vulcan_spread)'),
+      fire_rate: z.any().optional().nullable().describe('Cadência de tiro em disparos por segundo'),
+      damage_multiplier: z.any().optional().nullable().describe('Multiplicador de dano baseado no slider de ataque')
     },
     async (args) => {
-      const type = String(args.type || 'plasma').toLowerCase();
-      const fire_rate = Number(args.fire_rate ?? 8);
-      const damage_multiplier = Number(args.damage_multiplier ?? 1.0);
+      const type = String(args?.type || 'plasma').toLowerCase();
+      const fire_rate = Number(args?.fire_rate) || 8;
+      const damage_multiplier = Number(args?.damage_multiplier) || 1.0;
 
       let baseDamage = 35;
       let bulletSpeed = 650;
@@ -67,14 +67,14 @@ export function createWeaponsArsenalServer(): McpServer {
     'attach_secondary_ordnance',
     'Instala e calibra o sistema de armas secundárias ativado pela tecla Shift.',
     {
-      type: z.string().optional().describe('Tipo de arma secundária (homing_missiles, emp_burst, drone_escort, none)'),
-      blast_radius: z.union([z.number(), z.string()]).optional().describe('Raio de explosão em pixels'),
-      cooldown_seconds: z.union([z.number(), z.string()]).optional().describe('Tempo de recarga em segundos')
+      type: z.any().optional().nullable().describe('Tipo de arma secundária (homing_missiles, emp_burst, drone_escort, none)'),
+      blast_radius: z.any().optional().nullable().describe('Raio de explosão em pixels'),
+      cooldown_seconds: z.any().optional().nullable().describe('Tempo de recarga em segundos')
     },
     async (args) => {
-      const rawType = String(args.type || 'homing_missiles').toLowerCase();
-      const blast_radius = Number(args.blast_radius ?? 80);
-      const cooldown_seconds = Number(args.cooldown_seconds ?? 2);
+      const rawType = String(args?.type || 'homing_missiles').toLowerCase();
+      const blast_radius = Number(args?.blast_radius) || 80;
+      const cooldown_seconds = Number(args?.cooldown_seconds) || 2;
 
       let damage = 0;
       let type: 'homing_missiles' | 'emp_burst' | 'drone_escort' | 'none' = 'homing_missiles';
