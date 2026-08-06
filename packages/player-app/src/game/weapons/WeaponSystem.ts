@@ -32,7 +32,7 @@ export class WeaponSystem {
     // Create bullet textures if not present
     if (!this.scene.textures.exists('bullet_plasma')) {
       const g = this.scene.add.graphics();
-      g.fillStyle(0x00f3ff, 1);
+      g.fillStyle(0x38bdf8, 1);
       g.fillCircle(8, 8, 6);
       g.fillStyle(0xffffff, 1);
       g.fillCircle(8, 8, 3);
@@ -42,7 +42,7 @@ export class WeaponSystem {
 
     if (!this.scene.textures.exists('bullet_vulcan')) {
       const g = this.scene.add.graphics();
-      g.fillStyle(0xffe600, 1);
+      g.fillStyle(0xff9e0b, 1);
       g.fillRect(2, 0, 4, 12);
       g.generateTexture('bullet_vulcan', 8, 12);
       g.destroy();
@@ -50,7 +50,7 @@ export class WeaponSystem {
 
     if (!this.scene.textures.exists('missile_tex')) {
       const g = this.scene.add.graphics();
-      g.fillStyle(0xff0055, 1);
+      g.fillStyle(0x38bdf8, 1);
       g.fillRect(3, 0, 6, 16);
       g.fillStyle(0xffffff, 1);
       g.fillTriangle(6, 0, 2, 8, 10, 8);
@@ -60,49 +60,57 @@ export class WeaponSystem {
   }
 
   firePrimary(x: number, y: number, time: number): boolean {
-    const fireIntervalMs = 1000 / this.weaponsSpec.primary.fire_rate;
+    // Realistic arcade shmup cadence (6 to 12 shots per second) to prevent instantaneous melting
+    const effectiveFireRate = Math.min(12, Math.max(5, this.weaponsSpec.primary.fire_rate || 8));
+    const fireIntervalMs = 1000 / effectiveFireRate;
+
     if (time - this.lastPrimaryFireTime < fireIntervalMs) {
       return false;
     }
     this.lastPrimaryFireTime = time;
 
     const { type, damage, bullet_speed, spread_angle } = this.weaponsSpec.primary;
+    const balancedDamage = Math.min(45, Math.max(15, damage || 30));
+    const speed = Math.max(550, bullet_speed || 650);
 
     if (type === 'laser') {
-      // High-cadence beam simulation
-      this.spawnBullet(x, y - 20, 0, -bullet_speed, 'bullet_plasma', damage);
+      // Rapid focused laser pulse
+      this.spawnBullet(x, y - 20, 0, -speed, 'bullet_plasma', balancedDamage);
     } else if (type === 'vulcan_spread') {
-      // 3-way spread
-      const angles = [-spread_angle, 0, spread_angle];
-      for (const angle of angles) {
-        const rad = Phaser.Math.DegToRad(angle - 90);
-        const vx = Math.cos(rad) * bullet_speed;
-        const vy = Math.sin(rad) * bullet_speed;
-        this.spawnBullet(x, y - 10, vx, vy, 'bullet_vulcan', damage);
+      // 3-way spread (slightly reduced per-pellet damage for balance)
+      const spreadDamage = Math.round(balancedDamage * 0.7);
+      const angle = spread_angle || 15;
+      const angles = [-angle, 0, angle];
+      for (const a of angles) {
+        const rad = Phaser.Math.DegToRad(a - 90);
+        const vx = Math.cos(rad) * speed;
+        const vy = Math.sin(rad) * speed;
+        this.spawnBullet(x, y - 10, vx, vy, 'bullet_vulcan', spreadDamage);
       }
     } else {
       // Plasma cannon
-      this.spawnBullet(x, y - 20, 0, -bullet_speed, 'bullet_plasma', damage);
+      this.spawnBullet(x, y - 20, 0, -speed, 'bullet_plasma', balancedDamage);
     }
 
     return true;
   }
 
   fireSecondary(x: number, y: number, time: number, targets?: Phaser.GameObjects.Sprite[]): boolean {
-    const cooldownMs = this.weaponsSpec.secondary.cooldown_seconds * 1000;
-    if (this.weaponsSpec.secondary.type === 'none') return false;
+    const cooldownMs = (this.weaponsSpec.secondary?.cooldown_seconds || 2) * 1000;
+    if (this.weaponsSpec.secondary?.type === 'none') return false;
     if (time - this.lastSecondaryFireTime < cooldownMs) {
       return false;
     }
     this.lastSecondaryFireTime = time;
 
     const { type, damage } = this.weaponsSpec.secondary;
+    const balancedDamage = Math.min(120, Math.max(60, damage || 90));
 
     if (type === 'homing_missiles') {
-      this.spawnMissile(x - 20, y, -100, -300, damage, targets);
-      this.spawnMissile(x + 20, y, 100, -300, damage, targets);
+      this.spawnMissile(x - 20, y, -100, -300, balancedDamage, targets);
+      this.spawnMissile(x + 20, y, 100, -300, balancedDamage, targets);
     } else if (type === 'emp_burst') {
-      this.triggerEmpBurst(x, y, damage);
+      this.triggerEmpBurst(x, y, balancedDamage);
     }
 
     return true;
@@ -134,7 +142,7 @@ export class WeaponSystem {
   }
 
   private triggerEmpBurst(x: number, y: number, damage: number): void {
-    const ring = this.scene.add.circle(x, y, 10, 0x00f3ff, 0.4);
+    const ring = this.scene.add.circle(x, y, 10, 0x38bdf8, 0.4);
     this.scene.tweens.add({
       targets: ring,
       radius: 300,
