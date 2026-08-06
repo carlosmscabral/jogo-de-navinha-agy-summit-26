@@ -116,6 +116,17 @@ export class WeaponSystem {
     return true;
   }
 
+  getSecondaryStatus(time: number): { isReady: boolean; progress: number; remainingSec: number; type: string } {
+    const cooldownMs = (this.weaponsSpec.secondary?.cooldown_seconds || 2) * 1000;
+    const elapsed = time - this.lastSecondaryFireTime;
+    const isReady = this.lastSecondaryFireTime === 0 || elapsed >= cooldownMs;
+    const progress = isReady ? 1.0 : Math.min(1.0, Math.max(0, elapsed / cooldownMs));
+    const remainingSec = isReady ? 0 : Math.ceil((cooldownMs - elapsed) / 1000);
+    const type = this.weaponsSpec.secondary?.type || 'homing_missiles';
+
+    return { isReady, progress, remainingSec, type };
+  }
+
   private spawnBullet(x: number, y: number, vx: number, vy: number, texture: string, damage: number): void {
     const bullet = this.primaryBullets.get(x, y, texture) as Phaser.Physics.Arcade.Sprite;
     if (bullet) {

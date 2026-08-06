@@ -42,6 +42,15 @@ export class MainGameScene extends Phaser.Scene {
   hudHpBars: Phaser.GameObjects.Rectangle[] = [];
   hudShieldBars: Phaser.GameObjects.Rectangle[] = [];
 
+  // Secondary Weapon HUD
+  hudSecondaryLabel!: Phaser.GameObjects.Text;
+  hudSecondaryText!: Phaser.GameObjects.Text;
+  hudSecondaryBarBg!: Phaser.GameObjects.Rectangle;
+  hudSecondaryBarFill!: Phaser.GameObjects.Rectangle;
+
+  // Bottom Controls Legend
+  controlsLegendContainer!: Phaser.GameObjects.Container;
+
   // Boss HUD
   bossHudContainer?: Phaser.GameObjects.Container;
   bossHpBarFill?: Phaser.GameObjects.Rectangle;
@@ -115,8 +124,9 @@ export class MainGameScene extends Phaser.Scene {
     // 5. Collisions & Weapon Overlaps
     this.setupCollisions();
 
-    // 6. Modern Aerospace Flight Deck HUD
+    // 6. Modern Aerospace Flight Deck HUD & Controls Legend
     this.setupModernHud();
+    this.setupControlsLegend();
 
     // 7. Match Clock
     this.time.addEvent({
@@ -730,55 +740,99 @@ export class MainGameScene extends Phaser.Scene {
 
   private setupModernHud(): void {
     const hudBg = this.add.graphics();
-    hudBg.fillStyle(0x090b10, 0.92);
+    hudBg.fillStyle(0x090b10, 0.94);
     hudBg.lineStyle(1, 0x334155, 0.6);
-    hudBg.fillRoundedRect(16, 12, this.scale.width - 32, 60, 12);
-    hudBg.strokeRoundedRect(16, 12, this.scale.width - 32, 60, 12);
+    hudBg.fillRoundedRect(16, 10, this.scale.width - 32, 64, 12);
+    hudBg.strokeRoundedRect(16, 10, this.scale.width - 32, 64, 12);
 
-    this.hudTextScore = this.add.text(32, 22, 'SCORE: 0', {
+    // Row 1: Score (Left), Timer (Center), Combo (Right)
+    this.hudTextScore = this.add.text(28, 18, 'SCORE: 0', {
       fontFamily: '"Google Sans Code", monospace',
-      fontSize: '18px',
+      fontSize: '17px',
       color: '#38bdf8'
     });
 
-    this.hudTextTimer = this.add.text(this.scale.width / 2, 22, '90s', {
+    this.hudTextTimer = this.add.text(this.scale.width / 2, 18, '90s', {
       fontFamily: '"Google Sans Flex", sans-serif',
       fontSize: '22px',
       color: '#ff9e0b'
     }).setOrigin(0.5, 0);
 
-    this.hudTextCombo = this.add.text(this.scale.width - 150, 22, '1.0x COMBO', {
+    this.hudTextCombo = this.add.text(this.scale.width - 140, 18, '1.0x COMBO', {
       fontFamily: '"Google Sans Code", monospace',
-      fontSize: '18px',
+      fontSize: '17px',
       color: '#10b981'
     });
 
-    this.add.text(32, 50, 'HULL:', {
+    // Row 2: Hull (HP), Shield, and Secondary Weapon Cooldown
+    this.add.text(28, 48, 'HULL:', {
       fontFamily: '"Google Sans Code", monospace',
-      fontSize: '11px',
+      fontSize: '10px',
       color: '#64748b'
     });
 
     this.hudHpBars = [];
     const maxHp = this.shipSpec.attributes.max_hp;
     for (let i = 0; i < maxHp; i++) {
-      const bar = this.add.rectangle(75 + i * 18, 55, 14, 8, 0x10b981);
+      const bar = this.add.rectangle(66 + i * 16, 53, 12, 7, 0x10b981);
       this.hudHpBars.push(bar);
     }
 
-    this.add.text(220, 50, 'SHIELD:', {
+    this.add.text(160, 48, 'SHIELD:', {
       fontFamily: '"Google Sans Code", monospace',
-      fontSize: '11px',
+      fontSize: '10px',
       color: '#64748b'
     });
 
     this.hudShieldBars = [];
     const maxShield = this.shipSpec.attributes.shield_capacity;
     for (let i = 0; i < 3; i++) {
-      const bar = this.add.rectangle(275 + i * 18, 55, 14, 8, 0x38bdf8);
+      const bar = this.add.rectangle(208 + i * 16, 53, 12, 7, 0x38bdf8);
       bar.setVisible(i < maxShield);
       this.hudShieldBars.push(bar);
     }
+
+    // Secondary Weapon Indicator
+    this.hudSecondaryLabel = this.add.text(290, 48, '[SHIFT] MÍSSEIS:', {
+      fontFamily: '"Google Sans Code", monospace',
+      fontSize: '10px',
+      color: '#ff9e0b'
+    });
+
+    this.hudSecondaryBarBg = this.add.rectangle(400, 53, 60, 7, 0x1e293b).setOrigin(0, 0.5);
+    this.hudSecondaryBarFill = this.add.rectangle(400, 53, 60, 7, 0xff9e0b).setOrigin(0, 0.5);
+
+    this.hudSecondaryText = this.add.text(468, 48, 'PRONTO!', {
+      fontFamily: '"Google Sans Code", monospace',
+      fontSize: '10px',
+      color: '#ff9e0b'
+    });
+  }
+
+  private setupControlsLegend(): void {
+    const width = this.scale.width;
+    const height = this.scale.height;
+
+    this.controlsLegendContainer = this.add.container(0, 0);
+
+    const barBg = this.add.graphics();
+    barBg.fillStyle(0x090b10, 0.88);
+    barBg.lineStyle(1, 0x334155, 0.5);
+    barBg.fillRoundedRect(width / 2 - 250, height - 28, 500, 22, 6);
+    barBg.strokeRoundedRect(width / 2 - 250, height - 28, 500, 22, 6);
+
+    const legendText = this.add.text(
+      width / 2,
+      height - 17,
+      '⌨️  [ WASD / ◀▲▼▶ ] MOVER   •   [ ESPAÇO ] CANHÃO   •   [ SHIFT ] ARMA SECUNDÁRIA',
+      {
+        fontFamily: '"Google Sans Code", monospace',
+        fontSize: '10px',
+        color: '#94a3b8'
+      }
+    ).setOrigin(0.5);
+
+    this.controlsLegendContainer.add([barBg, legendText]);
   }
 
   update(time: number, delta: number): void {
@@ -854,6 +908,22 @@ export class MainGameScene extends Phaser.Scene {
 
       for (let i = 0; i < this.hudShieldBars.length; i++) {
         this.hudShieldBars[i].setFillStyle(i < this.player.currentShield ? 0x38bdf8 : 0x1e293b);
+      }
+
+      // Update Secondary Weapon Cooldown & Status
+      if (this.player && this.player.weaponSystem) {
+        const sec = this.player.weaponSystem.getSecondaryStatus(time);
+        if (sec.isReady) {
+          this.hudSecondaryText.setText('PRONTO!');
+          this.hudSecondaryText.setColor('#ff9e0b');
+          this.hudSecondaryBarFill.width = 60;
+          this.hudSecondaryBarFill.setFillStyle(0xff9e0b);
+        } else {
+          this.hudSecondaryText.setText(`${sec.remainingSec}s`);
+          this.hudSecondaryText.setColor('#64748b');
+          this.hudSecondaryBarFill.width = 60 * sec.progress;
+          this.hudSecondaryBarFill.setFillStyle(0x38bdf8);
+        }
       }
     }
   }
