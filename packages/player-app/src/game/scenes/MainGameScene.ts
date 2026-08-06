@@ -21,11 +21,13 @@ export class MainGameScene extends Phaser.Scene {
   player!: PlayerShip;
   boss?: BossOverlord;
   scoreCalculator = new ScoreCalculator();
+  onMatchComplete?: (data: { finalScore: number; victory: boolean; breakdown: any }) => void;
 
   matchTimer = 90;
   elapsedSeconds = 0;
   isGameOver = false;
   isVictory = false;
+  hasNotifiedCompletion = false;
 
   enemies!: Phaser.Physics.Arcade.Group;
   enemyBullets!: Phaser.Physics.Arcade.Group;
@@ -59,6 +61,7 @@ export class MainGameScene extends Phaser.Scene {
     this.isHardcore = !!data?.isHardcore;
     this.isGameOver = false;
     this.isVictory = false;
+    this.hasNotifiedCompletion = false;
     this.elapsedSeconds = 0;
     this.matchTimer = 90;
     this.scoreCalculator = new ScoreCalculator();
@@ -144,21 +147,18 @@ export class MainGameScene extends Phaser.Scene {
       loop: true
     });
 
-    // Key R to restart
-    if (this.input.keyboard) {
-      this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R).on('down', () => {
-        if (this.isGameOver || this.isVictory) {
-          this.scene.restart({ shipSpec: this.shipSpec, isHardcore: this.isHardcore });
-        }
-      });
-    }
+    // Keys and Click handler to transition to debrief when game concludes
+    this.input.keyboard?.on('keydown', (e: KeyboardEvent) => {
+      audioManager.unlockAudio();
+      if ((this.isGameOver || this.isVictory) && (e.code === 'Space' || e.code === 'Enter' || e.code === 'KeyR')) {
+        this.finishMatchAndTransition();
+      }
+    });
 
-    // Audio unlock on click / key
-    this.input.keyboard?.on('keydown', () => audioManager.unlockAudio());
     this.input.on('pointerdown', () => {
       audioManager.unlockAudio();
       if (this.isGameOver || this.isVictory) {
-        this.scene.restart({ shipSpec: this.shipSpec, isHardcore: this.isHardcore });
+        this.finishMatchAndTransition();
       }
     });
 
@@ -397,17 +397,20 @@ export class MainGameScene extends Phaser.Scene {
     this.scoreCalculator.registerKill('boss');
     this.cameras.main.shake(1000, 0.035);
 
-    this.time.delayedCall(1200, () => this.showVictoryOverlay());
+    this.time.delayedCall(1000, () => this.showVictoryOverlay());
   }
 
   private showVictoryOverlay(): void {
     const width = this.scale.width;
     const height = this.scale.height;
+    const mcpCount = this.shipSpec.build_metadata?.selected_mcps?.length || 3;
+
     const scoreResult = this.scoreCalculator.calculateFinalScore({
       bossDefeated: true,
       remainingTimeSeconds: this.matchTimer,
       remainingHp: this.player.currentHp,
-      synergyBonusUnlocked: true
+      synergyBonusUnlocked: true,
+      mcpCount
     });
 
     this.overlayContainer = this.add.container(0, 0);
@@ -442,10 +445,11 @@ export class MainGameScene extends Phaser.Scene {
       }
     ).setOrigin(0.5);
 
+    const multInfo = scoreResult.mcpMultiplier > 1.0 ? ` (Bônus Especialista: ${scoreResult.mcpMultiplier}x)` : '';
     const breakdown = this.add.text(
       width / 2,
       height / 2 + 25,
-      `Combate: ${scoreResult.breakdown.combatScore.toLocaleString()} | Boss: +10.000\nBônus Tempo: +${scoreResult.breakdown.timeBonus} (${this.matchTimer}s restantes)\nSobrevivência: +${scoreResult.breakdown.survivalBonus} (${this.player.currentHp} HP)`,
+      `Combate: ${scoreResult.breakdown.combatScore.toLocaleString()} | Boss: +10.000\nTempo: +${scoreResult.breakdown.timeBonus} (${this.matchTimer}s) | HP: +${scoreResult.breakdown.survivalBonus}${multInfo}`,
       {
         fontFamily: '"Google Sans Code", monospace',
         fontSize: '12px',
@@ -454,7 +458,7 @@ export class MainGameScene extends Phaser.Scene {
       }
     ).setOrigin(0.5);
 
-    const restartPrompt = this.add.text(width / 2, height / 2 + 140, '▶ PRESSIONE [ R ] OU CLIQUE PARA NOVA PARTIDA', {
+    const restartPrompt = this.add.text(width / 2, height / 2 + 140, '▶ PRESSIONE [ ESPAÇO ] PARA O DEBRIEFING', {
       fontFamily: '"Google Sans Code", monospace',
       fontSize: '13px',
       color: '#ffffff'
@@ -469,6 +473,11 @@ export class MainGameScene extends Phaser.Scene {
     });
 
     this.overlayContainer.add([bg, card, title, subtitle, finalScore, breakdown, restartPrompt]);
+
+    // Auto-transition to Debrief after 3.5s
+    this.time.delayedCall(3500, () => {
+      this.finishMatchAndTransition();
+    });
   }
 
   private triggerTimeoutEnd(): void {
@@ -491,6 +500,15 @@ export class MainGameScene extends Phaser.Scene {
   private showGameOverOverlay(titleText: string, subtitleText: string): void {
     const width = this.scale.width;
     const height = this.scale.height;
+    const mcpCount = this.shipSpec.build_metadata?.selected_mcps?.length || 3;
+
+    const scoreResult = this.scoreCalculator.calculateFinalScore({
+      bossDefeated: false,
+      remainingTimeSeconds: 0,
+      remainingHp: 0,
+      synergyBonusUnlocked: false,
+      mcpCount
+    });
 
     this.overlayContainer = this.add.container(0, 0);
     const bg = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.82);
@@ -516,7 +534,7 @@ export class MainGameScene extends Phaser.Scene {
     const finalScore = this.add.text(
       width / 2,
       height / 2,
-      `PONTUAÇÃO: ${this.scoreCalculator.currentScore.toLocaleString()} PTS`,
+      `PONTUAÇÃO: ${scoreResult.finalScore.toLocaleString()} PTS`,
       {
         fontFamily: '"Google Sans Flex", sans-serif',
         fontSize: '24px',
@@ -535,7 +553,7 @@ export class MainGameScene extends Phaser.Scene {
       }
     ).setOrigin(0.5);
 
-    const restartPrompt = this.add.text(width / 2, height / 2 + 115, '▶ PRESSIONE [ R ] OU CLIQUE PARA REINICIAR', {
+    const restartPrompt = this.add.text(width / 2, height / 2 + 115, '▶ PRESSIONE [ ESPAÇO ] PARA O DEBRIEFING', {
       fontFamily: '"Google Sans Code", monospace',
       fontSize: '13px',
       color: '#ffffff'
@@ -550,6 +568,33 @@ export class MainGameScene extends Phaser.Scene {
     });
 
     this.overlayContainer.add([bg, card, title, subtitle, finalScore, kills, restartPrompt]);
+
+    // Auto-transition to Debrief after 3.5s
+    this.time.delayedCall(3500, () => {
+      this.finishMatchAndTransition();
+    });
+  }
+
+  private finishMatchAndTransition(): void {
+    if (this.hasNotifiedCompletion) return;
+    this.hasNotifiedCompletion = true;
+
+    const mcpCount = this.shipSpec.build_metadata?.selected_mcps?.length || 3;
+    const scoreResult = this.scoreCalculator.calculateFinalScore({
+      bossDefeated: this.isVictory,
+      remainingTimeSeconds: this.matchTimer,
+      remainingHp: this.player?.currentHp || 0,
+      synergyBonusUnlocked: this.isVictory,
+      mcpCount
+    });
+
+    if (this.onMatchComplete) {
+      this.onMatchComplete({
+        finalScore: scoreResult.finalScore,
+        victory: this.isVictory,
+        breakdown: scoreResult.breakdown
+      });
+    }
   }
 
   private createCosmicBackground(): void {

@@ -24,7 +24,7 @@ export function App() {
   const [selectedSubagents, setSelectedSubagents] = useState<SubagentName[]>(['aesthetic-designer', 'combat-strategist']);
   const [shipSpec, setShipSpec] = useState<ShipSpecification>(FALLBACK_PRESETS.interceptor);
   const [isMuted, setIsMuted] = useState(false);
-  const [lastMatch, setLastMatch] = useState<Partial<MatchRecord> | undefined>();
+  const [lastMatch, setLastMatch] = useState<Partial<MatchRecord> & { victory?: boolean; breakdown?: any } | undefined>();
 
   const gameContainerRef = useRef<HTMLDivElement>(null);
   const gameInstanceRef = useRef<Phaser.Game | null>(null);
@@ -32,7 +32,14 @@ export function App() {
   // Initialize Game Instance when entering GAMEPLAY stage
   useEffect(() => {
     if (stage === 'GAMEPLAY' && gameContainerRef.current && !gameInstanceRef.current) {
-      gameInstanceRef.current = createGameInstance(gameContainerRef.current, shipSpec);
+      gameInstanceRef.current = createGameInstance(
+        gameContainerRef.current,
+        shipSpec,
+        false,
+        (result) => {
+          handleMatchComplete(result);
+        }
+      );
     }
 
     return () => {
@@ -102,13 +109,15 @@ export function App() {
     setStage('GAMEPLAY');
   };
 
-  const handleGameOverOrVictory = (finalScore: number) => {
-    const matchRecord: Partial<MatchRecord> = {
+  const handleMatchComplete = (result: { finalScore: number; victory: boolean; breakdown: any }) => {
+    const matchRecord = {
       match_id: `match_${Date.now()}`,
       callsign: pilot.callsign,
       company_canonical: pilot.company_canonical,
-      final_score: finalScore,
-      created_at: new Date().toISOString()
+      final_score: result.finalScore,
+      created_at: new Date().toISOString(),
+      victory: result.victory,
+      breakdown: result.breakdown
     };
 
     setLastMatch(matchRecord);

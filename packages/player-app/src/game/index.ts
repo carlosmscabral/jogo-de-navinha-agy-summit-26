@@ -2,10 +2,17 @@ import Phaser from 'phaser';
 import { MainGameScene } from './scenes/MainGameScene.js';
 import { ShipSpecification } from '@jogo/shared';
 
+export interface MatchCompleteData {
+  finalScore: number;
+  victory: boolean;
+  breakdown: any;
+}
+
 export function createGameInstance(
   container: HTMLElement | string,
   shipSpec?: ShipSpecification,
-  isHardcore = false
+  isHardcore = false,
+  onMatchComplete?: (data: MatchCompleteData) => void
 ): Phaser.Game {
   class CustomGameScene extends MainGameScene {
     constructor() {
@@ -14,6 +21,7 @@ export function createGameInstance(
         this.shipSpec = shipSpec;
       }
       this.isHardcore = isHardcore;
+      this.onMatchComplete = onMatchComplete;
     }
   }
 
