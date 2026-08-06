@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { ShipSpecification, FALLBACK_PRESETS } from '@jogo/shared';
 import { PlayerShip } from '../objects/PlayerShip.js';
+import { BossOverlord } from '../objects/BossOverlord.js';
 import { ShipTextureFactory } from '../factories/ShipTextureFactory.js';
 import { ScoreCalculator } from '../scoring/ScoreCalculator.js';
 import { audioManager } from '../audio/AudioManager.js';
@@ -17,20 +18,31 @@ interface StarPoint {
 export class MainGameScene extends Phaser.Scene {
   shipSpec: ShipSpecification = FALLBACK_PRESETS.interceptor;
   player!: PlayerShip;
+  boss?: BossOverlord;
   scoreCalculator = new ScoreCalculator();
+
+  matchTimer = 90; // 90-second match
+  elapsedSeconds = 0;
   isGameOver = false;
+  isVictory = false;
 
   enemies!: Phaser.Physics.Arcade.Group;
   stars: StarPoint[] = [];
   starfieldGraphics!: Phaser.GameObjects.Graphics;
   nebulaGraphics!: Phaser.GameObjects.Graphics;
 
-  hudContainer!: Phaser.GameObjects.Container;
+  // HUD Elements
   hudTextScore!: Phaser.GameObjects.Text;
+  hudTextTimer!: Phaser.GameObjects.Text;
   hudTextCombo!: Phaser.GameObjects.Text;
   hudHpBars: Phaser.GameObjects.Rectangle[] = [];
   hudShieldBars: Phaser.GameObjects.Rectangle[] = [];
-  gameOverContainer?: Phaser.GameObjects.Container;
+
+  // Boss HUD
+  bossHudContainer?: Phaser.GameObjects.Container;
+  bossHpBarFill?: Phaser.GameObjects.Rectangle;
+
+  overlayContainer?: Phaser.GameObjects.Container;
 
   constructor() {
     super({ key: 'MainGameScene' });
@@ -41,14 +53,19 @@ export class MainGameScene extends Phaser.Scene {
       this.shipSpec = data.shipSpec;
     }
     this.isGameOver = false;
+    this.isVictory = false;
+    this.elapsedSeconds = 0;
+    this.matchTimer = 90;
     this.scoreCalculator = new ScoreCalculator();
+    this.boss = undefined;
+    audioManager.setBossMode(false);
   }
 
   create(): void {
-    // 1. Create Deep Space & Starfield
+    // 1. Cosmic Deep Space Background
     this.createCosmicBackground();
 
-    // 2. Generate dynamic ship & enemy textures synchronously
+    // 2. Generate Ship & Enemy Textures
     const textureKey = `ship_${this.shipSpec.visuals.style_name.replace(/\s+/g, '_')}`;
     ShipTextureFactory.createShipTexture(this, textureKey, this.shipSpec.visuals);
     ShipTextureFactory.createEnemyDroneTexture(this);
@@ -66,32 +83,354 @@ export class MainGameScene extends Phaser.Scene {
       this.shipSpec.visuals
     );
 
-    // 4. Enemy Drone Pool
-    this.createEnemyDrones();
+    // 4. Enemy Pool
+    this.enemies = this.physics.add.group({
+      defaultKey: 'drone_tex',
+      maxSize: 35
+    });
 
-    // 5. Collisions & FX
+    // 5. Collisions & Weapon Overlaps
     this.setupCollisions();
 
     // 6. Modern Sci-Fi HUD
     this.setupModernHud();
 
-    // 7. Restart key (R)
+    // 7. Match Timeline Clock (1-second tick)
+    this.time.addEvent({
+      delay: 1000,
+      callback: () => this.handleMatchTick(),
+      loop: true
+    });
+
+    // 8. Enemy Wave Spawner
+    this.time.addEvent({
+      delay: 900,
+      callback: () => {
+        if (!this.isGameOver && !this.isVictory && this.elapsedSeconds < 60) {
+          this.spawnWaveEnemies();
+        }
+      },
+      loop: true
+    });
+
+    // Key R to restart
     if (this.input.keyboard) {
       this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R).on('down', () => {
-        if (this.isGameOver) {
+        if (this.isGameOver || this.isVictory) {
           this.scene.restart({ shipSpec: this.shipSpec });
         }
       });
     }
 
-    // Unlock audio on interaction
+    // Audio unlock on click / key
     this.input.keyboard?.on('keydown', () => audioManager.unlockAudio());
     this.input.on('pointerdown', () => {
       audioManager.unlockAudio();
-      if (this.isGameOver) {
+      if (this.isGameOver || this.isVictory) {
         this.scene.restart({ shipSpec: this.shipSpec });
       }
     });
+
+    audioManager.unlockAudio();
+  }
+
+  private handleMatchTick(): void {
+    if (this.isGameOver || this.isVictory) return;
+
+    this.elapsedSeconds += 1;
+    this.matchTimer = Math.max(0, 90 - this.elapsedSeconds);
+
+    // Trigger Boss Warning at 58s, Spawn Boss at 60s
+    if (this.elapsedSeconds === 58) {
+      this.triggerBossWarning();
+    } else if (this.elapsedSeconds === 60) {
+      this.spawnBoss();
+    }
+
+    // Match Timeout
+    if (this.matchTimer <= 0 && !this.isVictory) {
+      this.triggerTimeoutEnd();
+    }
+  }
+
+  private spawnWaveEnemies(): void {
+    const x = Phaser.Math.Between(60, this.scale.width - 60);
+    const drone = this.enemies.get(x, -40, 'drone_tex') as Phaser.Physics.Arcade.Sprite;
+    if (drone) {
+      drone.setActive(true);
+      drone.setVisible(true);
+      drone.setPosition(x, -40);
+
+      const isElite = this.elapsedSeconds >= 25 && Math.random() > 0.6;
+      if (isElite) {
+        drone.setScale(1.2);
+        drone.setTint(0xffaa00);
+        drone.setData('hp', 80);
+        drone.setData('type', 'cruiser');
+        drone.setVelocity(Phaser.Math.Between(-15, 15), 140);
+      } else {
+        drone.setScale(0.8);
+        drone.clearTint();
+        drone.setData('hp', 30);
+        drone.setData('type', 'drone');
+        drone.setVelocity(Phaser.Math.Between(-25, 25), Phaser.Math.Between(180, 260));
+      }
+    }
+  }
+
+  private triggerBossWarning(): void {
+    audioManager.playBossWarning();
+    this.cameras.main.shake(400, 0.015);
+
+    const banner = this.add.text(this.scale.width / 2, 200, '⚠️ BOSS DETECTED: THE CYBER OVERLORD ⚠️', {
+      fontFamily: '"Share Tech Mono", monospace',
+      fontSize: '18px',
+      color: '#ff0055'
+    }).setOrigin(0.5);
+
+    this.tweens.add({
+      targets: banner,
+      alpha: 0.2,
+      yoyo: true,
+      repeat: 4,
+      duration: 200,
+      onComplete: () => banner.destroy()
+    });
+  }
+
+  private spawnBoss(): void {
+    audioManager.setBossMode(true);
+    this.boss = new BossOverlord(this, this.scale.width / 2, 140);
+    this.setupBossHud();
+
+    // Setup Boss collision with player bullets
+    this.physics.add.overlap(
+      this.player.weaponSystem.primaryBullets,
+      this.boss,
+      (bulletObj) => {
+        if (!this.boss || this.boss.isDead) return;
+        const bullet = bulletObj as Phaser.Physics.Arcade.Sprite;
+        const damage = (bullet.getData('damage') as number) || 30;
+
+        bullet.setActive(false);
+        bullet.setVisible(false);
+
+        const isKilled = this.boss.takeDamage(damage);
+        audioManager.playHit();
+        this.createHitSpark(bullet.x, bullet.y);
+
+        if (isKilled) {
+          this.triggerBossDefeated();
+        }
+      }
+    );
+
+    // Boss bullets vs Player
+    this.physics.add.overlap(this.player, this.boss.bullets, (_, bulletObj) => {
+      if (this.isGameOver || this.isVictory) return;
+      const bullet = bulletObj as Phaser.Physics.Arcade.Sprite;
+      bullet.setActive(false);
+      bullet.setVisible(false);
+
+      const isDead = this.player.takeDamage(1);
+      this.scoreCalculator.registerDamageTaken();
+      audioManager.playHit();
+
+      if (isDead) {
+        this.triggerPlayerDeath();
+      }
+    });
+  }
+
+  private setupBossHud(): void {
+    const width = this.scale.width;
+    this.bossHudContainer = this.add.container(0, 0);
+
+    const bg = this.add.graphics();
+    bg.fillStyle(0x050515, 0.9);
+    bg.lineStyle(1, 0xff0055, 0.5);
+    bg.fillRoundedRect(width / 2 - 180, 80, 360, 26, 6);
+    bg.strokeRoundedRect(width / 2 - 180, 80, 360, 26, 6);
+
+    const label = this.add.text(width / 2, 70, 'THE CYBER OVERLORD // 2.000 HP', {
+      fontFamily: '"Share Tech Mono", monospace',
+      fontSize: '11px',
+      color: '#ff0055'
+    }).setOrigin(0.5);
+
+    this.bossHpBarFill = this.add.rectangle(width / 2 - 176, 84, 352, 18, 0xff0055).setOrigin(0, 0);
+    this.bossHudContainer.add([bg, label, this.bossHpBarFill]);
+  }
+
+  private triggerBossDefeated(): void {
+    this.isVictory = true;
+    audioManager.setBossMode(false);
+    audioManager.playVictoryJingle();
+
+    if (this.boss) {
+      this.createExplosionFX(this.boss.x, this.boss.y, true);
+      this.createExplosionFX(this.boss.x - 60, this.boss.y + 20, true);
+      this.createExplosionFX(this.boss.x + 60, this.boss.y + 20, true);
+      this.boss.setActive(false);
+      this.boss.setVisible(false);
+    }
+
+    this.scoreCalculator.registerKill('boss');
+    this.cameras.main.shake(800, 0.02);
+
+    this.time.delayedCall(1000, () => this.showVictoryOverlay());
+  }
+
+  private showVictoryOverlay(): void {
+    const width = this.scale.width;
+    const height = this.scale.height;
+    const scoreResult = this.scoreCalculator.calculateFinalScore({
+      bossDefeated: true,
+      remainingTimeSeconds: this.matchTimer,
+      remainingHp: this.player.currentHp,
+      synergyBonusUnlocked: true
+    });
+
+    this.overlayContainer = this.add.container(0, 0);
+    const bg = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.8);
+
+    const card = this.add.graphics();
+    card.fillStyle(0x0a0a25, 0.96);
+    card.lineStyle(2, 0x00ff88, 0.9);
+    card.fillRoundedRect(width / 2 - 230, height / 2 - 190, 460, 380, 16);
+    card.strokeRoundedRect(width / 2 - 230, height / 2 - 190, 460, 380, 16);
+
+    const title = this.add.text(width / 2, height / 2 - 140, 'MISSÃO CUMPRIDA!', {
+      fontFamily: '"Share Tech Mono", monospace',
+      fontSize: '28px',
+      color: '#00ff88'
+    }).setOrigin(0.5);
+
+    const subtitle = this.add.text(width / 2, height / 2 - 105, 'OVERLORD DESTRUÍDO // FORJA SUPREMA', {
+      fontFamily: '"Share Tech Mono", monospace',
+      fontSize: '12px',
+      color: '#00f3ff'
+    }).setOrigin(0.5);
+
+    const finalScore = this.add.text(
+      width / 2,
+      height / 2 - 50,
+      `PONTUAÇÃO FINAL: ${scoreResult.finalScore.toLocaleString()} PTS`,
+      {
+        fontFamily: '"Share Tech Mono", monospace',
+        fontSize: '20px',
+        color: '#ffd700'
+      }
+    ).setOrigin(0.5);
+
+    const breakdown = this.add.text(
+      width / 2,
+      height / 2 + 20,
+      `Combate: ${scoreResult.breakdown.combatScore.toLocaleString()} | Boss: +5.000\nBônus Tempo: +${scoreResult.breakdown.timeBonus} (${this.matchTimer}s)\nSobrevivência: +${scoreResult.breakdown.survivalBonus} (${this.player.currentHp} HP)`,
+      {
+        fontFamily: '"Share Tech Mono", monospace',
+        fontSize: '12px',
+        color: '#cceeff',
+        align: 'center'
+      }
+    ).setOrigin(0.5);
+
+    const restartPrompt = this.add.text(width / 2, height / 2 + 130, '▶ PRESSIONE [ R ] OU CLIQUE PARA NOVA PARTIDA', {
+      fontFamily: '"Share Tech Mono", monospace',
+      fontSize: '13px',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+
+    this.tweens.add({
+      targets: restartPrompt,
+      alpha: 0.2,
+      yoyo: true,
+      repeat: -1,
+      duration: 500
+    });
+
+    this.overlayContainer.add([bg, card, title, subtitle, finalScore, breakdown, restartPrompt]);
+  }
+
+  private triggerTimeoutEnd(): void {
+    this.isGameOver = true;
+    this.showGameOverOverlay('TEMPO ESGOTADO', 'SINAL PERDIDO // RECUO TÁTICO');
+  }
+
+  private triggerPlayerDeath(): void {
+    this.isGameOver = true;
+    audioManager.setBossMode(false);
+    this.createExplosionFX(this.player.x, this.player.y, true);
+    audioManager.playExplosion(true);
+
+    this.player.setActive(false);
+    this.player.setVisible(false);
+
+    this.time.delayedCall(500, () => this.showGameOverOverlay('SINAL PERDIDO', 'FUSELAGEM DESTRUÍDA EM COMBATE'));
+  }
+
+  private showGameOverOverlay(titleText: string, subtitleText: string): void {
+    const width = this.scale.width;
+    const height = this.scale.height;
+
+    this.overlayContainer = this.add.container(0, 0);
+    const bg = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.78);
+
+    const card = this.add.graphics();
+    card.fillStyle(0x0a0a20, 0.95);
+    card.lineStyle(2, 0xff0055, 0.8);
+    card.fillRoundedRect(width / 2 - 220, height / 2 - 160, 440, 320, 16);
+    card.strokeRoundedRect(width / 2 - 220, height / 2 - 160, 440, 320, 16);
+
+    const title = this.add.text(width / 2, height / 2 - 100, titleText, {
+      fontFamily: '"Share Tech Mono", monospace',
+      fontSize: '32px',
+      color: '#ff0055'
+    }).setOrigin(0.5);
+
+    const subtitle = this.add.text(width / 2, height / 2 - 60, subtitleText, {
+      fontFamily: '"Share Tech Mono", monospace',
+      fontSize: '12px',
+      color: '#ff88aa'
+    }).setOrigin(0.5);
+
+    const finalScore = this.add.text(
+      width / 2,
+      height / 2,
+      `PONTUAÇÃO: ${this.scoreCalculator.currentScore.toLocaleString()} PTS`,
+      {
+        fontFamily: '"Share Tech Mono", monospace',
+        fontSize: '22px',
+        color: '#00f3ff'
+      }
+    ).setOrigin(0.5);
+
+    const kills = this.add.text(
+      width / 2,
+      height / 2 + 40,
+      `ALVOS ABATIDOS: ${this.scoreCalculator.totalKills} | COMBO: ${this.scoreCalculator.comboMultiplier.toFixed(1)}x`,
+      {
+        fontFamily: '"Share Tech Mono", monospace',
+        fontSize: '13px',
+        color: '#ffd700'
+      }
+    ).setOrigin(0.5);
+
+    const restartPrompt = this.add.text(width / 2, height / 2 + 105, '▶ PRESSIONE [ R ] OU CLIQUE PARA REINICIAR', {
+      fontFamily: '"Share Tech Mono", monospace',
+      fontSize: '13px',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+
+    this.tweens.add({
+      targets: restartPrompt,
+      alpha: 0.2,
+      yoyo: true,
+      repeat: -1,
+      duration: 500
+    });
+
+    this.overlayContainer.add([bg, card, title, subtitle, finalScore, kills, restartPrompt]);
   }
 
   private createCosmicBackground(): void {
@@ -120,41 +459,12 @@ export class MainGameScene extends Phaser.Scene {
     }
   }
 
-  private createEnemyDrones(): void {
-    this.enemies = this.physics.add.group({
-      defaultKey: 'drone_tex',
-      maxSize: 30
-    });
-
-    this.time.addEvent({
-      delay: 1000,
-      callback: () => {
-        if (!this.isGameOver) this.spawnDroneSquad();
-      },
-      loop: true
-    });
-  }
-
-  private spawnDroneSquad(): void {
-    const x = Phaser.Math.Between(60, this.scale.width - 60);
-    const drone = this.enemies.get(x, -40, 'drone_tex') as Phaser.Physics.Arcade.Sprite;
-    if (drone) {
-      drone.setActive(true);
-      drone.setVisible(true);
-      drone.setPosition(x, -40);
-      drone.setScale(0.8);
-      drone.setVelocity(Phaser.Math.Between(-25, 25), Phaser.Math.Between(180, 260));
-      drone.setData('hp', 30);
-    }
-  }
-
   private setupCollisions(): void {
-    // Bullets vs Enemies
     this.physics.add.overlap(
       this.player.weaponSystem.primaryBullets,
       this.enemies,
       (bulletObj, enemyObj) => {
-        if (this.isGameOver) return;
+        if (this.isGameOver || this.isVictory) return;
         const bullet = bulletObj as Phaser.Physics.Arcade.Sprite;
         const enemy = enemyObj as Phaser.Physics.Arcade.Sprite;
         const damage = (bullet.getData('damage') as number) || 30;
@@ -169,7 +479,8 @@ export class MainGameScene extends Phaser.Scene {
           this.createExplosionFX(enemy.x, enemy.y);
           enemy.setActive(false);
           enemy.setVisible(false);
-          this.scoreCalculator.registerKill('drone');
+          const type = (enemy.getData('type') as 'drone' | 'cruiser') || 'drone';
+          this.scoreCalculator.registerKill(type);
           audioManager.playExplosion();
         } else {
           enemy.setData('hp', hp);
@@ -179,9 +490,8 @@ export class MainGameScene extends Phaser.Scene {
       }
     );
 
-    // Player vs Enemy collision
     this.physics.add.overlap(this.player, this.enemies, (_, enemyObj) => {
-      if (this.isGameOver) return;
+      if (this.isGameOver || this.isVictory) return;
       const enemy = enemyObj as Phaser.Physics.Arcade.Sprite;
       this.createExplosionFX(enemy.x, enemy.y);
       enemy.setActive(false);
@@ -195,87 +505,6 @@ export class MainGameScene extends Phaser.Scene {
         this.triggerPlayerDeath();
       }
     });
-  }
-
-  private triggerPlayerDeath(): void {
-    this.isGameOver = true;
-
-    // Massive Player Explosion
-    this.createExplosionFX(this.player.x, this.player.y, true);
-    audioManager.playExplosion();
-
-    this.player.setActive(false);
-    this.player.setVisible(false);
-
-    // Show Game Over Glass Overlay
-    this.time.delayedCall(500, () => this.showGameOverOverlay());
-  }
-
-  private showGameOverOverlay(): void {
-    const width = this.scale.width;
-    const height = this.scale.height;
-
-    this.gameOverContainer = this.add.container(0, 0);
-
-    // Dark backdrop
-    const bg = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.75);
-
-    // Glass Card
-    const card = this.add.graphics();
-    card.fillStyle(0x0a0a20, 0.95);
-    card.lineStyle(2, 0xff0055, 0.8);
-    card.fillRoundedRect(width / 2 - 220, height / 2 - 160, 440, 320, 16);
-    card.strokeRoundedRect(width / 2 - 220, height / 2 - 160, 440, 320, 16);
-
-    const title = this.add.text(width / 2, height / 2 - 100, 'SINAL PERDIDO', {
-      fontFamily: '"Share Tech Mono", monospace',
-      fontSize: '32px',
-      color: '#ff0055'
-    }).setOrigin(0.5);
-
-    const subtitle = this.add.text(width / 2, height / 2 - 60, 'FUSELAGEM DESTRUÍDA EM COMBATE', {
-      fontFamily: '"Share Tech Mono", monospace',
-      fontSize: '12px',
-      color: '#ff88aa'
-    }).setOrigin(0.5);
-
-    const finalScore = this.add.text(
-      width / 2,
-      height / 2,
-      `PONTUAÇÃO: ${this.scoreCalculator.currentScore.toLocaleString()}`,
-      {
-        fontFamily: '"Share Tech Mono", monospace',
-        fontSize: '22px',
-        color: '#00f3ff'
-      }
-    ).setOrigin(0.5);
-
-    const kills = this.add.text(
-      width / 2,
-      height / 2 + 40,
-      `ALVOS ABATIDOS: ${this.scoreCalculator.totalKills} | COMBO MÁXIMO: ${this.scoreCalculator.comboMultiplier.toFixed(1)}x`,
-      {
-        fontFamily: '"Share Tech Mono", monospace',
-        fontSize: '13px',
-        color: '#ffd700'
-      }
-    ).setOrigin(0.5);
-
-    const restartPrompt = this.add.text(width / 2, height / 2 + 105, '▶ PRESSIONE [ R ] OU CLIQUE PARA REINICIAR', {
-      fontFamily: '"Share Tech Mono", monospace',
-      fontSize: '13px',
-      color: '#ffffff'
-    }).setOrigin(0.5);
-
-    this.tweens.add({
-      targets: restartPrompt,
-      alpha: 0.2,
-      yoyo: true,
-      repeat: -1,
-      duration: 500
-    });
-
-    this.gameOverContainer.add([bg, card, title, subtitle, finalScore, kills, restartPrompt]);
   }
 
   private createExplosionFX(x: number, y: number, isMajor = false): void {
@@ -325,9 +554,15 @@ export class MainGameScene extends Phaser.Scene {
 
     this.hudTextScore = this.add.text(32, 22, 'SCORE: 0', {
       fontFamily: '"Share Tech Mono", monospace',
-      fontSize: '22px',
+      fontSize: '20px',
       color: '#00f3ff'
     });
+
+    this.hudTextTimer = this.add.text(this.scale.width / 2, 22, '90s', {
+      fontFamily: '"Share Tech Mono", monospace',
+      fontSize: '20px',
+      color: '#ffd700'
+    }).setOrigin(0.5, 0);
 
     this.hudTextCombo = this.add.text(this.scale.width - 150, 22, '1.0x COMBO', {
       fontFamily: '"Share Tech Mono", monospace',
@@ -377,8 +612,17 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     // Update Player if alive
-    if (!this.isGameOver && this.player && this.player.active) {
+    if (!this.isGameOver && !this.isVictory && this.player && this.player.active) {
       this.player.update(time, delta);
+    }
+
+    // Update Boss if active
+    if (this.boss && this.boss.active) {
+      this.boss.update(time, delta);
+      if (this.bossHpBarFill) {
+        const pct = Math.max(0, this.boss.currentHp / this.boss.maxHp);
+        this.bossHpBarFill.width = 352 * pct;
+      }
     }
 
     // Clean off-screen enemies
@@ -394,6 +638,7 @@ export class MainGameScene extends Phaser.Scene {
     // Update HUD
     if (this.hudTextScore) {
       this.hudTextScore.setText(`SCORE: ${this.scoreCalculator.currentScore.toLocaleString()}`);
+      this.hudTextTimer.setText(`${this.matchTimer}s`);
       this.hudTextCombo.setText(`${this.scoreCalculator.comboMultiplier.toFixed(1)}x COMBO`);
 
       for (let i = 0; i < this.hudHpBars.length; i++) {

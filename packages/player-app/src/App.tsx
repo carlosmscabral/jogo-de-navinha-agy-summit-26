@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FALLBACK_PRESETS } from '@jogo/shared';
 import { createGameInstance } from './game/index.js';
-import { Rocket, Crosshair, Shield, Zap, Sparkles, Activity } from 'lucide-react';
+import { audioManager } from './game/audio/AudioManager.js';
+import { Rocket, Crosshair, Shield, Zap, Sparkles, Activity, Volume2, VolumeX } from 'lucide-react';
 
 export function App() {
   const [selectedPreset, setSelectedPreset] = useState<'interceptor' | 'vanguard' | 'striker'>('interceptor');
+  const [isMuted, setIsMuted] = useState(false);
   const gameContainerRef = useRef<HTMLDivElement>(null);
   const gameInstanceRef = useRef<Phaser.Game | null>(null);
 
@@ -19,6 +21,7 @@ export function App() {
         gameInstanceRef.current.destroy(true);
         gameInstanceRef.current = null;
       }
+      audioManager.stopMusic();
     };
   }, []);
 
@@ -33,27 +36,43 @@ export function App() {
     }
   };
 
+  const handleToggleMute = () => {
+    const muted = audioManager.toggleMute();
+    setIsMuted(muted);
+  };
+
   return (
     <div className="flex h-screen w-screen bg-[#03020a] text-white overflow-hidden select-none font-mono">
       {/* Lateral Modern Cyber Glass Panel */}
       <aside className="w-[380px] xl:w-[420px] glass-panel border-r border-[#00f3ff]/20 p-6 flex flex-col justify-between z-10 shrink-0">
         <div className="space-y-6">
           {/* Header */}
-          <div className="flex items-center space-x-3 pb-4 border-b border-white/10">
-            <div className="p-2.5 rounded-xl bg-gradient-to-br from-[#00f3ff]/20 to-[#ff0055]/20 border border-[#00f3ff]/40 shadow-lg shadow-[#00f3ff]/10">
-              <Rocket className="text-[#00f3ff] w-7 h-7 animate-pulse" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-lg font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-[#00f3ff] via-[#ffffff] to-[#ff0055]">
-                  SPACE SHOOTER
-                </h1>
-                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#00f3ff]/20 text-[#00f3ff] font-bold border border-[#00f3ff]/30">
-                  AGY '26
-                </span>
+          <div className="flex items-center justify-between pb-4 border-b border-white/10">
+            <div className="flex items-center space-x-3">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-[#00f3ff]/20 to-[#ff0055]/20 border border-[#00f3ff]/40 shadow-lg shadow-[#00f3ff]/10">
+                <Rocket className="text-[#00f3ff] w-7 h-7 animate-pulse" />
               </div>
-              <p className="text-[11px] text-gray-400">Google Cloud Summit // Showcase</p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-lg font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-[#00f3ff] via-[#ffffff] to-[#ff0055]">
+                    SPACE SHOOTER
+                  </h1>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#00f3ff]/20 text-[#00f3ff] font-bold border border-[#00f3ff]/30">
+                    AGY '26
+                  </span>
+                </div>
+                <p className="text-[11px] text-gray-400">Google Cloud Summit // Showcase</p>
+              </div>
             </div>
+
+            {/* Audio Toggle Button */}
+            <button
+              onClick={handleToggleMute}
+              title={isMuted ? 'Ativar Áudio & Música' : 'Mutar Áudio'}
+              className="p-2 rounded-lg bg-white/5 border border-white/10 hover:border-[#00f3ff]/50 hover:bg-[#00f3ff]/10 transition-all text-gray-300 hover:text-[#00f3ff]"
+            >
+              {isMuted ? <VolumeX className="w-5 h-5 text-[#ff0055]" /> : <Volume2 className="w-5 h-5 text-[#00f3ff]" />}
+            </button>
           </div>
 
           {/* Status Box */}
@@ -67,7 +86,7 @@ export function App() {
               </span>
             </div>
             <p className="text-xs text-gray-300 leading-relaxed">
-              Teste a resposta de voo, canhões primários e manobras com teclado físico antes da forja no Antigravity CLI.
+              Partida completa de 90s: enfrente esquadrões de drones, cruzadores de elite e a Boss Fight aos 60s com trilha Synthwave 80s procedural.
             </p>
           </div>
 
@@ -89,13 +108,13 @@ export function App() {
                   <button
                     key={preset}
                     onClick={() => handleSelectPreset(preset)}
-                    className={`w-full p-3 rounded-xl border text-left transition-all duration-200 ${
+                    className={`w-full p-3.5 rounded-xl border text-left transition-all duration-200 ${
                       isSelected
                         ? 'border-[#00f3ff] bg-gradient-to-r from-[#00f3ff]/20 to-[#00f3ff]/5 neon-glow-cyan text-white scale-[1.02]'
                         : 'border-white/10 bg-white/[0.02] text-gray-400 hover:border-white/25 hover:bg-white/[0.05]'
                     }`}
                   >
-                    <div className="flex justify-between items-center mb-1">
+                    <div className="flex justify-between items-center mb-1.5">
                       <span className={`text-xs font-bold uppercase ${isSelected ? 'text-[#00f3ff]' : 'text-gray-200'}`}>
                         {spec.visuals.style_name}
                       </span>
@@ -152,7 +171,7 @@ export function App() {
 
         {/* Footer */}
         <div className="text-[11px] text-center text-gray-400 pt-3 border-t border-white/10">
-          Antigravity Engine // Vertical Mode Ready
+          Antigravity Engine // Synthwave Retro Audio
         </div>
       </aside>
 
