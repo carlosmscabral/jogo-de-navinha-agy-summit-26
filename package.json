@@ -9,9 +9,11 @@
   "scripts": {
     "build:shared": "npm run build --workspace=packages/shared",
     "build:mcps": "npm run build --workspace=packages/mcps",
+    "build:daemon": "npm run build --workspace=packages/daemon",
     "build:player": "npm run build --workspace=packages/player-app",
-    "build": "npm run build:shared && npm run build:mcps && npm run build:player",
-    "test": "npm run test --workspaces",
+    "build": "npm run build:shared && npm run build:mcps && npm run build:daemon && npm run build:player",
+    "test": "npm run test --workspace=packages/shared && npm run test --workspace=packages/mcps && npm run test --workspace=packages/daemon",
+    "start:daemon": "npm run build:daemon && npm run start --workspace=packages/daemon",
     "dev:player": "npm run build:shared && npm run dev --workspace=packages/player-app",
     "dev:leaderboard": "npm run build:shared && npm run dev --workspace=packages/leaderboard-app",
     "dev:daemon": "npm run build:shared && npm run dev --workspace=packages/daemon"
