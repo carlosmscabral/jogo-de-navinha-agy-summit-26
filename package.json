@@ -1,0 +1,19 @@
+{
+  "name": "jogo-de-navinha-agy-summit-26",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Jogo de Navinha com Antigravity CLI para o Google Cloud Summit 2026",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "dev:player": "npm run dev --workspace=packages/player-app",
+    "dev:leaderboard": "npm run dev --workspace=packages/leaderboard-app",
+    "dev:daemon": "npm run dev --workspace=packages/daemon"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

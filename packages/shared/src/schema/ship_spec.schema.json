@@ -1,0 +1,110 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ShipSpecification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["pilot", "build_metadata", "attributes", "weapons", "visuals"],
+  "properties": {
+    "pilot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["callsign", "company_raw", "company_canonical"],
+      "properties": {
+        "callsign": { "type": "string", "minLength": 1, "maxLength": 15 },
+        "company_raw": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "company_canonical": { "type": "string", "minLength": 1, "maxLength": 40 }
+      }
+    },
+    "build_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selected_mcps", "selected_subagents", "energy_sliders", "fast_grill_me_choices", "synergies_unlocked"],
+      "properties": {
+        "selected_mcps": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["weapons-arsenal", "hull-propulsion", "cybernetics-shields"] }
+        },
+        "selected_subagents": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["aesthetic-designer", "combat-strategist", "systems-engineer"] }
+        },
+        "energy_sliders": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["offense", "speed", "defense", "tech"],
+          "properties": {
+            "offense": { "type": "integer", "minimum": 10, "maximum": 50 },
+            "speed": { "type": "integer", "minimum": 10, "maximum": 50 },
+            "defense": { "type": "integer", "minimum": 10, "maximum": 50 },
+            "tech": { "type": "integer", "minimum": 10, "maximum": 50 }
+          }
+        },
+        "fast_grill_me_choices": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["weapon_focus", "visual_theme"],
+          "properties": {
+            "weapon_focus": { "type": "string", "enum": ["laser_piercing", "missile_barrage", "vulcan_spread"] },
+            "visual_theme": { "type": "string", "enum": ["synthwave_80s", "dark_void_stealth", "cyberpunk_gold"] }
+          }
+        },
+        "synergies_unlocked": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "attributes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_hp", "shield_capacity", "speed_px_s", "hitbox_radius"],
+      "properties": {
+        "max_hp": { "type": "integer", "minimum": 2, "maximum": 5 },
+        "shield_capacity": { "type": "integer", "minimum": 0, "maximum": 3 },
+        "speed_px_s": { "type": "number", "minimum": 180, "maximum": 380 },
+        "hitbox_radius": { "type": "number", "minimum": 8, "maximum": 16 }
+      }
+    },
+    "weapons": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primary", "secondary"],
+      "properties": {
+        "primary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "damage", "fire_rate", "bullet_speed", "spread_angle"],
+          "properties": {
+            "type": { "type": "string", "enum": ["plasma", "laser", "vulcan_spread"] },
+            "damage": { "type": "number", "minimum": 10, "maximum": 60 },
+            "fire_rate": { "type": "number", "minimum": 2, "maximum": 60 },
+            "bullet_speed": { "type": "number", "minimum": 400, "maximum": 800 },
+            "spread_angle": { "type": "number", "minimum": 0, "maximum": 30 }
+          }
+        },
+        "secondary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "damage", "cooldown_seconds"],
+          "properties": {
+            "type": { "type": "string", "enum": ["homing_missiles", "emp_burst", "drone_escort", "none"] },
+            "damage": { "type": "number", "minimum": 0, "maximum": 150 },
+            "cooldown_seconds": { "type": "number", "minimum": 0, "maximum": 20 }
+          }
+        }
+      }
+    },
+    "visuals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["style_name", "primary_color", "secondary_color", "engine_trail_color", "svg_path_data"],
+      "properties": {
+        "style_name": { "type": "string" },
+        "primary_color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+        "secondary_color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+        "engine_trail_color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+        "svg_path_data": { "type": "string", "minLength": 10 }
+      }
+    }
+  }
+}
