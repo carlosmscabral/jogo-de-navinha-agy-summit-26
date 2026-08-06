@@ -13,7 +13,8 @@
     "build:player": "npm run build --workspace=packages/player-app",
     "build": "npm run build:shared && npm run build:mcps && npm run build:daemon && npm run build:player",
     "test": "npm run test --workspace=packages/shared && npm run test --workspace=packages/mcps && npm run test --workspace=packages/daemon",
-    "start:daemon": "npm run build:daemon && npm run start --workspace=packages/daemon",
+    "kill:daemon": "lsof -ti :3000 | xargs kill -9 2>/dev/null || true",
+    "start:daemon": "npm run kill:daemon && npm run build:daemon && npm run start --workspace=packages/daemon",
     "dev:player": "npm run build:shared && npm run dev --workspace=packages/player-app",
     "dev:leaderboard": "npm run build:shared && npm run dev --workspace=packages/leaderboard-app",
     "dev:daemon": "npm run build:shared && npm run dev --workspace=packages/daemon"
