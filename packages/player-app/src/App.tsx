@@ -5,11 +5,11 @@ import { audioManager } from './game/audio/AudioManager.js';
 import { AttractScreen } from './components/AttractScreen.js';
 import { RegistrationForm } from './components/RegistrationForm.js';
 import { EnergySlidersBuilder } from './components/EnergySlidersBuilder.js';
-import { EmbeddedTerminal } from './components/EmbeddedTerminal.js';
+import { HandoffTerminalScreen } from './components/HandoffTerminalScreen.js';
 import { DebriefScreen } from './components/DebriefScreen.js';
 import { Volume2, VolumeX, RotateCcw } from 'lucide-react';
 
-type AppStage = 'ATTRACT' | 'REGISTER' | 'BUILDER' | 'TERMINAL' | 'GAMEPLAY' | 'DEBRIEF';
+type AppStage = 'ATTRACT' | 'REGISTER' | 'BUILDER' | 'HANDOFF' | 'GAMEPLAY' | 'DEBRIEF';
 
 export function App() {
   const [stage, setStage] = useState<AppStage>('ATTRACT');
@@ -18,6 +18,9 @@ export function App() {
     company_raw: 'Google',
     company_canonical: 'Google'
   });
+  const [energySliders, setEnergySliders] = useState<EnergySliders>({ offense: 35, speed: 35, defense: 15, tech: 15 });
+  const [selectedMcps, setSelectedMcps] = useState<McpServerName[]>(['weapons-arsenal', 'hull-propulsion', 'cybernetics-shields']);
+  const [selectedSubagents, setSelectedSubagents] = useState<SubagentName[]>(['aesthetic-designer', 'combat-strategist']);
   const [shipSpec, setShipSpec] = useState<ShipSpecification>(FALLBACK_PRESETS.interceptor);
   const [isMuted, setIsMuted] = useState(false);
   const [lastMatch, setLastMatch] = useState<Partial<MatchRecord> | undefined>();
@@ -64,8 +67,12 @@ export function App() {
     selected_mcps: McpServerName[];
     selected_subagents: SubagentName[];
   }) => {
+    setEnergySliders(config.energy_sliders);
+    setSelectedMcps(config.selected_mcps);
+    setSelectedSubagents(config.selected_subagents);
+
     try {
-      // Call Local Daemon to prepare workspace
+      // Call Local Daemon to prepare workspace /tmp/booth_session
       await fetch('http://localhost:3000/api/session/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -75,9 +82,9 @@ export function App() {
         })
       });
     } catch (err) {
-      console.warn('[App] Daemon offline, proceeding with simulated terminal session:', err);
+      console.warn('[App] Daemon offline, proceeding to handoff:', err);
     }
-    setStage('TERMINAL');
+    setStage('HANDOFF');
   };
 
   const handleShipReady = (forgedSpec: ShipSpecification) => {
@@ -167,8 +174,12 @@ export function App() {
         />
       )}
 
-      {stage === 'TERMINAL' && (
-        <EmbeddedTerminal
+      {stage === 'HANDOFF' && (
+        <HandoffTerminalScreen
+          pilot={pilot}
+          energySliders={energySliders}
+          selectedMcps={selectedMcps}
+          selectedSubagents={selectedSubagents}
           onShipReady={handleShipReady}
           onEmergencyFallback={handleEmergencyFallback}
         />

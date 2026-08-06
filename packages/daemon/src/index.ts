@@ -6,7 +6,6 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SQLiteBufferService } from './services/sqlite-buffer.js';
 import { WorkspaceGeneratorService } from './services/workspace-generator.js';
-import { PtyManagerService } from './services/pty-manager.js';
 import { FileWatcherService } from './services/file-watcher.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -21,10 +20,9 @@ const server = createServer(app);
 const wss = new WebSocketServer({ server, path: '/pty' });
 
 const sqliteBuffer = new SQLiteBufferService();
-const ptyManager = new PtyManagerService();
 const fileWatcher = new FileWatcherService();
 
-let activeWsClient: WebSocket | null = null;
+const activeClients = new Set<WebSocket>();
 const sessionDir = process.env.BOOTH_SESSION_DIR || '/tmp/booth_session';
 
 // --- REST Endpoints ---
@@ -49,22 +47,28 @@ app.post('/api/session/start', (req, res) => {
       company_canonical: canonicalCompany
     };
 
-    // 1. Generate clean workspace with selected agents and MCPs
+    // 1. Generate clean workspace in /tmp/booth_session with .agents configs & GEMINI.md
     WorkspaceGeneratorService.generateWorkspace({
       sessionDir,
       pilot: fullPilot,
       energy_sliders,
-      selected_mcps: selected_mcps || ['weapons-arsenal', 'hull-propulsion'],
+      selected_mcps: selected_mcps || ['weapons-arsenal', 'hull-propulsion', 'cybernetics-shields'],
       selected_subagents: selected_subagents || ['aesthetic-designer', 'combat-strategist'],
       mcpsDistDir
     });
 
-    // 2. Start File Watcher
+    // 2. Start File Watcher on /tmp/booth_session/ship_spec.json
     fileWatcher.startWatching(sessionDir, (shipSpec) => {
-      if (activeWsClient && activeWsClient.readyState === WebSocket.OPEN) {
-        activeWsClient.send(JSON.stringify({ type: 'EVENT_SHIP_READY', spec: shipSpec }));
+      console.log(`[Daemon] Broadcasting EVENT_SHIP_READY to ${activeClients.size} connected client(s)...`);
+      const payload = JSON.stringify({ type: 'EVENT_SHIP_READY', spec: shipSpec });
+      for (const client of activeClients) {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(payload);
+        }
       }
     });
+
+    console.log(`[Daemon API] Session workspace initialized at: ${sessionDir} for pilot ${fullPilot.callsign}`);
 
     res.json({
       status: 'WORKSPACE_INITIALIZED',
@@ -89,7 +93,6 @@ app.post('/api/matches', (req, res) => {
 
 app.post('/api/session/reset', (req, res) => {
   try {
-    ptyManager.killSession();
     fileWatcher.stopWatching();
     res.json({ status: 'RESET_COMPLETE' });
   } catch (err) {
@@ -97,35 +100,20 @@ app.post('/api/session/reset', (req, res) => {
   }
 });
 
-// --- WebSocket /pty ---
+// --- WebSocket Event Broadcast ---
 
 wss.on('connection', (ws) => {
-  activeWsClient = ws;
-  console.log('[Daemon WS] Client connected to /pty');
-
-  ws.on('message', (message: string) => {
-    try {
-      const parsed = JSON.parse(message);
-      if (parsed.type === 'start_pty') {
-        ptyManager.startSession(sessionDir, ws, parsed.initialPrompt || 'agy');
-      } else if (parsed.type === 'pty_input') {
-        ptyManager.writeInput(parsed.data);
-      } else if (parsed.type === 'pty_resize') {
-        ptyManager.resize(parsed.cols, parsed.rows);
-      }
-    } catch {
-      // Raw string input
-      ptyManager.writeInput(message.toString());
-    }
-  });
+  activeClients.add(ws);
+  console.log(`[Daemon WS] Client connected (Total: ${activeClients.size})`);
 
   ws.on('close', () => {
-    activeWsClient = null;
-    console.log('[Daemon WS] Client disconnected');
+    activeClients.delete(ws);
+    console.log(`[Daemon WS] Client disconnected (Total: ${activeClients.size})`);
   });
 });
 
 const PORT = Number(process.env.PORT) || 3000;
 server.listen(PORT, () => {
   console.log(`[Local Bridge Daemon] Running at http://localhost:${PORT}`);
+  console.log(`[Local Bridge Daemon] Workspace session path: ${sessionDir}`);
 });
