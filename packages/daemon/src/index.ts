@@ -3,6 +3,7 @@ import cors from 'cors';
 import { createServer } from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
 import * as path from 'node:path';
+import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { SQLiteBufferService } from './services/sqlite-buffer.js';
 import { WorkspaceGeneratorService } from './services/workspace-generator.js';
@@ -35,6 +36,26 @@ app.get('/api/companies', (req, res) => {
   const query = String(req.query.q || '');
   const companies = sqliteBuffer.searchCompanies(query);
   res.json({ companies });
+});
+
+app.get('/api/session/spec', (req, res) => {
+  const spec = fileWatcher.getCurrentSpec();
+  if (spec) {
+    return res.json({ ready: true, spec });
+  }
+
+  const specPath = path.join(sessionDir, 'ship_spec.json');
+  if (fs.existsSync(specPath)) {
+    try {
+      const raw = fs.readFileSync(specPath, 'utf8');
+      const parsed = JSON.parse(raw);
+      return res.json({ ready: true, spec: parsed });
+    } catch {
+      // Ignored
+    }
+  }
+
+  res.json({ ready: false });
 });
 
 app.post('/api/session/start', (req, res) => {
@@ -105,6 +126,12 @@ app.post('/api/session/reset', (req, res) => {
 wss.on('connection', (ws) => {
   activeClients.add(ws);
   console.log(`[Daemon WS] Client connected (Total: ${activeClients.size})`);
+
+  // If a spec already exists when connecting, send it immediately
+  const existingSpec = fileWatcher.getCurrentSpec();
+  if (existingSpec) {
+    ws.send(JSON.stringify({ type: 'EVENT_SHIP_READY', spec: existingSpec }));
+  }
 
   ws.on('close', () => {
     activeClients.delete(ws);

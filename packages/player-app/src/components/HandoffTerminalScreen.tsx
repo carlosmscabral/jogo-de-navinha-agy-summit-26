@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { ShipSpecification, PilotInfo, EnergySliders, McpServerName, SubagentName, FALLBACK_PRESETS } from '@jogo/shared';
 import { Terminal, Shield, Zap, Rocket, Cpu, CheckCircle2, Loader2, Play, Sparkles, ArrowRight } from 'lucide-react';
 import { audioManager } from '../game/audio/AudioManager.js';
@@ -24,27 +24,37 @@ export function HandoffTerminalScreen({
   const [activeTools, setActiveTools] = useState<string[]>([]);
   const [isSynthesizing, setIsSynthesizing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const isTransitioningRef = useRef(false);
+
+  const triggerShipReady = (spec: ShipSpecification) => {
+    if (isTransitioningRef.current) return;
+    isTransitioningRef.current = true;
+
+    console.log('[HandoffScreen] Ship spec triggered for launch:', spec);
+    setIsSuccess(true);
+    audioManager.playLaser();
+
+    setTimeout(() => {
+      onShipReady(spec);
+    }, 1000);
+  };
 
   useEffect(() => {
-    // Connect to Daemon WebSocket for real-time file watcher events
+    isTransitioningRef.current = false;
+
+    // 1. WebSocket Listener for instant Push Events
     const ws = new WebSocket('ws://localhost:3000/pty');
 
     ws.onopen = () => {
-      console.log('[HandoffScreen] Connected to daemon event listener');
+      console.log('[HandoffScreen] Connected to daemon WebSocket listener');
     };
 
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
 
-        if (msg.type === 'EVENT_SHIP_READY') {
-          console.log('[HandoffScreen] Real ship_spec.json received from AGY!', msg.spec);
-          setIsSuccess(true);
-          audioManager.playLaser();
-
-          setTimeout(() => {
-            onShipReady(msg.spec);
-          }, 1200);
+        if (msg.type === 'EVENT_SHIP_READY' && msg.spec) {
+          triggerShipReady(msg.spec);
         } else if (msg.type === 'EVENT_MCP_ACTIVITY') {
           setActiveTools((prev) => Array.from(new Set([...prev, msg.tool])));
         }
@@ -53,8 +63,27 @@ export function HandoffTerminalScreen({
       }
     };
 
+    // 2. HTTP Polling Backup (checks GET /api/session/spec every 800ms)
+    const pollTimer = setInterval(async () => {
+      if (isTransitioningRef.current) return;
+
+      try {
+        const res = await fetch('http://localhost:3000/api/session/spec');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.ready && data.spec) {
+            console.log('[HandoffScreen] HTTP polling detected ship_spec.json!');
+            triggerShipReady(data.spec);
+          }
+        }
+      } catch {
+        // Daemon might be restarting
+      }
+    }, 800);
+
     return () => {
       ws.close();
+      clearInterval(pollTimer);
     };
   }, [onShipReady]);
 
@@ -64,11 +93,8 @@ export function HandoffTerminalScreen({
       const customSpec: ShipSpecification = JSON.parse(JSON.stringify(FALLBACK_PRESETS.interceptor));
       customSpec.pilot.callsign = pilot.callsign;
       customSpec.pilot.company_canonical = pilot.company_canonical;
-      setIsSuccess(true);
-      setTimeout(() => {
-        onShipReady(customSpec);
-      }, 800);
-    }, 1500);
+      triggerShipReady(customSpec);
+    }, 1000);
   };
 
   return (
@@ -177,7 +203,7 @@ export function HandoffTerminalScreen({
                 <div className="flex items-center gap-2.5">
                   <Loader2 className="w-4 h-4 text-[#00f3ff] animate-spin" />
                   <span className="text-xs text-gray-300">
-                    Ouvindo <code className="text-[#00f3ff]">ship_spec.json</code> via Chokidar...
+                    Ouvindo <code className="text-[#00f3ff]">ship_spec.json</code> via Chokidar & Polling...
                   </span>
                 </div>
                 <span className="text-[10px] text-gray-500 font-mono">PORT 3000</span>

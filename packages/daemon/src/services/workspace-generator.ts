@@ -141,12 +141,62 @@ Você é o Orquestrador Chefe da Forja no Antigravity CLI para o evento Google C
 ### SUB-AGENTES ATIVOS: ${['aesthetic-designer', ...selected_subagents].join(', ')}
 
 ### PROTOCOLO RÍGIDO DE 4 PASSOS:
-1. **PASSO 1 - FAST GRILL-ME:** Pergunte ao piloto de imediato em 1 turno:
+1. **PASSO 1 - FAST GRILL-ME:** Pergunte ao piloto em 1 turno (ou leia seu prompt inicial):
    - [1] Foco de Armas: 1-Laser Perfurante, 2-Chuva de Mísseis, 3-Vulcan Espalhado
    - [2] Estilo Estético: 1-Synthwave 80s, 2-Dark Void Stealth, 3-Cyberpunk Gold
 2. **PASSO 2 - DELEGAÇÃO:** Invoque os sub-agentes em \`.agents/agents/\` para forjar a nave.
 3. **PASSO 3 - EXECUÇÃO DE TOOLS:** Os sub-agentes DEVEM executar as ferramentas dos MCPs ativos.
-4. **PASSO 4 - EMISSÃO DO JSON:** Grave o arquivo \`ship_spec.json\` na raiz do workspace obedecendo estritamente ao JSON Schema Draft-07.
+4. **PASSO 4 - CRIAÇÃO DO ARQUIVO:** USE SUAS FERRAMENTAS DE ARQUIVO (write tool) PARA GRAVAR FISICAMENTE O ARQUIVO \`ship_spec.json\` na raiz do workspace (\`/tmp/booth_session/ship_spec.json\`).
+
+### EXEMPLO EXATO DO \`ship_spec.json\`:
+\`\`\`json
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "pilot": {
+    "callsign": "${pilot.callsign}",
+    "company_raw": "${pilot.company_raw}",
+    "company_canonical": "${pilot.company_canonical}"
+  },
+  "build_metadata": {
+    "selected_mcps": ["weapons-arsenal", "hull-propulsion", "cybernetics-shields"],
+    "selected_subagents": ["aesthetic-designer", "combat-strategist"],
+    "energy_sliders": { "offense": ${energy_sliders.offense}, "speed": ${energy_sliders.speed}, "defense": ${energy_sliders.defense}, "tech": ${energy_sliders.tech} },
+    "fast_grill_me_choices": {
+      "weapon_focus": "vulcan_spread",
+      "visual_theme": "synthwave_80s"
+    },
+    "synergies_unlocked": ["Glass Cannon 🔥"]
+  },
+  "attributes": {
+    "speed_px_s": 350,
+    "max_hp": 4,
+    "shield_capacity": 2,
+    "hitbox_radius": 10
+  },
+  "weapons": {
+    "primary": {
+      "type": "vulcan_spread",
+      "damage": 35,
+      "fire_rate": 10,
+      "bullet_speed": 750,
+      "spread_angle": 0.25
+    },
+    "secondary": {
+      "type": "homing_missiles",
+      "damage": 120,
+      "cooldown_seconds": 4
+    }
+  },
+  "visuals": {
+    "style_name": "${pilot.callsign}-01 Custom",
+    "primary_color": "#ff0055",
+    "secondary_color": "#00f3ff",
+    "engine_trail_color": "#ffd700",
+    "svg_path_data": "M 64 10 L 114 110 L 64 85 L 14 110 Z"
+  }
+}
+\`\`\`
+É CRÍTICO QUE O ARQUIVO \`ship_spec.json\` EXISTA FISICAMENTE NO DISCO PARA O JOGO INICIAR!
 `;
 
     fs.writeFileSync(path.join(sessionDir, 'GEMINI.md'), geminiContent, 'utf8');
