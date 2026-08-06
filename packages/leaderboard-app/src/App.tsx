@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Trophy, Radio, Zap, Users, Flame, Shield, Globe } from 'lucide-react';
+import { Trophy, Radio, Zap, Users, Flame, Shield, Globe, Terminal } from 'lucide-react';
 import { HallOfFame, TopPilotEntry } from './components/HallOfFame.js';
 import { CompanyDominance, CompanyRankEntry } from './components/CompanyDominance.js';
 import { LiveTickerFeed, RecentMatchEntry } from './components/LiveTickerFeed.js';
@@ -104,18 +104,18 @@ export function App() {
   }, []);
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#03020a] text-white overflow-hidden select-none font-sans relative">
-      {/* Background Neon Gradients */}
-      <div className="absolute top-0 left-1/4 w-96 h-96 bg-[#00f3ff]/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-[#ff0055]/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-10 left-1/3 w-96 h-96 bg-[#ffd700]/10 rounded-full blur-3xl pointer-events-none" />
+    <div className="flex flex-col h-screen w-screen bg-[#07080c] text-white overflow-hidden select-none font-sans relative">
+      {/* Background Solar Amber & Cobalt Gradients */}
+      <div className="absolute top-0 left-1/4 w-96 h-96 bg-[#38bdf8]/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-[#ff9e0b]/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-10 left-1/3 w-96 h-96 bg-[#10b981]/05 rounded-full blur-3xl pointer-events-none" />
 
       {/* Top Header Bar */}
-      <header className="px-8 py-4 bg-black/60 border-b border-white/10 backdrop-blur-md flex items-center justify-between z-20 flex-shrink-0">
+      <header className="px-8 py-4 bg-slate-950/80 border-b border-slate-800 backdrop-blur-md flex items-center justify-between z-20 flex-shrink-0">
         {/* Left: Event Branding */}
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#00f3ff] to-[#ffd700] p-0.5 flex items-center justify-center shadow-[0_0_20px_rgba(0,243,255,0.4)]">
-            <div className="w-full h-full bg-[#050314] rounded-2xl flex items-center justify-center font-black text-xs text-[#00f3ff]">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#38bdf8] to-[#ff9e0b] p-0.5 flex items-center justify-center shadow-[0_0_20px_rgba(56,189,248,0.4)]">
+            <div className="w-full h-full bg-[#07080c] rounded-2xl flex items-center justify-center font-black text-xs text-[#38bdf8] font-mono">
               AGY
             </div>
           </div>
@@ -124,35 +124,35 @@ export function App() {
               <h1 className="text-xl font-black text-white tracking-widest uppercase font-sans">
                 GOOGLE CLOUD SUMMIT 2026
               </h1>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#ff0055]/20 text-[#ff0055] border border-[#ff0055]/40 uppercase tracking-wider">
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#ff9e0b]/20 text-[#ff9e0b] border border-[#ff9e0b]/40 uppercase tracking-wider font-mono">
                 LIVE ARENA
               </span>
             </div>
-            <p className="text-xs text-gray-400 font-mono">
-              Painel Oficial de Telemetria & Forja de Naves Espaciais com Antigravity CLI
+            <p className="text-xs text-slate-400 font-mono">
+              Painel Oficial de Telemetria & Forja de Naves com Antigravity CLI
             </p>
           </div>
         </div>
 
         {/* Right: Live Meta Counters & Clock */}
         <div className="flex items-center gap-6 font-mono text-xs">
-          <div className="px-4 py-2 rounded-2xl bg-white/[0.03] border border-white/10 text-center">
-            <div className="text-[10px] text-gray-400 uppercase">Pilotos Inscritos</div>
-            <div className="text-sm font-black text-[#00f3ff] flex items-center justify-center gap-1">
+          <div className="px-4 py-2 rounded-2xl bg-slate-900/60 border border-slate-800 text-center">
+            <div className="text-[10px] text-slate-400 uppercase">Pilotos Inscritos</div>
+            <div className="text-sm font-black text-[#38bdf8] flex items-center justify-center gap-1">
               <Users className="w-3.5 h-3.5" /> {data.stats.total_pilots || data.topPilots.length}
             </div>
           </div>
 
-          <div className="px-4 py-2 rounded-2xl bg-white/[0.03] border border-white/10 text-center">
-            <div className="text-[10px] text-gray-400 uppercase">Recorde do Dia</div>
-            <div className="text-sm font-black text-[#ffd700] flex items-center justify-center gap-1">
+          <div className="px-4 py-2 rounded-2xl bg-slate-900/60 border border-slate-800 text-center">
+            <div className="text-[10px] text-slate-400 uppercase">Recorde do Dia</div>
+            <div className="text-sm font-black text-[#ff9e0b] flex items-center justify-center gap-1">
               <Trophy className="w-3.5 h-3.5" /> {data.stats.top_score.toLocaleString()} PTS
             </div>
           </div>
 
-          <div className="px-4 py-2 rounded-2xl bg-white/[0.03] border border-white/10 text-center">
-            <div className="text-[10px] text-gray-400 uppercase">Horário Oficial</div>
-            <div className="text-sm font-black text-white font-mono">
+          <div className="px-4 py-2 rounded-2xl bg-slate-900/60 border border-slate-800 text-center">
+            <div className="text-[10px] text-slate-400 uppercase">Horário Oficial</div>
+            <div className="text-sm font-black text-slate-200 font-mono">
               {currentTime}
             </div>
           </div>

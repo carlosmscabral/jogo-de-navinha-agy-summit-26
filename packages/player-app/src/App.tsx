@@ -148,7 +148,7 @@ export function App() {
   };
 
   return (
-    <div className="flex h-screen w-screen bg-[#03020a] text-white overflow-hidden select-none font-sans">
+    <div className="flex h-screen w-screen bg-[#07080c] text-white overflow-hidden select-none font-sans">
       {/* Top Floating Controls Bar */}
       <div className="absolute top-4 right-4 z-50 flex items-center gap-3">
         {/* Reset Button */}
@@ -156,7 +156,7 @@ export function App() {
           <button
             onClick={handleReset}
             title="Resetar Experiência (Ctrl+Shift+F12)"
-            className="p-2.5 rounded-xl bg-black/60 border border-white/15 hover:border-[#ff0055] hover:bg-[#ff0055]/15 transition-all text-gray-300 hover:text-[#ff0055] shadow-lg backdrop-blur-md flex items-center gap-1.5 text-xs font-bold font-mono"
+            className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-700 hover:border-red-500 hover:bg-red-500/10 transition-all text-slate-300 hover:text-red-400 shadow-lg backdrop-blur-md flex items-center gap-1.5 text-xs font-bold font-mono"
           >
             <RotateCcw className="w-4 h-4" />
             <span>RESET</span>
@@ -167,9 +167,9 @@ export function App() {
         <button
           onClick={handleToggleMute}
           title={isMuted ? 'Ativar Áudio & Música' : 'Mutar Áudio'}
-          className="p-2.5 rounded-xl bg-black/60 border border-white/15 hover:border-[#00f3ff] hover:bg-[#00f3ff]/15 transition-all text-gray-300 hover:text-[#00f3ff] shadow-lg backdrop-blur-md"
+          className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-700 hover:border-[#38bdf8] hover:bg-[#38bdf8]/10 transition-all text-slate-300 hover:text-[#38bdf8] shadow-lg backdrop-blur-md"
         >
-          {isMuted ? <VolumeX className="w-4 h-4 text-[#ff0055]" /> : <Volume2 className="w-4 h-4 text-[#00f3ff]" />}
+          {isMuted ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4 text-[#38bdf8]" />}
         </button>
       </div>
 
@@ -208,8 +208,8 @@ export function App() {
       )}
 
       {stage === 'GAMEPLAY' && (
-        <main className="flex-1 flex flex-col items-center justify-center p-4 relative bg-radial from-[#100826] via-[#050310] to-[#020108] overflow-hidden">
-          <div className="h-full max-h-[94vh] aspect-[3/4] relative rounded-2xl overflow-hidden border border-[#00f3ff]/40 shadow-2xl shadow-[#00f3ff]/20">
+        <main className="flex-1 flex flex-col items-center justify-center p-4 relative bg-radial from-[#0e111a] via-[#08090f] to-[#040508] overflow-hidden">
+          <div className="h-full max-h-[94vh] aspect-[3/4] relative rounded-2xl overflow-hidden border-2 border-slate-700/80 shadow-2xl shadow-cyan-950/40">
             <div id="game-container" ref={gameContainerRef} className="w-full h-full" />
           </div>
         </main>

@@ -7,20 +7,40 @@ export default {
   theme: {
     extend: {
       colors: {
-        cyber: {
-          dark: '#0a0a14',
-          cyan: '#00f3ff',
-          magenta: '#ff0055',
-          yellow: '#ffe600',
-          purple: '#8b00ff',
-          gold: '#ffd700'
+        obsidian: {
+          950: '#050608',
+          900: '#090b10',
+          850: '#0e1117',
+          800: '#141822',
+          700: '#1e2433',
+          600: '#2b3345'
+        },
+        amber: {
+          solar: '#ff9e0b',
+          glow: '#f59e0b',
+          bright: '#ffd166',
+          dark: '#b45309'
+        },
+        cobalt: {
+          DEFAULT: '#3b82f6',
+          azure: '#38bdf8',
+          deep: '#1d4ed8',
+          light: '#93c5fd'
+        },
+        radar: {
+          green: '#10b981',
+          bright: '#34d399',
+          dark: '#047857'
+        },
+        alert: {
+          red: '#ef4444',
+          crimson: '#dc2626'
         }
       },
       fontFamily: {
         sans: ['"Google Sans Flex"', '"Google Sans Text"', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
-        mono: ['"Google Sans Code"', '"Share Tech Mono"', 'monospace', 'Courier New'],
-        display: ['"Google Sans Flex"', '"Google Sans"', 'sans-serif'],
-        arcade: ['"Press Start 2P"', 'monospace']
+        mono: ['"Google Sans Code"', 'monospace', 'Courier New'],
+        display: ['"Google Sans Flex"', 'sans-serif']
       }
     },
   },

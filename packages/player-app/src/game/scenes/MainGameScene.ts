@@ -70,7 +70,7 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   create(): void {
-    // 1. Cosmic Deep Space Background
+    // 1. Deep Obsidian Aerospace Starfield
     this.createCosmicBackground();
 
     // 2. Generate Ship & Enemy Textures
@@ -99,7 +99,7 @@ export class MainGameScene extends Phaser.Scene {
 
     if (!this.textures.exists('bullet_enemy')) {
       const g = this.add.graphics();
-      g.fillStyle(0xff0044, 1);
+      g.fillStyle(0xef4444, 1);
       g.fillCircle(5, 5, 5);
       g.fillStyle(0xffffff, 1);
       g.fillCircle(5, 5, 2);
@@ -115,7 +115,7 @@ export class MainGameScene extends Phaser.Scene {
     // 5. Collisions & Weapon Overlaps
     this.setupCollisions();
 
-    // 6. Modern Sci-Fi HUD
+    // 6. Modern Aerospace Flight Deck HUD
     this.setupModernHud();
 
     // 7. Match Clock
@@ -219,10 +219,10 @@ export class MainGameScene extends Phaser.Scene {
 
       if (type === 'cruiser') {
         drone.setScale(1.3);
-        drone.setTint(0xffaa00);
+        drone.setTint(0xff9e0b);
       } else if (type === 'kamikaze') {
         drone.setScale(0.75);
-        drone.setTint(0xff00ff);
+        drone.setTint(0x38bdf8);
       } else {
         drone.setScale(0.85);
         drone.clearTint();
@@ -272,10 +272,10 @@ export class MainGameScene extends Phaser.Scene {
     audioManager.playBossWarning();
     this.cameras.main.shake(600, 0.025);
 
-    const banner = this.add.text(this.scale.width / 2, 220, '⚠️ AVISO: AMEAÇA NÍVEL OMEGA // THE CYBER OVERLORD ⚠️', {
-      fontFamily: '"Google Sans Flex", "Share Tech Mono", sans-serif',
+    const banner = this.add.text(this.scale.width / 2, 220, '⚠️ ALERTA: AMEAÇA NÍVEL OMEGA // THE CYBER OVERLORD ⚠️', {
+      fontFamily: '"Google Sans Flex", sans-serif',
       fontSize: '16px',
-      color: '#ff0055'
+      color: '#ff9e0b'
     }).setOrigin(0.5);
 
     this.tweens.add({
@@ -359,24 +359,24 @@ export class MainGameScene extends Phaser.Scene {
     this.bossHudContainer = this.add.container(0, 0);
 
     const bg = this.add.graphics();
-    bg.fillStyle(0x050515, 0.92);
-    bg.lineStyle(1.5, 0xff0055, 0.7);
+    bg.fillStyle(0x0a0c14, 0.94);
+    bg.lineStyle(1.5, 0xff9e0b, 0.8);
     bg.fillRoundedRect(width / 2 - 200, 80, 400, 32, 8);
     bg.strokeRoundedRect(width / 2 - 200, 80, 400, 32, 8);
 
     this.bossPhaseText = this.add.text(width / 2 - 190, 85, 'FASE 1 // ESCUDO CINÉTICO', {
       fontFamily: '"Google Sans Code", monospace',
       fontSize: '11px',
-      color: '#00f3ff'
+      color: '#38bdf8'
     });
 
     this.bossHpNumbersText = this.add.text(width / 2 + 190, 85, '7.500 / 7.500 HP', {
       fontFamily: '"Google Sans Code", monospace',
       fontSize: '11px',
-      color: '#ffd700'
+      color: '#ff9e0b'
     }).setOrigin(1, 0);
 
-    this.bossHpBarFill = this.add.rectangle(width / 2 - 194, 98, 388, 10, 0x00f3ff).setOrigin(0, 0);
+    this.bossHpBarFill = this.add.rectangle(width / 2 - 194, 98, 388, 10, 0x38bdf8).setOrigin(0, 0);
     this.bossHudContainer.add([bg, this.bossPhaseText, this.bossHpNumbersText, this.bossHpBarFill]);
   }
 
@@ -414,24 +414,24 @@ export class MainGameScene extends Phaser.Scene {
     });
 
     this.overlayContainer = this.add.container(0, 0);
-    const bg = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.85);
+    const bg = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.88);
 
     const card = this.add.graphics();
-    card.fillStyle(0x0a0a25, 0.96);
-    card.lineStyle(2, 0x00ff88, 0.9);
-    card.fillRoundedRect(width / 2 - 240, height / 2 - 200, 480, 400, 16);
-    card.strokeRoundedRect(width / 2 - 240, height / 2 - 200, 480, 400, 16);
+    card.fillStyle(0x0e1117, 0.98);
+    card.lineStyle(2, 0x10b981, 0.9);
+    card.fillRoundedRect(width / 2 - 240, height / 2 - 200, 480, 400, 20);
+    card.strokeRoundedRect(width / 2 - 240, height / 2 - 200, 480, 400, 20);
 
     const title = this.add.text(width / 2, height / 2 - 150, 'MISSÃO CUMPRIDA!', {
       fontFamily: '"Google Sans Flex", sans-serif',
       fontSize: '30px',
-      color: '#00ff88'
+      color: '#10b981'
     }).setOrigin(0.5);
 
     const subtitle = this.add.text(width / 2, height / 2 - 110, 'CYBER OVERLORD DESTRUÍDO // FORJA SUPREMA', {
       fontFamily: '"Google Sans Code", monospace',
       fontSize: '12px',
-      color: '#00f3ff'
+      color: '#38bdf8'
     }).setOrigin(0.5);
 
     const finalScore = this.add.text(
@@ -441,7 +441,7 @@ export class MainGameScene extends Phaser.Scene {
       {
         fontFamily: '"Google Sans Flex", sans-serif',
         fontSize: '24px',
-        color: '#ffd700'
+        color: '#ff9e0b'
       }
     ).setOrigin(0.5);
 
@@ -453,7 +453,7 @@ export class MainGameScene extends Phaser.Scene {
       {
         fontFamily: '"Google Sans Code", monospace',
         fontSize: '12px',
-        color: '#cceeff',
+        color: '#94a3b8',
         align: 'center'
       }
     ).setOrigin(0.5);
@@ -511,24 +511,24 @@ export class MainGameScene extends Phaser.Scene {
     });
 
     this.overlayContainer = this.add.container(0, 0);
-    const bg = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.82);
+    const bg = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.88);
 
     const card = this.add.graphics();
-    card.fillStyle(0x0a0a20, 0.95);
-    card.lineStyle(2, 0xff0055, 0.8);
-    card.fillRoundedRect(width / 2 - 230, height / 2 - 170, 460, 340, 16);
-    card.strokeRoundedRect(width / 2 - 230, height / 2 - 170, 460, 340, 16);
+    card.fillStyle(0x0e1117, 0.98);
+    card.lineStyle(2, 0xef4444, 0.8);
+    card.fillRoundedRect(width / 2 - 230, height / 2 - 170, 460, 340, 20);
+    card.strokeRoundedRect(width / 2 - 230, height / 2 - 170, 460, 340, 20);
 
     const title = this.add.text(width / 2, height / 2 - 110, titleText, {
       fontFamily: '"Google Sans Flex", sans-serif',
       fontSize: '32px',
-      color: '#ff0055'
+      color: '#ef4444'
     }).setOrigin(0.5);
 
     const subtitle = this.add.text(width / 2, height / 2 - 70, subtitleText, {
       fontFamily: '"Google Sans Code", monospace',
       fontSize: '12px',
-      color: '#ff88aa'
+      color: '#f87171'
     }).setOrigin(0.5);
 
     const finalScore = this.add.text(
@@ -538,7 +538,7 @@ export class MainGameScene extends Phaser.Scene {
       {
         fontFamily: '"Google Sans Flex", sans-serif',
         fontSize: '24px',
-        color: '#00f3ff'
+        color: '#ff9e0b'
       }
     ).setOrigin(0.5);
 
@@ -549,7 +549,7 @@ export class MainGameScene extends Phaser.Scene {
       {
         fontFamily: '"Google Sans Code", monospace',
         fontSize: '13px',
-        color: '#ffd700'
+        color: '#38bdf8'
       }
     ).setOrigin(0.5);
 
@@ -599,13 +599,14 @@ export class MainGameScene extends Phaser.Scene {
 
   private createCosmicBackground(): void {
     this.nebulaGraphics = this.add.graphics();
-    this.nebulaGraphics.fillStyle(0x0a0520, 1);
+    this.nebulaGraphics.fillStyle(0x07080c, 1);
     this.nebulaGraphics.fillRect(0, 0, this.scale.width, this.scale.height);
 
+    // Deep Aerospace Horizon glow
     const g = this.add.graphics();
-    g.fillStyle(0x1a0b36, 0.4);
+    g.fillStyle(0x0e111a, 0.6);
     g.fillCircle(this.scale.width / 2, 200, 260);
-    g.fillStyle(0x002244, 0.3);
+    g.fillStyle(0x141824, 0.4);
     g.fillCircle(this.scale.width / 2 - 100, 500, 220);
 
     this.starfieldGraphics = this.add.graphics();
@@ -618,7 +619,7 @@ export class MainGameScene extends Phaser.Scene {
         speed: isFast ? Phaser.Math.FloatBetween(2.5, 4.5) : Phaser.Math.FloatBetween(0.5, 1.8),
         size: isFast ? 2 : Phaser.Math.FloatBetween(0.8, 1.5),
         alpha: Phaser.Math.FloatBetween(0.4, 1.0),
-        color: Math.random() > 0.3 ? 0xffffff : 0x00f3ff
+        color: Math.random() > 0.4 ? 0xffffff : 0x38bdf8
       });
     }
   }
@@ -690,7 +691,7 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private createExplosionFX(x: number, y: number, isMajor = false): void {
-    const ring = this.add.circle(x, y, 8, isMajor ? 0x00f3ff : 0xff0055, 0.8);
+    const ring = this.add.circle(x, y, 8, isMajor ? 0x38bdf8 : 0xff9e0b, 0.8);
     this.tweens.add({
       targets: ring,
       radius: isMajor ? 90 : 40,
@@ -701,7 +702,7 @@ export class MainGameScene extends Phaser.Scene {
 
     const sparkCount = isMajor ? 16 : 6;
     for (let i = 0; i < sparkCount; i++) {
-      const spark = this.add.circle(x, y, Phaser.Math.Between(2, 5), isMajor ? 0x00f3ff : 0xffe600, 1);
+      const spark = this.add.circle(x, y, Phaser.Math.Between(2, 5), isMajor ? 0x38bdf8 : 0xff9e0b, 1);
       const angle = (i / sparkCount) * Math.PI * 2;
       const dist = isMajor ? Phaser.Math.Between(40, 100) : Phaser.Math.Between(25, 50);
       this.tweens.add({
@@ -717,7 +718,7 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private createHitSpark(x: number, y: number): void {
-    const spark = this.add.circle(x, y, 3, 0x00f3ff, 1);
+    const spark = this.add.circle(x, y, 3, 0x38bdf8, 1);
     this.tweens.add({
       targets: spark,
       scale: 2,
@@ -729,52 +730,52 @@ export class MainGameScene extends Phaser.Scene {
 
   private setupModernHud(): void {
     const hudBg = this.add.graphics();
-    hudBg.fillStyle(0x050515, 0.88);
-    hudBg.lineStyle(1, 0x00f3ff, 0.3);
-    hudBg.fillRoundedRect(16, 12, this.scale.width - 32, 60, 8);
-    hudBg.strokeRoundedRect(16, 12, this.scale.width - 32, 60, 8);
+    hudBg.fillStyle(0x090b10, 0.92);
+    hudBg.lineStyle(1, 0x334155, 0.6);
+    hudBg.fillRoundedRect(16, 12, this.scale.width - 32, 60, 12);
+    hudBg.strokeRoundedRect(16, 12, this.scale.width - 32, 60, 12);
 
     this.hudTextScore = this.add.text(32, 22, 'SCORE: 0', {
       fontFamily: '"Google Sans Code", monospace',
-      fontSize: '20px',
-      color: '#00f3ff'
+      fontSize: '18px',
+      color: '#38bdf8'
     });
 
     this.hudTextTimer = this.add.text(this.scale.width / 2, 22, '90s', {
       fontFamily: '"Google Sans Flex", sans-serif',
       fontSize: '22px',
-      color: '#ffd700'
+      color: '#ff9e0b'
     }).setOrigin(0.5, 0);
 
     this.hudTextCombo = this.add.text(this.scale.width - 150, 22, '1.0x COMBO', {
       fontFamily: '"Google Sans Code", monospace',
       fontSize: '18px',
-      color: '#ff0055'
+      color: '#10b981'
     });
 
     this.add.text(32, 50, 'HULL:', {
       fontFamily: '"Google Sans Code", monospace',
       fontSize: '11px',
-      color: '#88aacc'
+      color: '#64748b'
     });
 
     this.hudHpBars = [];
     const maxHp = this.shipSpec.attributes.max_hp;
     for (let i = 0; i < maxHp; i++) {
-      const bar = this.add.rectangle(75 + i * 18, 55, 14, 8, 0x00ff88);
+      const bar = this.add.rectangle(75 + i * 18, 55, 14, 8, 0x10b981);
       this.hudHpBars.push(bar);
     }
 
     this.add.text(220, 50, 'SHIELD:', {
       fontFamily: '"Google Sans Code", monospace',
       fontSize: '11px',
-      color: '#88aacc'
+      color: '#64748b'
     });
 
     this.hudShieldBars = [];
     const maxShield = this.shipSpec.attributes.shield_capacity;
     for (let i = 0; i < 3; i++) {
-      const bar = this.add.rectangle(275 + i * 18, 55, 14, 8, 0x00f3ff);
+      const bar = this.add.rectangle(275 + i * 18, 55, 14, 8, 0x38bdf8);
       bar.setVisible(i < maxShield);
       this.hudShieldBars.push(bar);
     }
@@ -803,17 +804,17 @@ export class MainGameScene extends Phaser.Scene {
         this.bossHpBarFill.width = 388 * pct;
 
         if (this.boss.phase === 1) {
-          this.bossHpBarFill.setFillStyle(0x00f3ff);
+          this.bossHpBarFill.setFillStyle(0x38bdf8);
           this.bossPhaseText?.setText('FASE 1 // ESCUDO CINÉTICO');
-          this.bossPhaseText?.setColor('#00f3ff');
+          this.bossPhaseText?.setColor('#38bdf8');
         } else if (this.boss.phase === 2) {
-          this.bossHpBarFill.setFillStyle(0xffd700);
+          this.bossHpBarFill.setFillStyle(0xff9e0b);
           this.bossPhaseText?.setText('FASE 2 // BLINDAGEM REFORÇADA');
-          this.bossPhaseText?.setColor('#ffd700');
+          this.bossPhaseText?.setColor('#ff9e0b');
         } else {
-          this.bossHpBarFill.setFillStyle(0xff0055);
+          this.bossHpBarFill.setFillStyle(0xef4444);
           this.bossPhaseText?.setText('FASE 3 // NÚCLEO BERSERK');
-          this.bossPhaseText?.setColor('#ff0055');
+          this.bossPhaseText?.setColor('#ef4444');
         }
 
         this.bossHpNumbersText?.setText(
@@ -848,11 +849,11 @@ export class MainGameScene extends Phaser.Scene {
       this.hudTextCombo.setText(`${this.scoreCalculator.comboMultiplier.toFixed(1)}x COMBO`);
 
       for (let i = 0; i < this.hudHpBars.length; i++) {
-        this.hudHpBars[i].setFillStyle(i < this.player.currentHp ? 0x00ff88 : 0x333344);
+        this.hudHpBars[i].setFillStyle(i < this.player.currentHp ? 0x10b981 : 0x334155);
       }
 
       for (let i = 0; i < this.hudShieldBars.length; i++) {
-        this.hudShieldBars[i].setFillStyle(i < this.player.currentShield ? 0x00f3ff : 0x223344);
+        this.hudShieldBars[i].setFillStyle(i < this.player.currentShield ? 0x38bdf8 : 0x1e293b);
       }
     }
   }
