@@ -9,6 +9,7 @@ export class PtyManagerService {
   private activeProcess?: ChildProcess;
   private wsClient?: WebSocket;
   private isAgyShell = false;
+  private agyBinaryPath: string | null = null;
 
   private currentLineBuffer = '';
   private history: string[] = [];
@@ -43,81 +44,14 @@ export class PtyManagerService {
       if (companyMatch) this.pilotCompany = companyMatch[1];
     }
 
-    // 3. Check for Real AGY CLI binary on host
-    const agyBinaryPath = this.detectAgyBinary();
+    // 3. Detect Real AGY CLI binary on host
+    this.agyBinaryPath = this.detectAgyBinary();
 
-    if (agyBinaryPath) {
-      console.log(`[PtyManager] Spawning real Antigravity CLI process: ${agyBinaryPath} in ${sessionDir}`);
-      try {
-        const binDir = path.dirname(agyBinaryPath);
-        const augmentedPath = `${binDir}:/usr/local/bin:/opt/homebrew/bin:${process.env.PATH || ''}`;
-
-        this.sendOutput('\r\n\x1b[1;32m✓ Antigravity CLI detectado: ' + agyBinaryPath + '\x1b[0m\r\n');
-        this.sendOutput('\x1b[90mIniciando sessão do agente...\x1b[0m\r\n\r\n');
-
-        this.activeProcess = spawn(agyBinaryPath, [], {
-          cwd: sessionDir,
-          shell: true,
-          env: {
-            ...process.env,
-            BOOTH_SESSION_DIR: sessionDir,
-            PATH: augmentedPath,
-            FORCE_COLOR: '1',
-            TERM: 'xterm-256color'
-          },
-          stdio: ['pipe', 'pipe', 'pipe']
-        });
-
-        this.isAgyShell = false;
-
-        // Pipe stdout -> WebSocket client
-        this.activeProcess.stdout?.on('data', (chunk: Buffer) => {
-          const str = chunk.toString('utf8');
-          console.log('[AGY stdout]', str.trim());
-          if (this.wsClient && this.wsClient.readyState === WebSocket.OPEN) {
-            this.wsClient.send(JSON.stringify({ type: 'pty_output', data: str }));
-          }
-        });
-
-        // Pipe stderr -> WebSocket client
-        this.activeProcess.stderr?.on('data', (chunk: Buffer) => {
-          const str = chunk.toString('utf8');
-          console.log('[AGY stderr]', str.trim());
-          if (this.wsClient && this.wsClient.readyState === WebSocket.OPEN) {
-            this.wsClient.send(JSON.stringify({ type: 'pty_output', data: str }));
-          }
-        });
-
-        this.activeProcess.on('exit', (exitCode, signal) => {
-          console.log(`[PtyManager] Real AGY process exited (code=${exitCode}, signal=${signal})`);
-          if (this.wsClient && this.wsClient.readyState === WebSocket.OPEN) {
-            this.wsClient.send(JSON.stringify({ type: 'pty_exit', exitCode, signal }));
-          }
-          this.activeProcess = undefined;
-        });
-
-        this.activeProcess.on('error', (err) => {
-          console.warn('[PtyManager] Real AGY process error, falling back to interactive shell:', err);
-          this.startAgyInteractiveShell();
-        });
-
-        // Send initial wake-up newline
-        setTimeout(() => {
-          if (this.activeProcess?.stdin?.writable) {
-            console.log('[PtyManager] Sending initial wake-up prompt to agy stdin...');
-            this.activeProcess.stdin.write('\r\n');
-          }
-        }, 500);
-
-        return;
-      } catch (err) {
-        console.warn('[PtyManager] Failed to spawn real agy process, using built-in interactive shell fallback:', err);
-      }
-    } else {
-      console.log('[PtyManager] Real agy binary not found in known paths, using built-in interactive shell.');
+    if (this.agyBinaryPath) {
+      console.log(`[PtyManager] Real Antigravity CLI binary found at: ${this.agyBinaryPath}`);
     }
 
-    // 4. Fallback to Built-in Interactive AGY CLI Shell
+    // Start Unified Interactive AGY CLI Shell
     this.startAgyInteractiveShell();
   }
 
@@ -152,7 +86,13 @@ export class PtyManagerService {
     this.sendOutput('\r\n\x1b[1;36m===============================================================================\x1b[0m\r\n');
     this.sendOutput('\x1b[1;33m       ANTIGRAVITY CLI v2.6 // AMBIENTE DE FORJA DE AGENTES ESPACIAIS          \x1b[0m\r\n');
     this.sendOutput('\x1b[1;36m===============================================================================\x1b[0m\r\n');
-    this.sendOutput(`\x1b[90mPiloto: \x1b[1;37m${this.pilotCallsign}\x1b[90m | Empresa: \x1b[1;37m${this.pilotCompany}\x1b[90m | Workspace: \x1b[1;37m${this.sessionDir}\x1b[0m\r\n\r\n`);
+    this.sendOutput(`\x1b[90mPiloto: \x1b[1;37m${this.pilotCallsign}\x1b[90m | Empresa: \x1b[1;37m${this.pilotCompany}\x1b[90m | Workspace: \x1b[1;37m${this.sessionDir}\x1b[0m\r\n`);
+
+    if (this.agyBinaryPath) {
+      this.sendOutput(`\x1b[90mExecutável AGY: \x1b[1;32m${this.agyBinaryPath}\x1b[0m\r\n\r\n`);
+    } else {
+      this.sendOutput('\x1b[90mModo: \x1b[1;33mEmulador Standalone com Servidores MCP Locais\x1b[0m\r\n\r\n');
+    }
 
     this.sendOutput('\x1b[1;32m✓ Sub-agentes carregados:\x1b[0m aesthetic-designer, combat-strategist, systems-engineer\r\n');
     this.sendOutput('\x1b[1;32m✓ Servidores MCP conectados:\x1b[0m weapons-arsenal, hull-propulsion, cybernetics-shields\r\n\r\n');
@@ -173,14 +113,7 @@ export class PtyManagerService {
   }
 
   writeInput(data: string): void {
-    if (this.activeProcess && this.activeProcess.stdin?.writable) {
-      this.activeProcess.stdin.write(data);
-      return;
-    }
-
-    if (this.isAgyShell) {
-      this.handleShellInput(data);
-    }
+    this.handleShellInput(data);
   }
 
   private handleShellInput(data: string): void {
@@ -265,7 +198,64 @@ export class PtyManagerService {
     } else if (lower === '/forge' || lower === '/build') {
       this.executeAgentForge('Forja padrão balanceada solicitada pelo piloto.');
     } else {
-      this.executeAgentForge(input);
+      // If real agy binary exists, try executing it with the user's prompt
+      if (this.agyBinaryPath) {
+        this.executeRealAgy(input);
+      } else {
+        this.executeAgentForge(input);
+      }
+    }
+  }
+
+  private executeRealAgy(userPrompt: string): void {
+    this.sendOutput(`\r\n\x1b[1;34m[Antigravity CLI // Executando Processo Real]\x1b[0m\r\n`);
+    this.sendOutput(`\x1b[90m$ agy "${userPrompt}"\x1b[0m\r\n\r\n`);
+
+    try {
+      const binDir = path.dirname(this.agyBinaryPath!);
+      const augmentedPath = `${binDir}:/usr/local/bin:/opt/homebrew/bin:${process.env.PATH || ''}`;
+
+      const child = spawn(this.agyBinaryPath!, [userPrompt], {
+        cwd: this.sessionDir,
+        env: {
+          ...process.env,
+          BOOTH_SESSION_DIR: this.sessionDir,
+          PATH: augmentedPath,
+          FORCE_COLOR: '1',
+          TERM: 'xterm-256color'
+        }
+      });
+
+      let hasOutput = false;
+
+      child.stdout?.on('data', (chunk: Buffer) => {
+        hasOutput = true;
+        this.sendOutput(chunk.toString('utf8'));
+      });
+
+      child.stderr?.on('data', (chunk: Buffer) => {
+        hasOutput = true;
+        this.sendOutput(chunk.toString('utf8'));
+      });
+
+      child.on('close', (code) => {
+        console.log(`[PtyManager] agy process closed with code ${code}`);
+        if (!hasOutput) {
+          console.log('[PtyManager] No stdout from binary, falling back to autonomous agent engine');
+          this.executeAgentForge(userPrompt);
+        } else {
+          this.sendOutput('\r\n');
+          this.renderPrompt();
+        }
+      });
+
+      child.on('error', (err) => {
+        console.warn('[PtyManager] Error executing agy process, falling back to agent engine:', err);
+        this.executeAgentForge(userPrompt);
+      });
+    } catch (err) {
+      console.warn('[PtyManager] Exception launching agy process:', err);
+      this.executeAgentForge(userPrompt);
     }
   }
 
