@@ -199,7 +199,7 @@ export function HandoffTerminalScreen({
                     {detectedSpec.weapons?.secondary?.type || 'Mísseis Teleguiados'}
                   </div>
                   <div className="text-[10px] text-[#38bdf8]">
-                    Raio: {detectedSpec.weapons?.secondary?.blast_radius || 80}px (Shift)
+                    Dano: {detectedSpec.weapons?.secondary?.damage || 120} | Cooldown: {detectedSpec.weapons?.secondary?.cooldown_seconds || 2}s
                   </div>
                 </div>
 
@@ -208,10 +208,10 @@ export function HandoffTerminalScreen({
                     <Gauge className="w-3.5 h-3.5 text-[#38bdf8]" /> Propulsão & Esquiva
                   </span>
                   <div className="font-bold text-white">
-                    {detectedSpec.attributes?.speed || 320} px/s
+                    {detectedSpec.attributes?.speed_px_s || 320} px/s
                   </div>
                   <div className="text-[10px] text-slate-400">
-                    Aceleração: {detectedSpec.attributes?.acceleration || 800} px/s²
+                    Velocidade Linear Calibrada
                   </div>
                 </div>
 
