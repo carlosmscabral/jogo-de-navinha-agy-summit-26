@@ -27,13 +27,13 @@ export class MainGameScene extends Phaser.Scene {
     }
   }
 
-  async create(): Promise<void> {
+  create(): void {
     // 1. Create starfield background
     this.createStarfield();
 
-    // 2. Generate and load dynamic SVG ship texture
+    // 2. Generate dynamic texture synchronously
     const textureKey = 'player_ship_texture';
-    await ShipTextureFactory.createShipTexture(this, textureKey, this.shipSpec.visuals);
+    ShipTextureFactory.createShipTexture(this, textureKey, this.shipSpec.visuals);
 
     // 3. Create Player Ship
     const startX = this.scale.width / 2;
@@ -62,17 +62,18 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private createStarfield(): void {
-    // Layered scrolling starfield
-    const g = this.add.graphics();
-    g.fillStyle(0xffffff, 0.8);
-    g.fillCircle(2, 2, 1);
-    g.generateTexture('star1', 4, 4);
-    g.clear();
+    if (!this.textures.exists('star1')) {
+      const g = this.add.graphics();
+      g.fillStyle(0xffffff, 0.8);
+      g.fillCircle(2, 2, 1);
+      g.generateTexture('star1', 4, 4);
+      g.clear();
 
-    g.fillStyle(0x00f3ff, 0.9);
-    g.fillCircle(4, 4, 2);
-    g.generateTexture('star2', 8, 8);
-    g.destroy();
+      g.fillStyle(0x00f3ff, 0.9);
+      g.fillCircle(4, 4, 2);
+      g.generateTexture('star2', 8, 8);
+      g.destroy();
+    }
 
     const starfield1 = this.add.tileSprite(0, 0, this.scale.width, this.scale.height, 'star1').setOrigin(0, 0);
     const starfield2 = this.add.tileSprite(0, 0, this.scale.width, this.scale.height, 'star2').setOrigin(0, 0);
@@ -80,7 +81,6 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private createEnemyDrones(): void {
-    // Generate dummy enemy texture
     if (!this.textures.exists('drone_tex')) {
       const g = this.add.graphics();
       g.fillStyle(0xff0055, 1);
@@ -98,7 +98,7 @@ export class MainGameScene extends Phaser.Scene {
 
     // Spawn waves periodically
     this.time.addEvent({
-      delay: 1500,
+      delay: 1200,
       callback: () => this.spawnDroneWave(),
       loop: true
     });
@@ -111,7 +111,7 @@ export class MainGameScene extends Phaser.Scene {
       drone.setActive(true);
       drone.setVisible(true);
       drone.setPosition(x, -30);
-      drone.setVelocity(Phaser.Math.Between(-30, 30), Phaser.Math.Between(150, 220));
+      drone.setVelocity(Phaser.Math.Between(-20, 20), Phaser.Math.Between(160, 240));
       drone.setData('hp', 30);
     }
   }

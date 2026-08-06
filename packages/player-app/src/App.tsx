@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FALLBACK_PRESETS, ShipSpecification } from '@jogo/shared';
+import { FALLBACK_PRESETS } from '@jogo/shared';
 import { createGameInstance } from './game/index.js';
-import { Rocket, Shield, Zap, Crosshair } from 'lucide-react';
+import { Rocket, Crosshair } from 'lucide-react';
 
 export function App() {
   const [selectedPreset, setSelectedPreset] = useState<'interceptor' | 'vanguard' | 'striker'>('interceptor');
@@ -9,12 +9,9 @@ export function App() {
   const gameInstanceRef = useRef<Phaser.Game | null>(null);
 
   useEffect(() => {
-    if (gameContainerRef.current) {
-      if (gameInstanceRef.current) {
-        gameInstanceRef.current.destroy(true);
-      }
+    if (gameContainerRef.current && !gameInstanceRef.current) {
       const spec = FALLBACK_PRESETS[selectedPreset];
-      gameInstanceRef.current = createGameInstance(gameContainerRef.current.id, spec);
+      gameInstanceRef.current = createGameInstance(gameContainerRef.current, spec);
     }
 
     return () => {
@@ -23,9 +20,18 @@ export function App() {
         gameInstanceRef.current = null;
       }
     };
-  }, [selectedPreset]);
+  }, []);
 
-  const currentSpec = FALLBACK_PRESETS[selectedPreset];
+  const handleSelectPreset = (presetKey: 'interceptor' | 'vanguard' | 'striker') => {
+    setSelectedPreset(presetKey);
+    const spec = FALLBACK_PRESETS[presetKey];
+    if (gameInstanceRef.current) {
+      const scene = gameInstanceRef.current.scene.getScenes(true)[0];
+      if (scene) {
+        scene.scene.restart({ shipSpec: spec });
+      }
+    }
+  };
 
   return (
     <div className="flex h-screen w-screen bg-[#050510] text-white crt-scanlines overflow-hidden">
@@ -57,7 +63,7 @@ export function App() {
             {(['interceptor', 'vanguard', 'striker'] as const).map((preset) => (
               <button
                 key={preset}
-                onClick={() => setSelectedPreset(preset)}
+                onClick={() => handleSelectPreset(preset)}
                 className={`w-full p-3 rounded border text-left text-xs transition-all ${
                   selectedPreset === preset
                     ? 'border-[#00f3ff] bg-[#00f3ff]/20 neon-glow-cyan text-white font-bold'

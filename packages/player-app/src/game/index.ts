@@ -2,10 +2,19 @@ import Phaser from 'phaser';
 import { MainGameScene } from './scenes/MainGameScene.js';
 import { ShipSpecification } from '@jogo/shared';
 
-export function createGameInstance(containerId: string, shipSpec?: ShipSpecification): Phaser.Game {
+export function createGameInstance(container: HTMLElement | string, shipSpec?: ShipSpecification): Phaser.Game {
+  class CustomGameScene extends MainGameScene {
+    constructor() {
+      super();
+      if (shipSpec) {
+        this.shipSpec = shipSpec;
+      }
+    }
+  }
+
   const config: Phaser.Types.Core.GameConfig = {
     type: Phaser.AUTO,
-    parent: containerId,
+    parent: container,
     width: 600,
     height: 800,
     backgroundColor: '#050512',
@@ -16,14 +25,8 @@ export function createGameInstance(containerId: string, shipSpec?: ShipSpecifica
         debug: false
       }
     },
-    scene: [MainGameScene]
+    scene: [CustomGameScene]
   };
 
-  const game = new Phaser.Game(config);
-
-  if (shipSpec) {
-    game.scene.start('MainGameScene', { shipSpec });
-  }
-
-  return game;
+  return new Phaser.Game(config);
 }
