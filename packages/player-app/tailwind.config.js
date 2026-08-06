@@ -17,8 +17,10 @@ export default {
         }
       },
       fontFamily: {
-        mono: ['"Google Sans Code"', 'monospace', 'Courier New'],
-        display: ['"Google Sans Flex"', 'sans-serif']
+        sans: ['"Google Sans Flex"', '"Google Sans Text"', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        mono: ['"Google Sans Code"', '"Share Tech Mono"', 'monospace', 'Courier New'],
+        display: ['"Google Sans Flex"', '"Google Sans"', 'sans-serif'],
+        arcade: ['"Press Start 2P"', 'monospace']
       }
     },
   },

@@ -58,6 +58,11 @@ app.get('/api/session/spec', (req, res) => {
   res.json({ ready: false });
 });
 
+app.get('/api/session/activity', (req, res) => {
+  const activity = fileWatcher.getActivityHistory();
+  res.json({ activity });
+});
+
 app.post('/api/session/start', (req, res) => {
   try {
     const { pilot, energy_sliders, selected_mcps, selected_subagents } = req.body;
@@ -78,16 +83,27 @@ app.post('/api/session/start', (req, res) => {
       mcpsDistDir
     });
 
-    // 2. Start File Watcher on /tmp/booth_session/ship_spec.json
-    fileWatcher.startWatching(sessionDir, (shipSpec) => {
-      console.log(`[Daemon] Broadcasting EVENT_SHIP_READY to ${activeClients.size} connected client(s)...`);
-      const payload = JSON.stringify({ type: 'EVENT_SHIP_READY', spec: shipSpec });
-      for (const client of activeClients) {
-        if (client.readyState === WebSocket.OPEN) {
-          client.send(payload);
+    // 2. Start File Watcher on /tmp/booth_session/ship_spec.json and mcp_audit.log
+    fileWatcher.startWatching(
+      sessionDir,
+      (shipSpec) => {
+        console.log(`[Daemon] Broadcasting EVENT_SHIP_READY to ${activeClients.size} connected client(s)...`);
+        const payload = JSON.stringify({ type: 'EVENT_SHIP_READY', spec: shipSpec });
+        for (const client of activeClients) {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(payload);
+          }
+        }
+      },
+      (activity) => {
+        const payload = JSON.stringify({ type: 'EVENT_MCP_ACTIVITY', data: activity });
+        for (const client of activeClients) {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(payload);
+          }
         }
       }
-    });
+    );
 
     console.log(`[Daemon API] Session workspace initialized at: ${sessionDir} for pilot ${fullPilot.callsign}`);
 
@@ -127,10 +143,18 @@ wss.on('connection', (ws) => {
   activeClients.add(ws);
   console.log(`[Daemon WS] Client connected (Total: ${activeClients.size})`);
 
-  // If a spec already exists when connecting, send it immediately
+  // If a spec already exists when connecting, send it
   const existingSpec = fileWatcher.getCurrentSpec();
   if (existingSpec) {
     ws.send(JSON.stringify({ type: 'EVENT_SHIP_READY', spec: existingSpec }));
+  }
+
+  // Send activity history
+  const history = fileWatcher.getActivityHistory();
+  if (history.length > 0) {
+    for (const item of history) {
+      ws.send(JSON.stringify({ type: 'EVENT_MCP_ACTIVITY', data: item }));
+    }
   }
 
   ws.on('close', () => {

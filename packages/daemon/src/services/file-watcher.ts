@@ -3,20 +3,39 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { validateShipSpecification, ShipSpecification, FALLBACK_PRESETS } from '@jogo/shared';
 
+export interface McpActivityEvent {
+  timestamp: string;
+  server: string;
+  tool: string;
+  args?: any;
+  result?: any;
+}
+
 export class FileWatcherService {
   private watcher?: FSWatcher;
   private pollIntervalTimer?: NodeJS.Timeout;
   private onShipReadyCallback?: (spec: ShipSpecification) => void;
+  private onMcpActivityCallback?: (activity: McpActivityEvent) => void;
   private lastProcessedTimestamp = 0;
+  private lastAuditLogLength = 0;
   private currentSpec?: ShipSpecification;
+  private activityHistory: McpActivityEvent[] = [];
 
-  startWatching(sessionDir: string, onShipReady: (spec: ShipSpecification) => void): void {
+  startWatching(
+    sessionDir: string,
+    onShipReady: (spec: ShipSpecification) => void,
+    onMcpActivity?: (activity: McpActivityEvent) => void
+  ): void {
     this.stopWatching();
     this.onShipReadyCallback = onShipReady;
+    this.onMcpActivityCallback = onMcpActivity;
     this.lastProcessedTimestamp = 0;
+    this.lastAuditLogLength = 0;
     this.currentSpec = undefined;
+    this.activityHistory = [];
 
     const targetFile = path.join(sessionDir, 'ship_spec.json');
+    const auditFile = path.join(sessionDir, 'mcp_audit.log');
 
     // 1. Chokidar watch on sessionDir (watches directory creation & file updates)
     try {
@@ -32,13 +51,17 @@ export class FileWatcherService {
 
       this.watcher.on('add', (filePath: string) => {
         if (filePath.endsWith('ship_spec.json')) {
-          this.checkAndProcessFile(targetFile, sessionDir);
+          this.checkAndProcessSpecFile(targetFile, sessionDir);
+        } else if (filePath.endsWith('mcp_audit.log')) {
+          this.checkAndProcessAuditLog(auditFile);
         }
       });
 
       this.watcher.on('change', (filePath: string) => {
         if (filePath.endsWith('ship_spec.json')) {
-          this.checkAndProcessFile(targetFile, sessionDir);
+          this.checkAndProcessSpecFile(targetFile, sessionDir);
+        } else if (filePath.endsWith('mcp_audit.log')) {
+          this.checkAndProcessAuditLog(auditFile);
         }
       });
     } catch (err) {
@@ -47,7 +70,8 @@ export class FileWatcherService {
 
     // 2. Active Polling Backup (Every 400ms - guaranteed detection across macOS/Linux)
     this.pollIntervalTimer = setInterval(() => {
-      this.checkAndProcessFile(targetFile, sessionDir);
+      this.checkAndProcessSpecFile(targetFile, sessionDir);
+      this.checkAndProcessAuditLog(auditFile);
     }, 400);
   }
 
@@ -55,7 +79,38 @@ export class FileWatcherService {
     return this.currentSpec;
   }
 
-  private checkAndProcessFile(filePath: string, sessionDir: string): void {
+  getActivityHistory(): McpActivityEvent[] {
+    return this.activityHistory;
+  }
+
+  private checkAndProcessAuditLog(auditPath: string): void {
+    try {
+      if (!fs.existsSync(auditPath)) return;
+      const raw = fs.readFileSync(auditPath, 'utf8');
+      if (raw.length <= this.lastAuditLogLength) return;
+
+      const newContent = raw.slice(this.lastAuditLogLength);
+      this.lastAuditLogLength = raw.length;
+
+      const lines = newContent.split('\n').filter((l) => l.trim().length > 0);
+      for (const line of lines) {
+        try {
+          const entry = JSON.parse(line) as McpActivityEvent;
+          this.activityHistory.push(entry);
+          console.log(`[FileWatcher] MCP Tool Executed: [${entry.server}] ${entry.tool}`);
+          if (this.onMcpActivityCallback) {
+            this.onMcpActivityCallback(entry);
+          }
+        } catch {
+          // Ignore non-json line
+        }
+      }
+    } catch (err) {
+      // Non-blocking
+    }
+  }
+
+  private checkAndProcessSpecFile(filePath: string, sessionDir: string): void {
     try {
       if (!fs.existsSync(filePath)) return;
 
