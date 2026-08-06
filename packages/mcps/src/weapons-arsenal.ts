@@ -13,24 +13,28 @@ export function createWeaponsArsenalServer(): McpServer {
     'configure_primary_cannon',
     'Configura o canhão primário da nave calculando dano, cadência de tiro e velocidade dos projéteis.',
     {
-      type: z.enum(['plasma', 'laser', 'vulcan_spread']).describe('Tipo de armamento primário'),
-      fire_rate: z.number().min(2).max(60).describe('Cadência de tiro em disparos por segundo'),
-      damage_multiplier: z.number().min(0.5).max(2.0).describe('Multiplicador de dano baseado no slider de ataque')
+      type: z.string().optional().describe('Tipo de armamento primário (plasma, laser, vulcan_spread)'),
+      fire_rate: z.union([z.number(), z.string()]).optional().describe('Cadência de tiro em disparos por segundo'),
+      damage_multiplier: z.union([z.number(), z.string()]).optional().describe('Multiplicador de dano baseado no slider de ataque')
     },
-    async ({ type, fire_rate, damage_multiplier }) => {
+    async (args) => {
+      const type = String(args.type || 'plasma').toLowerCase();
+      const fire_rate = Number(args.fire_rate ?? 8);
+      const damage_multiplier = Number(args.damage_multiplier ?? 1.0);
+
       let baseDamage = 35;
       let bulletSpeed = 650;
       let spreadAngle = 0;
 
-      if (type === 'laser') {
-        baseDamage = 12; // Continuous raycast per tick
+      if (type.includes('laser')) {
+        baseDamage = 25;
         bulletSpeed = 750;
         spreadAngle = 0;
-      } else if (type === 'vulcan_spread') {
-        baseDamage = 15;
+      } else if (type.includes('vulcan') || type.includes('spread')) {
+        baseDamage = 20;
         bulletSpeed = 600;
         spreadAngle = 15;
-      } else if (type === 'plasma') {
+      } else {
         baseDamage = 35;
         bulletSpeed = 650;
         spreadAngle = 0;
@@ -38,7 +42,7 @@ export function createWeaponsArsenalServer(): McpServer {
 
       const finalDamage = Math.round(baseDamage * damage_multiplier);
       const result = {
-        type,
+        type: type.includes('laser') ? 'laser' : type.includes('vulcan') ? 'vulcan_spread' : 'plasma',
         damage: finalDamage,
         fire_rate,
         bullet_speed: bulletSpeed,
@@ -46,7 +50,7 @@ export function createWeaponsArsenalServer(): McpServer {
         dps_estimate: Math.round(finalDamage * fire_rate)
       };
 
-      logMcpToolExecution('weapons-arsenal', 'configure_primary_cannon', { type, fire_rate, damage_multiplier }, result);
+      logMcpToolExecution('weapons-arsenal', 'configure_primary_cannon', args, result);
 
       return {
         content: [
@@ -63,15 +67,31 @@ export function createWeaponsArsenalServer(): McpServer {
     'attach_secondary_ordnance',
     'Instala e calibra o sistema de armas secundárias ativado pela tecla Shift.',
     {
-      type: z.enum(['homing_missiles', 'emp_burst', 'drone_escort', 'none']).describe('Tipo de arma secundária'),
-      blast_radius: z.number().min(0).max(100).describe('Raio de explosão em pixels'),
-      cooldown_seconds: z.number().min(0).max(20).describe('Tempo de recarga em segundos')
+      type: z.string().optional().describe('Tipo de arma secundária (homing_missiles, emp_burst, drone_escort, none)'),
+      blast_radius: z.union([z.number(), z.string()]).optional().describe('Raio de explosão em pixels'),
+      cooldown_seconds: z.union([z.number(), z.string()]).optional().describe('Tempo de recarga em segundos')
     },
-    async ({ type, blast_radius, cooldown_seconds }) => {
+    async (args) => {
+      const rawType = String(args.type || 'homing_missiles').toLowerCase();
+      const blast_radius = Number(args.blast_radius ?? 80);
+      const cooldown_seconds = Number(args.cooldown_seconds ?? 2);
+
       let damage = 0;
-      if (type === 'homing_missiles') damage = 120;
-      else if (type === 'emp_burst') damage = 60;
-      else if (type === 'drone_escort') damage = 15;
+      let type: 'homing_missiles' | 'emp_burst' | 'drone_escort' | 'none' = 'homing_missiles';
+
+      if (rawType.includes('emp')) {
+        type = 'emp_burst';
+        damage = 60;
+      } else if (rawType.includes('drone')) {
+        type = 'drone_escort';
+        damage = 30;
+      } else if (rawType.includes('none')) {
+        type = 'none';
+        damage = 0;
+      } else {
+        type = 'homing_missiles';
+        damage = 100;
+      }
 
       const result = {
         type,
@@ -81,7 +101,7 @@ export function createWeaponsArsenalServer(): McpServer {
         status: 'ARMED'
       };
 
-      logMcpToolExecution('weapons-arsenal', 'attach_secondary_ordnance', { type, blast_radius, cooldown_seconds }, result);
+      logMcpToolExecution('weapons-arsenal', 'attach_secondary_ordnance', args, result);
 
       return {
         content: [
