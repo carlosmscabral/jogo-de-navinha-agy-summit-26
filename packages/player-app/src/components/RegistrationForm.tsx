@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { User, Building2, ShieldCheck, ChevronRight, AlertCircle, ArrowLeft } from 'lucide-react';
-import { PilotInfo } from '@jogo/shared';
+import { User, Building2, ShieldCheck, ChevronRight, AlertCircle, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { PilotInfo, validateCallsign } from '@jogo/shared';
 
 interface RegistrationFormProps {
   onRegister: (pilot: PilotInfo) => void;
@@ -22,7 +22,6 @@ export function RegistrationForm({ onRegister, onBack }: RegistrationFormProps) 
           if (data.companies) setCompanySuggestions(data.companies);
         })
         .catch(() => {
-          // Fallback static list
           const fallbacks = ['Google', 'Itaú', 'Bradesco', 'Nubank', 'Mercado Livre', 'Globo', 'Totvs', 'Petrobras', 'Embraer'];
           setCompanySuggestions(fallbacks.filter((c) => c.toLowerCase().includes(companyRaw.toLowerCase())));
         });
@@ -33,10 +32,15 @@ export function RegistrationForm({ onRegister, onBack }: RegistrationFormProps) 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!callsign.trim()) {
-      setErrorMsg('Por favor, informe seu Callsign (Codinome de Piloto).');
+    setErrorMsg('');
+
+    // 1. Validate Callsign with Content Moderation & Profanity Filtering
+    const callsignValidation = validateCallsign(callsign);
+    if (!callsignValidation.isValid) {
+      setErrorMsg(callsignValidation.reason || 'Por favor, escolha um Callsign adequado para o telão público.');
       return;
     }
+
     if (!companyRaw.trim()) {
       setErrorMsg('Por favor, informe o nome da sua Empresa.');
       return;
@@ -47,7 +51,7 @@ export function RegistrationForm({ onRegister, onBack }: RegistrationFormProps) 
     }
 
     onRegister({
-      callsign: callsign.trim().toUpperCase().slice(0, 15),
+      callsign: callsignValidation.sanitized,
       company_raw: companyRaw.trim().slice(0, 40),
       company_canonical: companyRaw.trim().slice(0, 40)
     });
@@ -68,7 +72,7 @@ export function RegistrationForm({ onRegister, onBack }: RegistrationFormProps) 
         </div>
 
         {errorMsg && (
-          <div className="p-3 rounded-xl bg-red-500/15 border border-red-500/40 text-red-300 text-xs flex items-center gap-2 font-mono">
+          <div className="p-3 rounded-xl bg-red-500/15 border border-red-500/40 text-red-300 text-xs flex items-center gap-2 font-mono animate-shake">
             <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
             <span>{errorMsg}</span>
           </div>
@@ -86,10 +90,16 @@ export function RegistrationForm({ onRegister, onBack }: RegistrationFormProps) 
               maxLength={15}
               placeholder="EX: CYBER_ACE"
               value={callsign}
-              onChange={(e) => setCallsign(e.target.value.toUpperCase())}
+              onChange={(e) => {
+                setCallsign(e.target.value.toUpperCase());
+                if (errorMsg) setErrorMsg('');
+              }}
               className="w-full p-3.5 rounded-xl bg-slate-900/80 border border-slate-700 text-white font-mono text-sm uppercase focus:border-[#ff9e0b] focus:outline-none transition-all placeholder:text-slate-600"
             />
-            <span className="text-[10px] text-slate-400 font-mono">Máximo 15 caracteres (exibido no telão público)</span>
+            <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+              <span>Apenas letras, números e traço</span>
+              <span>{callsign.length}/15</span>
+            </div>
           </div>
 
           {/* Company Input with Autocomplete */}
@@ -103,7 +113,10 @@ export function RegistrationForm({ onRegister, onBack }: RegistrationFormProps) 
               maxLength={40}
               placeholder="EX: Google, Itaú, Nubank..."
               value={companyRaw}
-              onChange={(e) => setCompanyRaw(e.target.value)}
+              onChange={(e) => {
+                setCompanyRaw(e.target.value);
+                if (errorMsg) setErrorMsg('');
+              }}
               className="w-full p-3.5 rounded-xl bg-slate-900/80 border border-slate-700 text-white font-mono text-sm focus:border-[#38bdf8] focus:outline-none transition-all placeholder:text-slate-600"
             />
 
@@ -118,9 +131,10 @@ export function RegistrationForm({ onRegister, onBack }: RegistrationFormProps) 
                       setCompanyRaw(company);
                       setCompanySuggestions([]);
                     }}
-                    className="w-full p-2.5 text-left text-xs text-slate-200 hover:bg-[#38bdf8]/20 hover:text-[#38bdf8] transition-all border-b border-slate-800 last:border-none font-mono"
+                    className="w-full p-2.5 text-left text-xs text-slate-200 hover:bg-[#38bdf8]/20 hover:text-[#38bdf8] transition-all border-b border-slate-800 last:border-none font-mono flex items-center justify-between"
                   >
-                    {company}
+                    <span>{company}</span>
+                    <span className="text-[10px] text-slate-400">Patrocinador Summit</span>
                   </button>
                 ))}
               </div>
@@ -137,27 +151,26 @@ export function RegistrationForm({ onRegister, onBack }: RegistrationFormProps) 
                 className="mt-0.5 w-4 h-4 accent-[#ff9e0b] rounded"
               />
               <span className="text-[11px] text-slate-300 leading-snug">
-                Autorizo a exibição do meu Callsign, pontuação e Empresa no telão de 60 FPS do estande durante o Google Cloud Summit 2026.
+                Autorizo a exibição do meu Callsign, pontuação e Empresa no telão público de 60 FPS do estande durante o Google Cloud Summit 2026.
               </span>
             </label>
           </div>
 
           {/* Action Buttons */}
-          <div className="flex gap-3 pt-3">
+          <div className="pt-3 flex gap-3">
             <button
               type="button"
               onClick={onBack}
-              className="w-1/3 p-3.5 rounded-xl border border-slate-700 text-slate-300 text-xs font-bold uppercase hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
+              className="p-3.5 px-5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all flex items-center gap-1.5 text-xs font-mono font-bold"
             >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Voltar</span>
+              <ArrowLeft className="w-4 h-4" /> Voltar
             </button>
             <button
               type="submit"
-              className="w-2/3 p-3.5 rounded-xl bg-gradient-to-r from-[#ff9e0b] to-[#f59e0b] text-black text-xs font-black uppercase tracking-wider hover:scale-[1.02] transition-all shadow-[0_0_20px_rgba(255,158,11,0.5)] flex items-center justify-center gap-2"
+              className="flex-1 p-3.5 rounded-2xl bg-gradient-to-r from-[#ff9e0b] to-[#f59e0b] hover:from-[#f59e0b] hover:to-[#d97706] text-black font-black text-sm tracking-wider uppercase transition-all shadow-[0_0_25px_rgba(255,158,11,0.4)] flex items-center justify-center gap-2 font-mono"
             >
-              <span>Avançar para Instruções</span>
-              <ChevronRight className="w-4 h-4 stroke-[3]" />
+              <span>Continuar para a Forja</span>
+              <ChevronRight className="w-4 h-4" />
             </button>
           </div>
         </form>

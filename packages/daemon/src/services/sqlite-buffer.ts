@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { MatchRecord } from '@jogo/shared';
+import { MatchRecord, calculateSimilarity, resolveCompanyFromCatalog } from '@jogo/shared';
 
 export interface CompanyMatch {
   raw: string;
@@ -166,46 +166,59 @@ export class SQLiteBufferService {
     }
   }
 
+  getCanonicalList(): string[] {
+    const stmt = this.db.prepare('SELECT name FROM canonical_companies ORDER BY name ASC');
+    return (stmt.all() as { name: string }[]).map((r) => r.name);
+  }
+
   searchCompanies(query: string): string[] {
-    if (!query || query.trim().length === 0) {
-      const stmt = this.db.prepare('SELECT name FROM canonical_companies ORDER BY name ASC LIMIT 10');
-      return (stmt.all() as { name: string }[]).map((r) => r.name);
+    const q = (query || '').trim();
+    const catalog = this.getCanonicalList();
+
+    if (!q) {
+      return catalog.slice(0, 10);
     }
 
-    const stmt = this.db.prepare(`
-      SELECT name FROM canonical_companies 
-      WHERE name LIKE ? 
-      ORDER BY 
-        CASE WHEN name LIKE ? THEN 1 ELSE 2 END,
-        name ASC 
-      LIMIT 8
-    `);
-    const q = query.trim();
-    const rows = stmt.all(`${q}%`, `%${q}%`) as { name: string }[];
-    return rows.map((r) => r.name);
+    // 1. Direct and fuzzy matching ranked by relevance
+    const matches: { name: string; score: number }[] = [];
+    for (const name of catalog) {
+      const lower = name.toLowerCase();
+      const qLower = q.toLowerCase();
+
+      if (lower === qLower) {
+        matches.push({ name, score: 1.0 });
+      } else if (lower.startsWith(qLower)) {
+        matches.push({ name, score: 0.9 });
+      } else if (lower.includes(qLower)) {
+        matches.push({ name, score: 0.75 });
+      } else {
+        const sim = calculateSimilarity(q, name);
+        if (sim >= 0.65) {
+          matches.push({ name, score: sim * 0.7 });
+        }
+      }
+    }
+
+    matches.sort((a, b) => b.score - a.score);
+    return matches.slice(0, 8).map((m) => m.name);
   }
 
   resolveCompany(rawInput: string): string {
-    const raw = rawInput.trim();
+    const raw = (rawInput || '').trim();
     if (!raw) return 'Google';
 
-    // 1. Exact or alias match
+    // 1. Check cached alias in SQLite
     const aliasStmt = this.db.prepare('SELECT canonical_name FROM company_aliases WHERE raw_input = ?');
     const alias = aliasStmt.get(raw.toLowerCase()) as { canonical_name: string } | undefined;
     if (alias) return alias.canonical_name;
 
-    // 2. Exact match in canonical
-    const exactStmt = this.db.prepare('SELECT name FROM canonical_companies WHERE LOWER(name) = ?');
-    const exact = exactStmt.get(raw.toLowerCase()) as { name: string } | undefined;
-    if (exact) {
-      this.cacheAlias(raw, exact.name);
-      return exact.name;
-    }
+    // 2. Proactive multi-layer resolution (exact, suffix stripping, containment, Levenshtein fuzzy)
+    const catalog = this.getCanonicalList();
+    const resolution = resolveCompanyFromCatalog(raw, catalog);
 
-    // 3. Fallback to raw formatted capitalized
-    const formatted = raw.charAt(0).toUpperCase() + raw.slice(1);
-    this.cacheAlias(raw, formatted);
-    return formatted;
+    // 3. Cache the resolved alias
+    this.cacheAlias(raw, resolution.canonical);
+    return resolution.canonical;
   }
 
   private cacheAlias(raw: string, canonical: string): void {

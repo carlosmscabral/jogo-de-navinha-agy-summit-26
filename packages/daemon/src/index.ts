@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { SQLiteBufferService } from './services/sqlite-buffer.js';
 import { WorkspaceGeneratorService } from './services/workspace-generator.js';
 import { FileWatcherService } from './services/file-watcher.js';
+import { validateCallsign } from '@jogo/shared';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -84,9 +85,11 @@ app.post('/api/session/start', (req, res) => {
   try {
     const { pilot, energy_sliders, selected_mcps, selected_subagents } = req.body;
 
-    const canonicalCompany = sqliteBuffer.resolveCompany(pilot.company_raw);
+    const validation = validateCallsign(pilot?.callsign || '');
+    const canonicalCompany = sqliteBuffer.resolveCompany(pilot?.company_raw);
     const fullPilot = {
       ...pilot,
+      callsign: validation.sanitized,
       company_canonical: canonicalCompany
     };
 

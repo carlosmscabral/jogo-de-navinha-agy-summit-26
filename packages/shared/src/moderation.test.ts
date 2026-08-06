@@ -1,0 +1,87 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert';
+import { validateCallsign } from './utils/moderation.js';
+import {
+  calculateSimilarity,
+  cleanCompanyName,
+  resolveCompanyFromCatalog
+} from './utils/company-normalizer.js';
+
+describe('Moderation & Profanity Filter', () => {
+  it('should accept clean valid callsigns', () => {
+    const r1 = validateCallsign('CYBER_ACE');
+    assert.strictEqual(r1.isValid, true);
+    assert.strictEqual(r1.sanitized, 'CYBER_ACE');
+
+    const r2 = validateCallsign('Falcon-99');
+    assert.strictEqual(r2.isValid, true);
+    assert.strictEqual(r2.sanitized, 'FALCON-99');
+  });
+
+  it('should reject empty or too short callsigns', () => {
+    const r1 = validateCallsign('');
+    assert.strictEqual(r1.isValid, false);
+
+    const r2 = validateCallsign('AB');
+    assert.strictEqual(r2.isValid, false);
+  });
+
+  it('should reject obvious profanity and leet speak variations', () => {
+    const r1 = validateCallsign('PORRA_PILOT');
+    assert.strictEqual(r1.isValid, false);
+
+    const r2 = validateCallsign('P0rr4Ace');
+    assert.strictEqual(r2.isValid, false);
+
+    const r3 = validateCallsign('f*ck_you');
+    assert.strictEqual(r3.isValid, false);
+  });
+
+  it('should reject repetitive keyboard mash', () => {
+    const r1 = validateCallsign('AAAAAAA');
+    assert.strictEqual(r1.isValid, false);
+  });
+});
+
+describe('Proactive Company Normalizer & Fuzzy Matcher', () => {
+  const seedCatalog = [
+    'Google', 'Google Cloud', 'Itaú', 'Bradesco', 'Nubank',
+    'Mercado Livre', 'Globo', 'Embraer', 'Petrobras', 'Totvs', 'CI&T'
+  ];
+
+  it('should match exact company names', () => {
+    const r = resolveCompanyFromCatalog('Google', seedCatalog);
+    assert.strictEqual(r.canonical, 'Google');
+    assert.strictEqual(r.matchedBy, 'exact');
+    assert.strictEqual(r.confidence, 1.0);
+  });
+
+  it('should strip corporate suffixes and regional qualifiers', () => {
+    const r1 = resolveCompanyFromCatalog('Google Brasil', seedCatalog);
+    assert.strictEqual(r1.canonical, 'Google');
+    assert.strictEqual(r1.matchedBy, 'suffix_strip');
+
+    const r2 = resolveCompanyFromCatalog('Itau Unibanco S.A.', seedCatalog);
+    assert.strictEqual(r2.canonical, 'Itaú');
+
+    const r3 = resolveCompanyFromCatalog('Mercado Livre Tecnologia Ltda', seedCatalog);
+    assert.strictEqual(r3.canonical, 'Mercado Livre');
+  });
+
+  it('should fuzzy match typos via Levenshtein', () => {
+    const r1 = resolveCompanyFromCatalog('gogle', seedCatalog);
+    assert.strictEqual(r1.canonical, 'Google');
+
+    const r2 = resolveCompanyFromCatalog('nu bank', seedCatalog);
+    assert.strictEqual(r2.canonical, 'Nubank');
+
+    const r3 = resolveCompanyFromCatalog('embraerr', seedCatalog);
+    assert.strictEqual(r3.canonical, 'Embraer');
+  });
+
+  it('should fallback cleanly to capitalized raw name for unknown companies', () => {
+    const r = resolveCompanyFromCatalog('startup do joao', seedCatalog);
+    assert.strictEqual(r.canonical, 'Startup Do Joao');
+    assert.strictEqual(r.matchedBy, 'fallback');
+  });
+});
