@@ -19,7 +19,7 @@ const CUSTOM_PRESETS: Record<string, ShipSpecification> = {
       selected_mcps: ['weapons-arsenal'],
       selected_subagents: ['combat-strategist'],
       energy_sliders: { offense: 50, speed: 30, defense: 10, tech: 10 },
-      fast_grill_me_choices: { weapon_focus: 'vulcan_spread', visual_theme: 'cyberpunk_neon' },
+      fast_grill_me_choices: { weapon_focus: 'vulcan_spread', visual_theme: 'synthwave_80s' },
       synergies_unlocked: ['Glass Cannon 🔥']
     },
     attributes: { speed_px_s: 340, max_hp: 3, shield_capacity: 1, hitbox_radius: 8 },
@@ -27,7 +27,7 @@ const CUSTOM_PRESETS: Record<string, ShipSpecification> = {
       primary: { type: 'vulcan_spread', damage: 35, fire_rate: 10, bullet_speed: 750, spread_angle: 15 },
       secondary: { type: 'homing_missiles', damage: 120, cooldown_seconds: 4 }
     },
-    visuals: { style_name: 'Vulcan Striker', primary_color: '#ff0055', secondary_color: '#00f3ff', engine_trail_color: '#ff0055' }
+    visuals: { style_name: 'Vulcan Striker', primary_color: '#ff0055', secondary_color: '#00f3ff', engine_trail_color: '#ff0055', svg_path_data: 'M 64 10 L 92 85 L 82 98 L 64 88 L 46 98 L 36 85 Z' }
   },
   cyberpunk_gold: {
     $schema: 'https://json-schema.org/draft-07/schema#',
@@ -36,15 +36,15 @@ const CUSTOM_PRESETS: Record<string, ShipSpecification> = {
       selected_mcps: ['weapons-arsenal', 'hull-propulsion', 'cybernetics-shields'],
       selected_subagents: ['aesthetic-designer'],
       energy_sliders: { offense: 35, speed: 25, defense: 20, tech: 20 },
-      fast_grill_me_choices: { weapon_focus: 'laser', visual_theme: 'synthwave_80s' },
+      fast_grill_me_choices: { weapon_focus: 'laser_piercing', visual_theme: 'cyberpunk_gold' },
       synergies_unlocked: ['Titan Fortress 🛡️']
     },
     attributes: { speed_px_s: 280, max_hp: 5, shield_capacity: 2, hitbox_radius: 12 },
     weapons: {
-      primary: { type: 'laser', damage: 40, fire_rate: 9, bullet_speed: 700 },
+      primary: { type: 'laser', damage: 40, fire_rate: 9, bullet_speed: 700, spread_angle: 0 },
       secondary: { type: 'homing_missiles', damage: 100, cooldown_seconds: 4 }
     },
-    visuals: { style_name: 'PINTO-01 Cyberpunk Gold', primary_color: '#FFE600', secondary_color: '#00F0FF', engine_trail_color: '#FF007F' }
+    visuals: { style_name: 'PINTO-01 Cyberpunk Gold', primary_color: '#FFE600', secondary_color: '#00F0FF', engine_trail_color: '#FF007F', svg_path_data: 'M 64 12 L 98 48 L 108 88 L 84 82 L 64 95 L 44 82 L 20 88 L 30 48 Z' }
   }
 };
 

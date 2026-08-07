@@ -928,6 +928,8 @@ export class MainGameScene extends Phaser.Scene {
           this.hudSecondaryText.setColor('#64748b');
           this.hudSecondaryBarFill.width = 60 * sec.progress;
           this.hudSecondaryBarFill.setFillStyle(0x38bdf8);
+        }
+      }
     }
   }
 

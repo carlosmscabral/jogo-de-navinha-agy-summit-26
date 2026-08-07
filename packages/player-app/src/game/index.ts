@@ -56,7 +56,7 @@ export function createGameInstance(
 
   const dpr = typeof window !== 'undefined' ? Math.min(2, window.devicePixelRatio || 1) : 1;
 
-  const config: Phaser.Types.Core.GameConfig = {
+  const config: Phaser.Types.Core.GameConfig & { resolution?: number } = {
     type: Phaser.AUTO,
     parent: opts.container,
     width: 600,
