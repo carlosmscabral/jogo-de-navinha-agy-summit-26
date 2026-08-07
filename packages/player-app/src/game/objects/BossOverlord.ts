@@ -10,9 +10,11 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
 
   bullets!: Phaser.Physics.Arcade.Group;
   lastFireTime = 0;
+  lastSpecialFireTime = 0;
   fireAngle = 0;
   difficultyMultiplier = 1.0;
   shieldGraphic!: Phaser.GameObjects.Graphics;
+  thrusterParticles!: Phaser.GameObjects.Graphics;
 
   constructor(scene: Phaser.Scene, x: number, y = 150, isHardcore = false) {
     BossOverlord.generateBossTextures(scene);
@@ -33,16 +35,18 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
       this.body.enable = true;
     }
 
-    // Boss Bullets Pool
+    // Boss Bullets Pool (High Capacity for Bullet Hell)
     this.bullets = scene.physics.add.group({
       defaultKey: 'bullet_boss_plasma',
-      maxSize: 300
+      maxSize: 500
     });
 
     this.shieldGraphic = scene.add.graphics();
     this.shieldGraphic.setDepth(16);
 
-    // Warp Entrance Flash
+    this.thrusterParticles = scene.add.graphics();
+    this.thrusterParticles.setDepth(14);
+
     this.setScale(1.0);
     this.setAlpha(1.0);
     this.isInvulnerable = false;
@@ -54,69 +58,74 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
     if (!scene.textures.exists('boss_overlord_dreadnought')) {
       const g = scene.make.graphics({ x: 0, y: 0 });
 
-      // 1. Titanium Dark Stealth Wings
-      g.fillStyle(0x0a0d16, 1);
+      // 1. Titanium Dark Stealth Wings (340x180 Retina crisp vector)
+      g.fillStyle(0x07090f, 1);
       g.lineStyle(3, 0x38bdf8, 1);
       g.beginPath();
-      g.moveTo(170, 170); // Nose tip
-      g.lineTo(240, 120);
-      g.lineTo(335, 90);  // Right wing tip
-      g.lineTo(320, 30);
+      g.moveTo(170, 172); // Nose tip
+      g.lineTo(245, 120);
+      g.lineTo(335, 92);  // Right wing tip
+      g.lineTo(320, 25);
       g.lineTo(260, 45);
-      g.lineTo(220, 20);
-      g.lineTo(170, 40);  // Center top
-      g.lineTo(120, 20);
+      g.lineTo(220, 15);
+      g.lineTo(170, 35);  // Center top
+      g.lineTo(120, 15);
       g.lineTo(80, 45);
-      g.lineTo(20, 30);
-      g.lineTo(5, 90);   // Left wing tip
-      g.lineTo(100, 120);
+      g.lineTo(20, 25);
+      g.lineTo(5, 92);    // Left wing tip
+      g.lineTo(95, 120);
       g.closePath();
       g.fillPath();
       g.strokePath();
 
-      // 2. Armor Plating Panels (Amber Facets)
-      g.fillStyle(0x141a29, 1);
+      // 2. Armor Plating Panels (Solar Amber Chamfers)
+      g.fillStyle(0x111827, 1);
       g.lineStyle(2, 0xff9e0b, 1);
       g.beginPath();
-      g.moveTo(170, 145);
-      g.lineTo(230, 100);
-      g.lineTo(290, 80);
-      g.lineTo(255, 50);
-      g.lineTo(170, 65);
-      g.lineTo(85, 50);
-      g.lineTo(50, 80);
-      g.lineTo(110, 100);
+      g.moveTo(170, 146);
+      g.lineTo(232, 100);
+      g.lineTo(292, 80);
+      g.lineTo(256, 48);
+      g.lineTo(170, 62);
+      g.lineTo(84, 48);
+      g.lineTo(48, 80);
+      g.lineTo(108, 100);
       g.closePath();
       g.fillPath();
       g.strokePath();
 
-      // 3. Quad Heavy Plasma Cannon Pods
+      // 3. Carbon Wing Vents & Intake Grilles
+      g.fillStyle(0x1e293b, 1);
+      g.fillRect(60, 55, 30, 8);
+      g.fillRect(250, 55, 30, 8);
+
+      // 4. Quad Heavy Plasma Cannon Pods
       g.fillStyle(0x0f172a, 1);
       g.lineStyle(2, 0x38bdf8, 1);
       // Wingtip Pods
-      g.fillRect(35, 65, 18, 50);
-      g.strokeRect(35, 65, 18, 50);
-      g.fillRect(287, 65, 18, 50);
-      g.strokeRect(287, 65, 18, 50);
-      // Inner Cannons
-      g.fillRect(110, 85, 22, 55);
-      g.strokeRect(110, 85, 22, 55);
-      g.fillRect(208, 85, 22, 55);
-      g.strokeRect(208, 85, 22, 55);
+      g.fillRect(32, 65, 20, 52);
+      g.strokeRect(32, 65, 20, 52);
+      g.fillRect(288, 65, 20, 52);
+      g.strokeRect(288, 65, 20, 52);
+      // Inner Heavy Cannons
+      g.fillRect(108, 85, 24, 58);
+      g.strokeRect(108, 85, 24, 58);
+      g.fillRect(208, 85, 24, 58);
+      g.strokeRect(208, 85, 24, 58);
 
       // Cannon Muzzle Glowing Tips
       g.fillStyle(0xff9e0b, 1);
-      g.fillRect(37, 108, 14, 7);
-      g.fillRect(289, 108, 14, 7);
-      g.fillRect(112, 133, 18, 7);
-      g.fillRect(210, 133, 18, 7);
+      g.fillRect(34, 110, 16, 7);
+      g.fillRect(290, 110, 16, 7);
+      g.fillRect(110, 136, 20, 7);
+      g.fillRect(210, 136, 20, 7);
 
-      // 4. Central Hexagonal Cyber Reactor Core
+      // 5. Central Hexagonal Cyber Reactor Core
       g.fillStyle(0xff9e0b, 1);
       g.lineStyle(2.5, 0xffffff, 1);
       const cX = 170;
       const cY = 82;
-      const r = 24;
+      const r = 25;
       g.beginPath();
       for (let i = 0; i < 6; i++) {
         const angle = (i * Math.PI) / 3;
@@ -131,7 +140,7 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
 
       // Inner Glowing Core
       g.fillStyle(0xffffff, 1);
-      g.fillCircle(cX, cY, 8);
+      g.fillCircle(cX, cY, 9);
 
       g.generateTexture('boss_overlord_dreadnought', 340, 180);
       g.destroy();
@@ -150,10 +159,20 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
     if (!scene.textures.exists('bullet_boss_laser')) {
       const g = scene.make.graphics({ x: 0, y: 0 });
       g.fillStyle(0x38bdf8, 1);
-      g.fillRect(2, 0, 6, 22);
+      g.fillRect(2, 0, 6, 24);
       g.fillStyle(0xffffff, 1);
-      g.fillRect(3, 2, 4, 18);
-      g.generateTexture('bullet_boss_laser', 10, 22);
+      g.fillRect(3, 2, 4, 20);
+      g.generateTexture('bullet_boss_laser', 10, 24);
+      g.destroy();
+    }
+
+    if (!scene.textures.exists('bullet_boss_seeker')) {
+      const g = scene.make.graphics({ x: 0, y: 0 });
+      g.fillStyle(0xec4899, 1);
+      g.fillCircle(9, 9, 9);
+      g.fillStyle(0xffffff, 1);
+      g.fillCircle(9, 9, 4);
+      g.generateTexture('bullet_boss_seeker', 18, 18);
       g.destroy();
     }
   }
@@ -163,7 +182,7 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
     shockwave.setDepth(14);
     this.scene.tweens.add({
       targets: shockwave,
-      radius: 480,
+      radius: 500,
       alpha: 0,
       duration: 850,
       ease: 'Cubic.easeOut',
@@ -176,20 +195,36 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
 
     // Tactical Maneuvering (Aggressive horizontal sweeping)
     const hoverSpeed = this.phase === 3 ? 0.0035 : this.phase === 2 ? 0.0025 : 0.0018;
-    const hoverRange = this.phase === 3 ? 4.5 : this.phase === 2 ? 3.5 : 2.5;
+    const hoverRange = this.phase === 3 ? 5.0 : this.phase === 2 ? 3.8 : 2.6;
     this.x += Math.sin(time * hoverSpeed) * hoverRange;
+
+    // Render Dual Animated Ion Thrusters
+    this.thrusterParticles.clear();
+    const flameSize = 14 + Math.sin(time * 0.02) * 6;
+    const thrusterColor = this.phase === 3 ? 0xef4444 : 0x38bdf8;
+    this.thrusterParticles.fillStyle(thrusterColor, 0.75);
+    this.thrusterParticles.fillTriangle(
+      this.x - 90, this.y - 45,
+      this.x - 75, this.y - 45,
+      this.x - 82.5, this.y - 45 - flameSize
+    );
+    this.thrusterParticles.fillTriangle(
+      this.x + 75, this.y - 45,
+      this.x + 90, this.y - 45,
+      this.x + 82.5, this.y - 45 - flameSize
+    );
 
     // Draw Hexagonal Shield Barrier in Phase 1 or during Invulnerability
     this.shieldGraphic.clear();
     if (this.phase === 1 && !this.isDead) {
-      this.drawHexShield(this.x, this.y, 140, 0x38bdf8, 0.7 + Math.sin(time * 0.008) * 0.25);
+      this.drawHexShield(this.x, this.y, 145, 0x38bdf8, 0.7 + Math.sin(time * 0.008) * 0.25);
     } else if (this.isInvulnerable) {
-      this.drawHexShield(this.x, this.y, 150, 0xff9e0b, 0.95);
+      this.drawHexShield(this.x, this.y, 155, 0xff9e0b, 0.95);
     }
 
     // High-cadence Bullet Hell Pattern Execution
     const fireCooldown = Math.round(
-      (this.phase === 3 ? 80 : this.phase === 2 ? 110 : 140) / this.difficultyMultiplier
+      (this.phase === 3 ? 90 : this.phase === 2 ? 120 : 150) / this.difficultyMultiplier
     );
 
     if (time - this.lastFireTime > fireCooldown && !this.isInvulnerable) {
@@ -197,12 +232,28 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
       this.fireAttackPattern(time, playerX, playerY);
     }
 
-    // Clean offscreen bullets
+    // Secondary / Special Attack cadence (Seeking Torpedoes & Nova Bursts)
+    const specialCooldown = this.phase === 3 ? 1200 : this.phase === 2 ? 1800 : 2500;
+    if (time - this.lastSpecialFireTime > specialCooldown && !this.isInvulnerable) {
+      this.lastSpecialFireTime = time;
+      this.fireSpecialPattern(time, playerX, playerY);
+    }
+
+    // Clean offscreen bullets & update seeker tracking
     this.bullets.children.iterate((child) => {
       const b = child as Phaser.Physics.Arcade.Sprite;
-      if (b && b.active && (b.y > 900 || b.y < -60 || b.x < -60 || b.x > 800)) {
-        b.setActive(false);
-        b.setVisible(false);
+      if (b && b.active) {
+        if (b.y > 920 || b.y < -60 || b.x < -60 || b.x > 700) {
+          b.setActive(false);
+          b.setVisible(false);
+        } else if (b.getData('isSeeker')) {
+          // Slow homing turn toward player
+          const targetAngle = Phaser.Math.Angle.Between(b.x, b.y, playerX, playerY);
+          const currentVelAngle = Math.atan2(b.body?.velocity.y || 0, b.body?.velocity.x || 0);
+          const newAngle = Phaser.Math.Angle.RotateTo(currentVelAngle, targetAngle, 0.04);
+          const speed = 220;
+          b.setVelocity(Math.cos(newAngle) * speed, Math.sin(newAngle) * speed);
+        }
       }
       return true;
     });
@@ -243,49 +294,58 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
       this.spawnBullet(this.x + 110, this.y + 50, Math.cos(angleRight) * (bulletSpeed + 80), Math.sin(angleRight) * (bulletSpeed + 80), 'bullet_boss_laser');
 
       // 5-Way Spread from inner cannons
-      const angles = [-0.5, -0.25, 0, 0.25, 0.5];
+      const angles = [-0.45, -0.22, 0, 0.22, 0.45];
       for (const a of angles) {
         const rad = Math.PI / 2 + a;
         this.spawnBullet(this.x, this.y + 60, Math.cos(rad) * bulletSpeed, Math.sin(rad) * bulletSpeed);
       }
 
     } else if (this.phase === 2) {
-      // Phase 2: Rotating 12-Way Bullet Hell Spiral + Twin Tracking Lasers
-      this.fireAngle += 0.24;
-      for (let i = 0; i < 12; i++) {
-        const rad = this.fireAngle + (i * Math.PI) / 6;
+      // Phase 2: Rotating 16-Way Bullet Hell Spiral
+      this.fireAngle += 0.22;
+      for (let i = 0; i < 16; i++) {
+        const rad = this.fireAngle + (i * Math.PI) / 8;
         const vx = Math.cos(rad) * bulletSpeed;
         const vy = Math.sin(rad) * bulletSpeed;
-        this.spawnBullet(this.x, this.y + 40, vx, Math.max(60, vy));
+        this.spawnBullet(this.x, this.y + 40, vx, Math.max(70, vy));
       }
 
-      // Fast tracking sniper bursts aimed at player escape vector
+      // Fast tracking sniper bursts aimed directly at player
       const aimAngle = Phaser.Math.Angle.Between(this.x, this.y + 40, playerX, playerY);
-      this.spawnBullet(this.x - 50, this.y + 40, Math.cos(aimAngle - 0.1) * (bulletSpeed + 110), Math.sin(aimAngle - 0.1) * (bulletSpeed + 110), 'bullet_boss_laser');
-      this.spawnBullet(this.x + 50, this.y + 40, Math.cos(aimAngle + 0.1) * (bulletSpeed + 110), Math.sin(aimAngle + 0.1) * (bulletSpeed + 110), 'bullet_boss_laser');
+      this.spawnBullet(this.x - 60, this.y + 40, Math.cos(aimAngle) * (bulletSpeed + 100), Math.sin(aimAngle) * (bulletSpeed + 100), 'bullet_boss_laser');
+      this.spawnBullet(this.x + 60, this.y + 40, Math.cos(aimAngle) * (bulletSpeed + 100), Math.sin(aimAngle) * (bulletSpeed + 100), 'bullet_boss_laser');
 
     } else {
-      // Phase 3 BERSERK: 18-Way Starburst Storm + Double Forward Sweepers
-      this.fireAngle += 0.32;
-      for (let i = 0; i < 18; i++) {
-        const rad = this.fireAngle + (i * Math.PI) / 9;
-        const vx = Math.cos(rad) * (bulletSpeed + 50);
-        const vy = Math.sin(rad) * (bulletSpeed + 50);
+      // Phase 3 BERSERK: 24-Way Starburst Storm + Double Forward Sweepers
+      this.fireAngle += 0.28;
+      for (let i = 0; i < 24; i++) {
+        const rad = this.fireAngle + (i * Math.PI) / 12;
+        const vx = Math.cos(rad) * (bulletSpeed + 40);
+        const vy = Math.sin(rad) * (bulletSpeed + 40);
         this.spawnBullet(this.x, this.y + 40, vx, vy);
       }
 
-      // Continuous dual death lanes down the sides
-      this.spawnBullet(this.x - 130, this.y + 50, -40, bulletSpeed + 160, 'bullet_boss_laser');
-      this.spawnBullet(this.x + 130, this.y + 50, 40, bulletSpeed + 160, 'bullet_boss_laser');
+      // Continuous dual death lanes down the flanks
+      this.spawnBullet(this.x - 135, this.y + 50, -35, bulletSpeed + 180, 'bullet_boss_laser');
+      this.spawnBullet(this.x + 135, this.y + 50, 35, bulletSpeed + 180, 'bullet_boss_laser');
     }
   }
 
-  private spawnBullet(x: number, y: number, vx: number, vy: number, texture = 'bullet_boss_plasma'): void {
+  private fireSpecialPattern(time: number, playerX: number, playerY: number): void {
+    if (this.phase === 2 || this.phase === 3) {
+      // Launch 2 Tracking Seeker Torpedoes from outer pods
+      this.spawnBullet(this.x - 130, this.y + 40, -100, 150, 'bullet_boss_seeker', true);
+      this.spawnBullet(this.x + 130, this.y + 40, 100, 150, 'bullet_boss_seeker', true);
+    }
+  }
+
+  private spawnBullet(x: number, y: number, vx: number, vy: number, texture = 'bullet_boss_plasma', isSeeker = false): void {
     const bullet = this.bullets.get(x, y, texture) as Phaser.Physics.Arcade.Sprite;
     if (bullet) {
       bullet.setActive(true);
       bullet.setVisible(true);
       bullet.setDepth(12);
+      bullet.setData('isSeeker', isSeeker);
       if (bullet.body) {
         bullet.body.reset(x, y);
         bullet.body.enable = true;
@@ -325,6 +385,7 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
     if (this.currentHp <= 0) {
       this.isDead = true;
       this.shieldGraphic.clear();
+      this.thrusterParticles.clear();
       return true;
     }
     return false;
@@ -342,15 +403,15 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
     shockwave.setDepth(14);
     this.scene.tweens.add({
       targets: shockwave,
-      radius: 420,
+      radius: 460,
       alpha: 0,
-      duration: 1000,
+      duration: 900,
       ease: 'Power2',
       onComplete: () => shockwave.destroy()
     });
 
-    // 2.0s Invulnerability frame during phase transition
-    this.scene.time.delayedCall(2000, () => {
+    // 1.5s Invulnerability frame during phase transition
+    this.scene.time.delayedCall(1500, () => {
       this.isInvulnerable = false;
     });
   }
@@ -358,6 +419,9 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
   destroy(fromScene?: boolean): void {
     if (this.shieldGraphic) {
       this.shieldGraphic.destroy();
+    }
+    if (this.thrusterParticles) {
+      this.thrusterParticles.destroy();
     }
     super.destroy(fromScene);
   }

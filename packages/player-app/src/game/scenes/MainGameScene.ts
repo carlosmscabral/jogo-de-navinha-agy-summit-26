@@ -317,6 +317,7 @@ export class MainGameScene extends Phaser.Scene {
         bullet.setVisible(false);
 
         const isKilled = this.boss.takeDamage(damage);
+        this.damageHistory.push({ time: this.time.now, amount: damage });
         audioManager.playHit();
         this.createHitSpark(bullet.x, bullet.y);
 
@@ -340,6 +341,7 @@ export class MainGameScene extends Phaser.Scene {
 
         this.createExplosionFX(missile.x, missile.y, true);
         const isKilled = this.boss.takeDamage(damage);
+        this.damageHistory.push({ time: this.time.now, amount: damage });
         audioManager.playExplosion();
 
         if (isKilled) {
@@ -354,6 +356,8 @@ export class MainGameScene extends Phaser.Scene {
       const bullet = bulletObj as Phaser.Physics.Arcade.Sprite;
       bullet.setActive(false);
       bullet.setVisible(false);
+
+      if (this.isGodMode) return;
 
       const isDead = this.player.takeDamage(1);
       this.scoreCalculator.registerDamageTaken();
@@ -924,8 +928,100 @@ export class MainGameScene extends Phaser.Scene {
           this.hudSecondaryText.setColor('#64748b');
           this.hudSecondaryBarFill.width = 60 * sec.progress;
           this.hudSecondaryBarFill.setFillStyle(0x38bdf8);
-        }
-      }
     }
+  }
+
+  // --- Dev Workbench & Live Debugging API ---
+  isGodMode = false;
+  physicsDebugEnabled = false;
+  damageHistory: { time: number; amount: number }[] = [];
+
+  spawnBossImmediately(): void {
+    if (this.boss && this.boss.active) return;
+    this.spawnBoss();
+  }
+
+  jumpToBossPhase(phase: 1 | 2 | 3): void {
+    if (!this.boss || !this.boss.active) {
+      this.spawnBoss();
+    }
+    if (this.boss) {
+      this.boss.phase = phase;
+      if (phase === 1) {
+        this.boss.currentHp = this.boss.maxHp;
+      } else if (phase === 2) {
+        this.boss.currentHp = Math.round(this.boss.maxHp * 0.60);
+      } else {
+        this.boss.currentHp = Math.round(this.boss.maxHp * 0.30);
+      }
+      this.boss.isInvulnerable = false;
+    }
+  }
+
+  reviveBoss(): void {
+    if (this.boss) {
+      this.boss.destroy();
+      this.boss = undefined;
+    }
+    this.isVictory = false;
+    this.isGameOver = false;
+    this.spawnBoss();
+  }
+
+  setPlayerGodMode(enabled: boolean): void {
+    this.isGodMode = enabled;
+  }
+
+  setPlayerDamage(damage: number): void {
+    if (this.player && this.player.weaponSystem) {
+      this.player.weaponSystem.weaponsSpec.primary.damage = damage;
+    }
+  }
+
+  setPlayerFireRate(fireRate: number): void {
+    if (this.player && this.player.weaponSystem) {
+      this.player.weaponSystem.weaponsSpec.primary.fire_rate = fireRate;
+    }
+  }
+
+  setPlayerSpeed(speed: number): void {
+    if (this.player) {
+      this.player.attributes.speed_px_s = speed;
+    }
+  }
+
+  setPrimaryWeaponType(type: 'laser' | 'plasma' | 'vulcan_spread'): void {
+    if (this.player && this.player.weaponSystem) {
+      this.player.weaponSystem.weaponsSpec.primary.type = type;
+    }
+  }
+
+  togglePhysicsDebug(): boolean {
+    this.physicsDebugEnabled = !this.physicsDebugEnabled;
+    this.physics.world.drawDebug = this.physicsDebugEnabled;
+    if (!this.physicsDebugEnabled && this.physics.world.debugGraphic) {
+      this.physics.world.debugGraphic.clear();
+    }
+    return this.physicsDebugEnabled;
+  }
+
+  getLiveCombatMetrics(time: number) {
+    const oneSecAgo = time - 1000;
+    this.damageHistory = this.damageHistory.filter((d) => d.time >= oneSecAgo);
+    const rollingDps = this.damageHistory.reduce((sum, d) => sum + d.amount, 0);
+
+    return {
+      rollingDps,
+      playerHp: this.player?.currentHp || 0,
+      playerMaxHp: this.player?.attributes?.max_hp || 3,
+      playerShield: this.player?.currentShield || 0,
+      bossActive: !!(this.boss && this.boss.active && !this.boss.isDead),
+      bossHp: this.boss?.currentHp || 0,
+      bossMaxHp: this.boss?.maxHp || 15000,
+      bossPhase: this.boss?.phase || 1,
+      isGodMode: this.isGodMode,
+      elapsedSeconds: this.elapsedSeconds,
+      matchTimer: this.matchTimer
+    };
   }
 }

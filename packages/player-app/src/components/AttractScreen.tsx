@@ -1,12 +1,13 @@
 import React, { useEffect } from 'react';
-import { Rocket, Trophy, Sparkles, Zap, Shield, Play, Terminal, ChevronRight } from 'lucide-react';
+import { Rocket, Trophy, Sparkles, Zap, Shield, Play, Terminal, ChevronRight, Wrench } from 'lucide-react';
 import { audioManager } from '../game/audio/AudioManager.js';
 
 interface AttractScreenProps {
   onStart: () => void;
+  onOpenDevWorkbench?: () => void;
 }
 
-export function AttractScreen({ onStart }: AttractScreenProps) {
+export function AttractScreen({ onStart, onOpenDevWorkbench }: AttractScreenProps) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Space' || e.code === 'Enter') {
@@ -20,6 +21,20 @@ export function AttractScreen({ onStart }: AttractScreenProps) {
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center p-8 relative overflow-hidden select-none font-sans">
+      {/* Dev Workbench Button */}
+      {onOpenDevWorkbench && (
+        <div className="absolute top-4 left-4 z-20">
+          <button
+            onClick={onOpenDevWorkbench}
+            className="px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 text-xs font-mono font-bold flex items-center gap-1.5 transition shadow-lg backdrop-blur-md"
+            title="Abrir Laboratório de Testes da Game Engine (Shift+D)"
+          >
+            <Wrench className="w-3.5 h-3.5" />
+            <span>ENGINE LAB [DEV]</span>
+          </button>
+        </div>
+      )}
+
       {/* Flight Deck Header Tag */}
       <div className="text-center space-y-4 z-10 max-w-2xl">
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#38bdf8]/10 border border-[#38bdf8]/30 text-[#38bdf8] text-xs font-bold tracking-widest uppercase mb-2 font-mono">

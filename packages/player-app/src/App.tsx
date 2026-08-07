@@ -8,12 +8,20 @@ import { InstructionsPromptScreen } from './components/InstructionsPromptScreen.
 import { EnergySlidersBuilder } from './components/EnergySlidersBuilder.js';
 import { HandoffTerminalScreen } from './components/HandoffTerminalScreen.js';
 import { DebriefScreen } from './components/DebriefScreen.js';
-import { Volume2, VolumeX, RotateCcw } from 'lucide-react';
+import { DevGameWorkbench } from './components/DevGameWorkbench.js';
+import { Volume2, VolumeX, RotateCcw, Wrench } from 'lucide-react';
 
 type AppStage = 'ATTRACT' | 'REGISTER' | 'INSTRUCTIONS' | 'BUILDER' | 'HANDOFF' | 'GAMEPLAY' | 'DEBRIEF';
 
 export function App() {
   const [stage, setStage] = useState<AppStage>('ATTRACT');
+  const [isDevWorkbenchOpen, setIsDevWorkbenchOpen] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return window.location.search.includes('dev=true') || window.location.hash === '#dev';
+    }
+    return false;
+  });
+
   const [pilot, setPilot] = useState<PilotInfo>({
     callsign: 'CYBER_ACE',
     company_raw: 'Google',
@@ -50,11 +58,13 @@ export function App() {
     };
   }, [stage, shipSpec]);
 
-  // Global Hotkey Reset (Ctrl+Shift+F12)
+  // Global Hotkeys: Reset (Ctrl+Shift+F12) & Dev Workbench (Shift+D)
   useEffect(() => {
     const handleGlobalKey = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey && e.code === 'F12') {
         handleReset();
+      } else if (e.shiftKey && (e.key === 'D' || e.key === 'd') && !['input', 'textarea'].includes((e.target as HTMLElement)?.tagName?.toLowerCase())) {
+        setIsDevWorkbenchOpen((prev) => !prev);
       }
     };
     window.addEventListener('keydown', handleGlobalKey);
@@ -147,10 +157,25 @@ export function App() {
     setIsMuted(muted);
   };
 
+  // If Dev Workbench is open, render Workbench overlay
+  if (isDevWorkbenchOpen) {
+    return <DevGameWorkbench onClose={() => setIsDevWorkbenchOpen(false)} />;
+  }
+
   return (
     <div className="flex h-screen w-screen bg-[#07080c] text-white overflow-hidden select-none font-sans">
       {/* Top Floating Controls Bar */}
       <div className="absolute top-4 right-4 z-50 flex items-center gap-3">
+        {/* Engine Lab Button */}
+        <button
+          onClick={() => setIsDevWorkbenchOpen(true)}
+          title="Abrir Engine Lab (Shift+D)"
+          className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-700 hover:border-amber-400 hover:bg-amber-400/10 transition-all text-slate-300 hover:text-amber-400 shadow-lg backdrop-blur-md flex items-center gap-1.5 text-xs font-bold font-mono"
+        >
+          <Wrench className="w-4 h-4 text-amber-400" />
+          <span>ENGINE LAB</span>
+        </button>
+
         {/* Reset Button */}
         {stage !== 'ATTRACT' && (
           <button
@@ -174,7 +199,12 @@ export function App() {
       </div>
 
       {/* Stage Router */}
-      {stage === 'ATTRACT' && <AttractScreen onStart={handleStartFromAttract} />}
+      {stage === 'ATTRACT' && (
+        <AttractScreen
+          onStart={handleStartFromAttract}
+          onOpenDevWorkbench={() => setIsDevWorkbenchOpen(true)}
+        />
+      )}
 
       {stage === 'REGISTER' && (
         <RegistrationForm onRegister={handleRegister} onBack={handleReset} />
