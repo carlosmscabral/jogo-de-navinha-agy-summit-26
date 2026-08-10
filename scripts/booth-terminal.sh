@@ -112,21 +112,27 @@ while true; do
   # agy avoids that entirely: the subshell owns the tty as foreground pgrp,
   # `exec` swaps its image for agy while keeping the same PID (= PGID), and
   # this whole block blocks naturally until agy exits — no separate `wait`.
+  # NOTE: this spawns a brand-new shell process via `bash -c` (not a `(...)`
+  # subshell forked from this already-running bash). For a freshly exec'd
+  # shell, plain $$ has always meant "this process's own PID" on every bash
+  # version and POSIX shell — that is the classic Bourne-shell meaning of $$,
+  # unrelated to $BASHPID (a Bash-4+-only builtin needed only to see a
+  # subshell's *own* PID from within an existing bash session, which does not
+  # apply here). This keeps the PID capture portable to Bash 3.2 (macOS's
+  # default /bin/bash), unlike $BASHPID which is undefined there.
   if command -v agy >/dev/null 2>&1; then
-    (
-      AGY_PID=$BASHPID
-      echo "$AGY_PID" > "$PID_FILE"
-      echo "[booth-terminal] agy em execução no process group $AGY_PID" >&2
+    bash -c '
+      echo "$$" > "$1"
+      echo "[booth-terminal] agy em execução no process group $$" >&2
       exec agy
-    )
+    ' -- "$PID_FILE"
   else
     echo -e "${AMBER}[Simulação Booth] Comando 'agy' em execução...${RESET}"
-    (
-      AGY_PID=$BASHPID
-      echo "$AGY_PID" > "$PID_FILE"
-      echo "[booth-terminal] agy em execução no process group $AGY_PID" >&2
+    bash -c '
+      echo "$$" > "$1"
+      echo "[booth-terminal] agy em execução no process group $$" >&2
       exec sleep 20
-    )
+    ' -- "$PID_FILE"
   fi
 
   rm -f "$PID_FILE"
