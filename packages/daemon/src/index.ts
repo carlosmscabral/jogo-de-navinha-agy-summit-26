@@ -98,6 +98,12 @@ function triggerFallback(sliders: EnergySliders, reason: string): void {
   console.warn(`[Daemon] Fallback automático acionado (${reason}). Preset: ${name}`);
 
   killAgyProcessGroup();
+  // [Fase A / revisão final — Importante 4] Sem isto, o watcher continua de pé
+  // durante a janela SIGINT→SIGKILL de killAgyProcessGroup(); se o agy ainda
+  // conseguir escrever um ship_spec.json válido nesse intervalo, onShipReady
+  // dispararia um SEGUNDO EVENT_SHIP_READY com uma nave diferente da que o
+  // fallback já entregou. Encerrar o watcher aqui fecha essa corrida.
+  fileWatcher.stopWatching();
   broadcast({ type: 'EVENT_SHIP_READY', spec, fallback: true, fallback_preset: name, fallback_reason: reason });
 }
 
@@ -133,22 +139,17 @@ app.get('/api/session/status', (req, res) => {
 });
 
 app.get('/api/session/spec', (req, res) => {
+  // [Fase A / revisão final — Crítico 2] NUNCA ler ship_spec.json direto do
+  // disco aqui. fileWatcher.getCurrentSpec() só retorna algo depois que a
+  // spec passou na validação estrita do schema E no gate de auditoria MCP
+  // (Tarefa A2 / D1+D3). Um fallback lendo o arquivo cru reabria exatamente
+  // o buraco que A2 fechou: uma spec alucinada ou reprovada no schema ainda
+  // chegaria ao jogador via este endpoint, que o HandoffTerminalScreen
+  // consulta a cada 600ms como canal duplo de detecção.
   const spec = fileWatcher.getCurrentSpec();
   if (spec) {
     return res.json({ ready: true, spec });
   }
-
-  const specPath = path.join(sessionDir, 'ship_spec.json');
-  if (fs.existsSync(specPath)) {
-    try {
-      const raw = fs.readFileSync(specPath, 'utf8');
-      const parsed = JSON.parse(raw);
-      return res.json({ ready: true, spec: parsed });
-    } catch {
-      // Ignored
-    }
-  }
-
   res.json({ ready: false });
 });
 
@@ -202,6 +203,11 @@ app.post('/api/session/start', (req, res) => {
     fileWatcher.startWatching(sessionDir, {
       requiredMcps,
       onShipReady: (shipSpec) => {
+        // [Fase A / revisão final — Importante 4] Espelha o guard de
+        // triggerFallback(): se o fallback já entregou uma nave (ex.: agy
+        // morreu ou estourou o teto/silêncio), uma liberação tardia do
+        // watcher não pode mais substituir a nave que o visitante já viu.
+        if (shipDelivered) return;
         shipDelivered = true;
         clearAgyTimers();
         console.log(`[Daemon] Broadcasting EVENT_SHIP_READY to ${activeClients.size} connected client(s)...`);
