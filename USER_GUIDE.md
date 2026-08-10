@@ -147,9 +147,10 @@ rm -rf /tmp/booth_session/* /tmp/booth_session/.* 2>/dev/null
 ```
 
 ### 3. Resetar o banco de dados SQLite local de recordes:
-```bash
-rm -f packages/daemon/data/booth_buffer.sqlite
-```
+
+O buffer local fica em `packages/daemon/data/booth_buffer.sqlite`. Para usar outro caminho, defina
+`BOOTH_DB_PATH`. Para popular o placar com pilotos fictícios **em desenvolvimento**, defina
+`BOOTH_SEED_DEMO=1` — nunca no dia do evento.
 
 ---
 

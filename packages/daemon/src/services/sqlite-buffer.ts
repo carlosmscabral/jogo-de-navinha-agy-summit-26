@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { MatchRecord, calculateSimilarity, resolveCompanyFromCatalog } from '@jogo/shared';
 
 export interface CompanyMatch {
@@ -43,16 +44,29 @@ export interface LeaderboardData {
 export class SQLiteBufferService {
   private db: Database.Database;
 
-  constructor(dbPath = './booth_local.sqlite') {
+  static defaultDbPath(): string {
+    if (process.env.BOOTH_DB_PATH) return path.resolve(process.env.BOOTH_DB_PATH);
+    // dist/services/ -> dist/ -> raiz do pacote daemon
+    const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+    return path.join(packageRoot, 'data', 'booth_buffer.sqlite');
+  }
+
+  constructor(dbPath = SQLiteBufferService.defaultDbPath()) {
     const dir = path.dirname(dbPath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
 
     this.db = new Database(dbPath);
+    console.log(`[SQLiteBuffer] Banco local em ${dbPath}`);
     this.initTables();
     this.seedCanonicalCompanies();
-    this.seedInitialLeaderboard();
+
+    // [D6] Pilotos de demonstração jamais no estande. Só com opt-in explícito.
+    if (process.env.BOOTH_SEED_DEMO === '1') {
+      console.warn('[SQLiteBuffer] BOOTH_SEED_DEMO=1 — inserindo pilotos fictícios de desenvolvimento.');
+      this.seedInitialLeaderboard();
+    }
   }
 
   private initTables(): void {
