@@ -104,20 +104,29 @@ while true; do
 
   cd "$SESSION_DIR" || exit 1
 
-  # Run AGY CLI and track its PID for automatic remote reset from the Web Cockpit
+  # Run AGY CLI in the FOREGROUND (never backgrounded) and track its PID for
+  # automatic remote reset from the Web Cockpit. Under `set -m`, a backgrounded
+  # job is NOT the terminal's foreground process group; agy is an interactive
+  # TUI that reads /dev/tty, so a background job gets SIGTTIN'd and freezes in
+  # STAT T. Running it as a synchronous foreground subshell that `exec`s into
+  # agy avoids that entirely: the subshell owns the tty as foreground pgrp,
+  # `exec` swaps its image for agy while keeping the same PID (= PGID), and
+  # this whole block blocks naturally until agy exits — no separate `wait`.
   if command -v agy >/dev/null 2>&1; then
-    agy &
-    AGY_PID=$!
-    echo "$AGY_PID" > "$PID_FILE"
-    echo "[booth-terminal] agy em execução no process group $AGY_PID" >&2
-    wait $AGY_PID 2>/dev/null
+    (
+      AGY_PID=$BASHPID
+      echo "$AGY_PID" > "$PID_FILE"
+      echo "[booth-terminal] agy em execução no process group $AGY_PID" >&2
+      exec agy
+    )
   else
     echo -e "${AMBER}[Simulação Booth] Comando 'agy' em execução...${RESET}"
-    sleep 20 &
-    AGY_PID=$!
-    echo "$AGY_PID" > "$PID_FILE"
-    echo "[booth-terminal] agy em execução no process group $AGY_PID" >&2
-    wait $AGY_PID 2>/dev/null
+    (
+      AGY_PID=$BASHPID
+      echo "$AGY_PID" > "$PID_FILE"
+      echo "[booth-terminal] agy em execução no process group $AGY_PID" >&2
+      exec sleep 20
+    )
   fi
 
   rm -f "$PID_FILE"
