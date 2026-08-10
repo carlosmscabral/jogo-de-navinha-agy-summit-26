@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ShipSpecification, PilotInfo, EnergySliders, McpServerName, SubagentName, FALLBACK_PRESETS, MatchRecord } from '@jogo/shared';
-import { createGameInstance } from './game/index.js';
+import { createGameInstance, MatchCompleteData } from './game/index.js';
 import { audioManager } from './game/audio/AudioManager.js';
 import { AttractScreen } from './components/AttractScreen.js';
 import { RegistrationForm } from './components/RegistrationForm.js';
@@ -25,6 +25,7 @@ export function App() {
   const [shipSpec, setShipSpec] = useState<ShipSpecification>(FALLBACK_PRESETS.interceptor);
   const [isMuted, setIsMuted] = useState(false);
   const [lastMatch, setLastMatch] = useState<Partial<MatchRecord> & { victory?: boolean; breakdown?: any } | undefined>();
+  const [pilotId, setPilotId] = useState<string>(() => crypto.randomUUID());
 
   const gameContainerRef = useRef<HTMLDivElement>(null);
   const gameInstanceRef = useRef<Phaser.Game | null>(null);
@@ -109,12 +110,16 @@ export function App() {
     setStage('GAMEPLAY');
   };
 
-  const handleMatchComplete = (result: { finalScore: number; victory: boolean; breakdown: any }) => {
-    const matchRecord = {
+  const handleMatchComplete = (result: MatchCompleteData) => {
+    // TODO(C1): configuração
+    const matchRecord: MatchRecord & { victory: boolean; breakdown: any } = {
       match_id: `match_${Date.now()}`,
+      pilot_id: pilotId,
       callsign: pilot.callsign,
       company_canonical: pilot.company_canonical,
       final_score: result.finalScore,
+      telemetry: result.telemetry,
+      ship_spec_snapshot: shipSpec,
       created_at: new Date().toISOString(),
       victory: result.victory,
       breakdown: result.breakdown
@@ -122,12 +127,11 @@ export function App() {
 
     setLastMatch(matchRecord);
 
-    // Save to daemon SQLite buffer
-    fetch('http://localhost:3000/api/matches', {
+    fetch(`http://localhost:3000/api/matches`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(matchRecord)
-    }).catch(() => {});
+    }).catch((err) => console.warn('[App] Falha ao gravar a partida no bridge:', err));
 
     setStage('DEBRIEF');
   };
@@ -139,6 +143,7 @@ export function App() {
     }
     audioManager.stopMusic();
     fetch('http://localhost:3000/api/session/reset', { method: 'POST' }).catch(() => {});
+    setPilotId(crypto.randomUUID());
     setStage('ATTRACT');
   };
 

@@ -1,3 +1,5 @@
+import { ScoreBreakdown } from '@jogo/shared';
+
 export class ScoreCalculator {
   currentScore = 0;
   comboMultiplier = 1.0;
@@ -34,14 +36,7 @@ export class ScoreCalculator {
   }): {
     finalScore: number;
     mcpMultiplier: number;
-    breakdown: {
-      combatScore: number;
-      bossBonus: number;
-      timeBonus: number;
-      survivalBonus: number;
-      synergyBonus: number;
-      mcpMultiplier: number;
-    };
+    breakdown: ScoreBreakdown;
   } {
     const combatScore = this.currentScore;
     const bossBonus = params.bossDefeated ? 10000 : 0;

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { ShipSpecification, FALLBACK_PRESETS } from '@jogo/shared';
+import { ShipSpecification, FALLBACK_PRESETS, MatchTelemetry, ScoreBreakdown } from '@jogo/shared';
 import { PlayerShip } from '../objects/PlayerShip.js';
 import { BossOverlord } from '../objects/BossOverlord.js';
 import { ShipTextureFactory } from '../factories/ShipTextureFactory.js';
@@ -21,13 +21,14 @@ export class MainGameScene extends Phaser.Scene {
   player!: PlayerShip;
   boss?: BossOverlord;
   scoreCalculator = new ScoreCalculator();
-  onMatchComplete?: (data: { finalScore: number; victory: boolean; breakdown: any }) => void;
+  onMatchComplete?: (data: { finalScore: number; victory: boolean; breakdown: ScoreBreakdown; telemetry: MatchTelemetry }) => void;
 
   matchTimer = 90;
   elapsedSeconds = 0;
   isGameOver = false;
   isVictory = false;
   hasNotifiedCompletion = false;
+  bossKilledAtSeconds: number | null = null;
 
   enemies!: Phaser.Physics.Arcade.Group;
   enemyBullets!: Phaser.Physics.Arcade.Group;
@@ -73,6 +74,7 @@ export class MainGameScene extends Phaser.Scene {
     this.hasNotifiedCompletion = false;
     this.elapsedSeconds = 0;
     this.matchTimer = 90;
+    this.bossKilledAtSeconds = null;
     this.scoreCalculator = new ScoreCalculator();
     this.boss = undefined;
     audioManager.setBossMode(false);
@@ -393,6 +395,7 @@ export class MainGameScene extends Phaser.Scene {
 
   private triggerBossDefeated(): void {
     this.isVictory = true;
+    this.bossKilledAtSeconds = this.elapsedSeconds;
     audioManager.setBossMode(false);
     audioManager.playVictoryJingle();
 
@@ -600,10 +603,24 @@ export class MainGameScene extends Phaser.Scene {
     });
 
     if (this.onMatchComplete) {
+      const shotsFired = this.scoreCalculator.shotsFired;
+      const shotsHit = this.scoreCalculator.shotsHit;
       this.onMatchComplete({
         finalScore: scoreResult.finalScore,
         victory: this.isVictory,
-        breakdown: scoreResult.breakdown
+        breakdown: scoreResult.breakdown,
+        telemetry: {
+          duration_s: Math.round(this.elapsedSeconds),
+          enemies_killed: this.scoreCalculator.totalKills,
+          boss_defeated: this.isVictory,
+          damage_taken: this.scoreCalculator.damageTakenCount,
+          accuracy_pct: shotsFired > 0 ? +((shotsHit / shotsFired) * 100).toFixed(1) : 0,
+          shots_fired: shotsFired,
+          shots_hit: shotsHit,
+          fallback_used: this.shipSpec.build_metadata?.fallback_used === true,
+          seed: 0,
+          boss_ttk_s: this.bossKilledAtSeconds !== null ? +(this.bossKilledAtSeconds - 45).toFixed(1) : null
+        }
       });
     }
   }

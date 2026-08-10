@@ -244,6 +244,16 @@ export class SQLiteBufferService {
   }
 
   saveMatch(match: MatchRecord): void {
+    if (!match.telemetry || typeof match.telemetry.enemies_killed !== 'number') {
+      throw new Error(`[SQLiteBuffer] Partida ${match.match_id} sem telemetry — recusada. Ver D5.`);
+    }
+    if (!match.ship_spec_snapshot || !match.ship_spec_snapshot.pilot) {
+      throw new Error(`[SQLiteBuffer] Partida ${match.match_id} sem ship_spec_snapshot — recusada. Ver D5.`);
+    }
+    if (!match.pilot_id) {
+      throw new Error(`[SQLiteBuffer] Partida ${match.match_id} sem pilot_id — recusada. Ver D5.`);
+    }
+
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO local_matches (
         match_id, pilot_id, callsign, company_canonical, final_score,
@@ -253,12 +263,12 @@ export class SQLiteBufferService {
 
     stmt.run(
       match.match_id,
-      match.pilot_id || `pilot_${Date.now()}`,
+      match.pilot_id,
       match.callsign,
       match.company_canonical,
       match.final_score,
-      JSON.stringify(match.telemetry || {}),
-      JSON.stringify(match.ship_spec_snapshot || {}),
+      JSON.stringify(match.telemetry),
+      JSON.stringify(match.ship_spec_snapshot),
       match.created_at || new Date().toISOString()
     );
   }

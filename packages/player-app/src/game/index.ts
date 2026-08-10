@@ -1,11 +1,12 @@
 import Phaser from 'phaser';
 import { MainGameScene } from './scenes/MainGameScene.js';
-import { ShipSpecification } from '@jogo/shared';
+import { ShipSpecification, MatchTelemetry, ScoreBreakdown } from '@jogo/shared';
 
 export interface MatchCompleteData {
   finalScore: number;
   victory: boolean;
-  breakdown: any;
+  breakdown: ScoreBreakdown;
+  telemetry: MatchTelemetry;
 }
 
 export function createGameInstance(

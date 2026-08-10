@@ -35,6 +35,8 @@ export interface BuildMetadata {
   energy_sliders: EnergySliders;
   fast_grill_me_choices: FastGrillMeChoices;
   synergies_unlocked: string[];
+  /** true quando a nave veio de preset de emergência (D2), não da forja. Lido pela engine no match-complete para preencher telemetry.fallback_used. */
+  fallback_used?: boolean;
 }
 
 export interface ShipAttributes {
@@ -86,6 +88,27 @@ export interface MatchTelemetry {
   boss_defeated: boolean;
   damage_taken: number;
   accuracy_pct: number;
+  shots_fired: number;
+  shots_hit: number;
+  /** true quando a nave veio de preset de emergência (D2), não da forja. */
+  fallback_used: boolean;
+  /** Seed do PRNG da partida. Preenchido pela Tarefa B3; 0 antes dela. */
+  seed: number;
+  /** Segundos entre o surgimento do boss e sua destruição; null se não foi derrotado. */
+  boss_ttk_s: number | null;
+}
+
+/**
+ * Detalhamento do score exibido no debrief e persistido em cada partida.
+ * Espelha exatamente o objeto `breakdown` de ScoreCalculator.calculateFinalScore.
+ */
+export interface ScoreBreakdown {
+  combatScore: number;
+  bossBonus: number;
+  timeBonus: number;
+  survivalBonus: number;
+  synergyBonus: number;
+  mcpMultiplier: number;
 }
 
 export interface MatchRecord {

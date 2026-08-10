@@ -94,6 +94,7 @@ function triggerFallback(sliders: EnergySliders, reason: string): void {
 
   const { name, spec } = selectFallbackPreset(sliders);
   spec.pilot = { ...spec.pilot, ...currentSessionMetadata?.pilot };
+  spec.build_metadata.fallback_used = true;
   console.warn(`[Daemon] Fallback automático acionado (${reason}). Preset: ${name}`);
 
   killAgyProcessGroup();
@@ -249,10 +250,16 @@ app.post('/api/session/start', (req, res) => {
 });
 
 app.post('/api/matches', (req, res) => {
-  try {
-    const matchRecord = req.body;
-    sqliteBuffer.saveMatch(matchRecord);
+  const matchRecord = req.body;
 
+  try {
+    sqliteBuffer.saveMatch(matchRecord);
+  } catch (err) {
+    // Registro incompleto (telemetry/ship_spec_snapshot/pilot_id ausentes) — erro do cliente, não do servidor.
+    return res.status(400).json({ error: String(err) });
+  }
+
+  try {
     const updatedLeaderboard = sqliteBuffer.getLeaderboardData();
 
     // Broadcast real-time leaderboard update to TV display clients
