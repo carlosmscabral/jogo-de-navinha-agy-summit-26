@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Rocket, Trophy, Sparkles, Zap, Shield, Play, Terminal, ChevronRight } from 'lucide-react';
 import { audioManager } from '../game/audio/AudioManager.js';
 
@@ -6,7 +6,83 @@ interface AttractScreenProps {
   onStart: () => void;
 }
 
+interface TopPilotEntry {
+  rank: number;
+  match_id: string;
+  callsign: string;
+  company_canonical: string;
+  final_score: number;
+  created_at: string;
+  ship_style_name?: string;
+}
+
+// Refresh cadence for the idle attract screen: fresh enough to reflect the
+// last visitor's match without hammering the daemon between bouts.
+const LEADERBOARD_REFRESH_MS = 45000;
+
+// Visual treatment for the top 3 rows, preserved 1:1 from the previous
+// hardcoded markup (medal, container classes, label/value emphasis).
+const ROW_STYLES = [
+  {
+    medal: '🥇',
+    container: 'flex justify-between items-center p-2.5 rounded-xl bg-[#ff9e0b]/10 border border-[#ff9e0b]/30 text-[#ff9e0b]',
+    label: 'font-bold',
+    value: 'font-black'
+  },
+  {
+    medal: '🥈',
+    container: 'flex justify-between items-center p-2.5 rounded-xl bg-slate-800/40 border border-slate-700/40 text-slate-200',
+    label: '',
+    value: 'font-bold'
+  },
+  {
+    medal: '🥉',
+    container: 'flex justify-between items-center p-2.5 rounded-xl bg-slate-800/40 border border-slate-700/40 text-slate-300',
+    label: '',
+    value: 'font-bold'
+  }
+];
+
 export function AttractScreen({ onStart }: AttractScreenProps) {
+  const [topPilots, setTopPilots] = useState<TopPilotEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Fetch the real leaderboard for the Hall of Fame preview card. This screen
+  // is shown repeatedly between visitors, so we refresh periodically too
+  // (not just on mount) to reflect whoever just finished a run.
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchLeaderboard = async () => {
+      try {
+        // TODO(C1): configuração
+        const res = await fetch('http://localhost:3000/api/leaderboard');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!cancelled) {
+          setTopPilots(Array.isArray(data?.topPilots) ? data.topPilots : []);
+        }
+      } catch (err) {
+        console.warn('[AttractScreen] Falha ao buscar o leaderboard:', err);
+        if (!cancelled) {
+          setTopPilots([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    fetchLeaderboard();
+    const interval = setInterval(fetchLeaderboard, LEADERBOARD_REFRESH_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Space' || e.code === 'Enter') {
@@ -17,6 +93,8 @@ export function AttractScreen({ onStart }: AttractScreenProps) {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onStart]);
+
+  const topThree = topPilots.slice(0, 3);
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center p-8 relative overflow-hidden select-none font-sans">
@@ -49,18 +127,25 @@ export function AttractScreen({ onStart }: AttractScreenProps) {
         </div>
 
         <div className="space-y-2 text-xs font-mono">
-          <div className="flex justify-between items-center p-2.5 rounded-xl bg-[#ff9e0b]/10 border border-[#ff9e0b]/30 text-[#ff9e0b]">
-            <span className="font-bold">🥇 1. CYBER_ACE (Google)</span>
-            <span className="font-black">48.500 PTS</span>
-          </div>
-          <div className="flex justify-between items-center p-2.5 rounded-xl bg-slate-800/40 border border-slate-700/40 text-slate-200">
-            <span>🥈 2. NEO_PILOT (Nubank)</span>
-            <span className="font-bold">44.200 PTS</span>
-          </div>
-          <div className="flex justify-between items-center p-2.5 rounded-xl bg-slate-800/40 border border-slate-700/40 text-slate-300">
-            <span>🥉 3. QUANTUM_VIPER (Itaú)</span>
-            <span className="font-bold">39.800 PTS</span>
-          </div>
+          {topThree.length === 0 ? (
+            <div className="flex justify-center items-center p-3 rounded-xl bg-slate-800/40 border border-slate-700/40 text-slate-400 text-center">
+              <span>
+                {isLoading ? 'Carregando recordes do estande...' : 'Seja o primeiro a registrar um recorde!'}
+              </span>
+            </div>
+          ) : (
+            topThree.map((pilot, index) => {
+              const style = ROW_STYLES[index];
+              return (
+                <div key={pilot.match_id ?? pilot.rank} className={style.container}>
+                  <span className={style.label}>
+                    {style.medal} {pilot.rank}. {pilot.callsign} ({pilot.company_canonical})
+                  </span>
+                  <span className={style.value}>{pilot.final_score.toLocaleString()} PTS</span>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 
