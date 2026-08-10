@@ -25,6 +25,16 @@ const sqliteBuffer = new SQLiteBufferService();
 const fileWatcher = new FileWatcherService();
 
 const activeClients = new Set<WebSocket>();
+
+function broadcast(message: Record<string, unknown>): void {
+  const payload = JSON.stringify(message);
+  for (const client of activeClients) {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(payload);
+    }
+  }
+}
+
 const sessionDir = process.env.BOOTH_SESSION_DIR || '/tmp/booth_session';
 
 let currentSessionMetadata: any = null;
@@ -119,26 +129,24 @@ app.post('/api/session/start', (req, res) => {
     );
 
     // 2. Start File Watcher on /tmp/booth_session/ship_spec.json and mcp_audit.log
-    fileWatcher.startWatching(
-      sessionDir,
-      (shipSpec) => {
+    const requiredMcps: string[] = Array.isArray(selected_mcps) && selected_mcps.length > 0
+      ? selected_mcps
+      : ['weapons-arsenal', 'hull-propulsion', 'cybernetics-shields'];
+
+    fileWatcher.startWatching(sessionDir, {
+      requiredMcps,
+      onShipReady: (shipSpec) => {
         console.log(`[Daemon] Broadcasting EVENT_SHIP_READY to ${activeClients.size} connected client(s)...`);
-        const payload = JSON.stringify({ type: 'EVENT_SHIP_READY', spec: shipSpec });
-        for (const client of activeClients) {
-          if (client.readyState === WebSocket.OPEN) {
-            client.send(payload);
-          }
-        }
+        broadcast({ type: 'EVENT_SHIP_READY', spec: shipSpec });
       },
-      (activity) => {
-        const payload = JSON.stringify({ type: 'EVENT_MCP_ACTIVITY', data: activity });
-        for (const client of activeClients) {
-          if (client.readyState === WebSocket.OPEN) {
-            client.send(payload);
-          }
-        }
+      onMcpActivity: (activity) => {
+        broadcast({ type: 'EVENT_MCP_ACTIVITY', data: activity });
+      },
+      onSpecRejected: (rejection) => {
+        console.error('[Daemon] Spec rejeitada:', rejection.reason, rejection.details.join('; '));
+        broadcast({ type: 'EVENT_SPEC_REJECTED', data: rejection });
       }
-    );
+    });
 
     console.log(`[Daemon API] Session workspace initialized at: ${sessionDir} for pilot ${fullPilot.callsign}`);
 
@@ -161,17 +169,11 @@ app.post('/api/matches', (req, res) => {
     const updatedLeaderboard = sqliteBuffer.getLeaderboardData();
 
     // Broadcast real-time leaderboard update to TV display clients
-    const payload = JSON.stringify({
+    broadcast({
       type: 'EVENT_LEADERBOARD_UPDATE',
       data: updatedLeaderboard,
       newMatch: matchRecord
     });
-
-    for (const client of activeClients) {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(payload);
-      }
-    }
 
     res.json({ status: 'SAVED_LOCALLY', match_id: matchRecord.match_id, leaderboard: updatedLeaderboard });
   } catch (err) {
