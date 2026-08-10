@@ -44,18 +44,7 @@ export class WorkspaceGeneratorService {
     // 4. Generate GEMINI.md / AGENTS.md orchestrator instructions
     this.generateGeminiInstructions(sessionDir, config);
 
-    // 5. Generate run_agy.sh helper script
-    const runScript = `#!/bin/bash
-echo "================================================================="
-echo "  🚀 INICIANDO ANTIGRAVITY CLI PARA FORJA ESPACIAL (AGY 2026)   "
-echo "================================================================="
-echo "Piloto: ${config.pilot.callsign} | Empresa: ${config.pilot.company_canonical}"
-echo ""
-agy
-`;
-    fs.writeFileSync(path.join(sessionDir, 'run_agy.sh'), runScript, { mode: 0o755, encoding: 'utf8' });
-
-    // 6. Initialize empty mcp_audit.log
+    // 5. Initialize empty mcp_audit.log
     fs.writeFileSync(path.join(sessionDir, 'mcp_audit.log'), '', 'utf8');
 
     return sessionDir;

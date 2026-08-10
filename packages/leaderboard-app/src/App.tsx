@@ -62,7 +62,7 @@ export function App() {
 
     const connect = () => {
       try {
-        ws = new WebSocket('ws://localhost:3000/pty');
+        ws = new WebSocket('ws://localhost:3000/events');
 
         ws.onopen = () => {
           console.log('[Leaderboard WS] Connected to Daemon');

@@ -43,7 +43,7 @@ export function HandoffTerminalScreen({
     let pollInterval: any = null;
 
     try {
-      ws = new WebSocket('ws://localhost:3000/pty');
+      ws = new WebSocket('ws://localhost:3000/events');
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);

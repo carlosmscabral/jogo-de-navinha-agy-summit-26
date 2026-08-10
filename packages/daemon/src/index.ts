@@ -19,7 +19,7 @@ app.use(cors());
 app.use(express.json());
 
 const server = createServer(app);
-const wss = new WebSocketServer({ server, path: '/pty' });
+const wss = new WebSocketServer({ server, path: '/events' });
 
 const sqliteBuffer = new SQLiteBufferService();
 const fileWatcher = new FileWatcherService();
