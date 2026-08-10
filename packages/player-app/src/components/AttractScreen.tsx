@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Rocket, Trophy, Sparkles, Zap, Shield, Play, Terminal, ChevronRight } from 'lucide-react';
 import { audioManager } from '../game/audio/AudioManager.js';
 
@@ -46,6 +46,10 @@ const ROW_STYLES = [
 export function AttractScreen({ onStart }: AttractScreenProps) {
   const [topPilots, setTopPilots] = useState<TopPilotEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  // Tracks whether ANY fetch (mount or periodic poll) has ever succeeded.
+  // A ref (not state) because it's only read/written inside the effect's
+  // async closure and must not trigger its own re-render.
+  const hasLoadedOnceRef = useRef(false);
 
   // Fetch the real leaderboard for the Hall of Fame preview card. This screen
   // is shown repeatedly between visitors, so we refresh periodically too
@@ -61,10 +65,16 @@ export function AttractScreen({ onStart }: AttractScreenProps) {
         const data = await res.json();
         if (!cancelled) {
           setTopPilots(Array.isArray(data?.topPilots) ? data.topPilots : []);
+          hasLoadedOnceRef.current = true;
         }
       } catch (err) {
         console.warn('[AttractScreen] Falha ao buscar o leaderboard:', err);
-        if (!cancelled) {
+        // Only wipe the list on failure if we've never had a good fetch yet.
+        // A transient hiccup on a background poll (e.g. during a reset
+        // cycle) must not erase an already-displayed, still-valid
+        // leaderboard — that would flash the "seja o primeiro" placeholder
+        // over real data. The next successful poll self-heals regardless.
+        if (!cancelled && !hasLoadedOnceRef.current) {
           setTopPilots([]);
         }
       } finally {
