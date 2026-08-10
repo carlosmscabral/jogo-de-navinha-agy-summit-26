@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { SQLiteBufferService } from './services/sqlite-buffer.js';
 import { WorkspaceGeneratorService } from './services/workspace-generator.js';
 import { FileWatcherService } from './services/file-watcher.js';
-import { validateCallsign } from '@jogo/shared';
+import { validateCallsign, selectFallbackPreset, EnergySliders } from '@jogo/shared';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,6 +33,54 @@ function broadcast(message: Record<string, unknown>): void {
       client.send(payload);
     }
   }
+}
+
+const AGY_SILENCE_TIMEOUT_MS = Number(process.env.AGY_SILENCE_TIMEOUT_MS) || 15_000;
+const AGY_HARD_TIMEOUT_MS = Number(process.env.AGY_HARD_TIMEOUT_MS) || 150_000;
+const AGY_LIVENESS_POLL_MS = 1_000;
+
+let silenceTimer: NodeJS.Timeout | undefined;
+let hardTimer: NodeJS.Timeout | undefined;
+let livenessTimer: NodeJS.Timeout | undefined;
+let shipDelivered = false;
+
+function clearAgyTimers(): void {
+  if (silenceTimer) clearTimeout(silenceTimer);
+  if (hardTimer) clearTimeout(hardTimer);
+  if (livenessTimer) clearInterval(livenessTimer);
+  silenceTimer = hardTimer = livenessTimer = undefined;
+}
+
+function armSilenceTimer(sliders: EnergySliders, reasonPrefix: string): void {
+  if (silenceTimer) clearTimeout(silenceTimer);
+  silenceTimer = setTimeout(() => triggerFallback(sliders, `${reasonPrefix}: silêncio de ${AGY_SILENCE_TIMEOUT_MS}ms`), AGY_SILENCE_TIMEOUT_MS);
+}
+
+// TODO(A5): substituir por morte de todo o grupo de processos do agy (process.kill(-pid)).
+// Implementação temporária: mata apenas o PID registrado em .agy_pid.
+function killAgyProcessGroup(): void {
+  try {
+    const pidFile = path.join(sessionDir, '.agy_pid');
+    if (!fs.existsSync(pidFile)) return;
+    const pid = Number(fs.readFileSync(pidFile, 'utf8').trim());
+    if (!pid || Number.isNaN(pid)) return;
+    process.kill(pid, 'SIGINT');
+  } catch {
+    // Processo já pode estar morto.
+  }
+}
+
+function triggerFallback(sliders: EnergySliders, reason: string): void {
+  if (shipDelivered) return;
+  shipDelivered = true;
+  clearAgyTimers();
+
+  const { name, spec } = selectFallbackPreset(sliders);
+  spec.pilot = { ...spec.pilot, ...currentSessionMetadata?.pilot };
+  console.warn(`[Daemon] Fallback automático acionado (${reason}). Preset: ${name}`);
+
+  killAgyProcessGroup();
+  broadcast({ type: 'EVENT_SHIP_READY', spec, fallback: true, fallback_preset: name, fallback_reason: reason });
 }
 
 const sessionDir = process.env.BOOTH_SESSION_DIR || '/tmp/booth_session';
@@ -136,17 +184,39 @@ app.post('/api/session/start', (req, res) => {
     fileWatcher.startWatching(sessionDir, {
       requiredMcps,
       onShipReady: (shipSpec) => {
+        shipDelivered = true;
+        clearAgyTimers();
         console.log(`[Daemon] Broadcasting EVENT_SHIP_READY to ${activeClients.size} connected client(s)...`);
         broadcast({ type: 'EVENT_SHIP_READY', spec: shipSpec });
       },
       onMcpActivity: (activity) => {
+        armSilenceTimer(energy_sliders, 'após atividade MCP');
         broadcast({ type: 'EVENT_MCP_ACTIVITY', data: activity });
       },
       onSpecRejected: (rejection) => {
+        armSilenceTimer(energy_sliders, 'após rejeição de spec');
         console.error('[Daemon] Spec rejeitada:', rejection.reason, rejection.details.join('; '));
         broadcast({ type: 'EVENT_SPEC_REJECTED', data: rejection });
       }
     });
+
+    shipDelivered = false;
+    clearAgyTimers();
+    hardTimer = setTimeout(
+      () => triggerFallback(energy_sliders, `teto rígido de ${AGY_HARD_TIMEOUT_MS}ms`),
+      AGY_HARD_TIMEOUT_MS
+    );
+    livenessTimer = setInterval(() => {
+      const pidFile = path.join(sessionDir, '.agy_pid');
+      if (!fs.existsSync(pidFile)) return;
+      const pid = Number(fs.readFileSync(pidFile, 'utf8').trim());
+      if (!pid || Number.isNaN(pid)) return;
+      try {
+        process.kill(pid, 0); // sinal 0: só testa existência
+      } catch {
+        triggerFallback(energy_sliders, 'processo do agy encerrou sem entregar a nave');
+      }
+    }, AGY_LIVENESS_POLL_MS);
 
     console.log(`[Daemon API] Session workspace initialized at: ${sessionDir} for pilot ${fullPilot.callsign}`);
 
@@ -183,6 +253,8 @@ app.post('/api/matches', (req, res) => {
 
 app.post('/api/session/reset', (req, res) => {
   try {
+    clearAgyTimers();
+    shipDelivered = false;
     fileWatcher.stopWatching();
     currentSessionMetadata = null;
 

@@ -25,7 +25,13 @@ Os três presets **existem e estão corretos** (`packages/shared/src/constants/f
 é um botão manual em `HandoffTerminalScreen.tsx`. Se o `agy` travar, se a autenticação expirar, ou se o
 modelo simplesmente não gravar o arquivo, a estação fica parada até que alguém do staff perceba.
 
-**Requisito.** Ao escrever `.session_active`, o daemon arma um temporizador de **15s**. Ao estourar:
+**Requisito.** O daemon arma três gatilhos independentes. O primeiro que disparar injeta o preset:
+
+- **Silêncio de 15s** após a primeira linha de `mcp_audit.log`, rearmado a cada nova linha.
+- **Teto rígido de 150s** desde `.session_active`, protegendo o SLA do ciclo.
+- **Morte do processo** do `agy` sem spec aceita.
+
+Ao disparar:
 
 1. Encerra o grupo de processos do `agy` — ver [Spec 03](./03_AGY_HARNESS_AND_INTEGRATION_SPEC.md) §6.2.
 2. Escolhe o preset mais próximo da alocação de sliders do visitante. Não um preset fixo: quem investiu
@@ -53,7 +59,7 @@ Tela 2, o foco está no terminal, e o hotkey não responde.
 | :--- | :--- | :--- |
 | Registro | 60s | Volta para a tela de atração |
 | Builder | 120s | Volta para a tela de atração |
-| Handoff / forja | 15s sem spec | Fallback automático, §1.1 |
+| Handoff / forja | 15s de silêncio ou 150s no total | Fallback automático, §1.1 |
 | Debrief | 45s | Envia a partida e volta para a atração |
 
 E um caminho de reset independente do foco do browser: `reset_booth.sh` no terminal da Tela 2, que já
