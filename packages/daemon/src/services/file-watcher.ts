@@ -197,17 +197,19 @@ export class FileWatcherService {
     else if (rawSType.includes('drone')) secondaryType = 'drone_escort';
     else if (rawSType.includes('missile') || rawSType.includes('míssil')) secondaryType = 'homing_missiles';
 
-    // [D1] $schema é metadado opcional: só entra no objeto quando há valor real, para não
-    // disparar "additionalProperties" no schema estrito (que não declara essa chave).
-    const schemaValue: string | undefined = raw.$schema;
-
+    // [Fase A / revisão final — Importante 3] O schema estrito (additionalProperties:
+    // false na raiz) NÃO declara "$schema" como propriedade permitida. Agentes de IA
+    // costumam emitir "$schema": "https://json-schema.org/draft-07/schema#" por
+    // convenção em JSON escrito à mão — se o raw trouxer essa chave, ela NUNCA deve
+    // sobreviver à normalização, senão o Ajv rejeita com "root must NOT have
+    // additional properties" mesmo para specs corretas em tudo o mais.
+    //
     // [D1] IMPORTANTE: normalizeSpec só reposiciona nomes de campo frouxos que o agente
     // realmente forneceu (ex.: raw.damage → weapons.primary.damage). Campos ausentes NÃO
     // são mais preenchidos com um preset "plausível" (FALLBACK_PRESETS) — isso é exatamente
     // a coerção silenciosa que permitia specs alucinadas/vazias decolarem sem checagem real.
     // Quando nada é fornecido, o campo fica undefined/NaN e a validação estrita abaixo rejeita.
     return {
-      ...(schemaValue ? { $schema: schemaValue } : {}),
       pilot: {
         callsign: raw.pilot?.callsign || raw.callsign,
         company_raw: raw.pilot?.company_raw || raw.company,

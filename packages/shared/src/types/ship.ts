@@ -74,7 +74,6 @@ export interface ShipVisuals {
 }
 
 export interface ShipSpecification {
-  $schema?: string;
   pilot: PilotInfo;
   build_metadata: BuildMetadata;
   attributes: ShipAttributes;

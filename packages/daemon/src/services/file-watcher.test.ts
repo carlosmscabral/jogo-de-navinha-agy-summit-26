@@ -76,4 +76,35 @@ describe('FileWatcherService — validação estrita e gate de auditoria', () =>
     w.stopWatching();
     fs.rmSync(dir2, { recursive: true, force: true });
   });
+
+  it('aceita uma spec que traz "$schema" no topo em vez de rejeitá-la por additionalProperties', async () => {
+    const dir3 = tempSession();
+    fs.writeFileSync(path.join(dir3, 'mcp_audit.log'), '', 'utf8');
+
+    const rejections: any[] = [];
+    const readySpecs: any[] = [];
+    const w = new FileWatcherService();
+    w.startWatching(dir3, {
+      requiredMcps: [],
+      onShipReady: (s) => readySpecs.push(s),
+      onSpecRejected: (r) => rejections.push(r)
+    });
+
+    // Convenção comum de agentes de IA ao escrever JSON "à mão": incluir $schema
+    // no topo. O schema estrito não declara essa chave — normalizeSpec precisa
+    // descartá-la incondicionalmente, e não apenas evitar adicioná-la de novo.
+    const specWithSchema = {
+      $schema: 'https://json-schema.org/draft-07/schema#',
+      ...FALLBACK_PRESETS.interceptor
+    };
+    fs.writeFileSync(path.join(dir3, 'ship_spec.json'), JSON.stringify(specWithSchema), 'utf8');
+    await wait(900);
+
+    assert.equal(rejections.length, 0, 'não deve rejeitar por additionalProperties por causa de $schema');
+    assert.equal(readySpecs.length, 1, 'deve liberar a spec normalmente');
+    assert.equal((readySpecs[0] as any).$schema, undefined, 'a spec liberada não deve carregar $schema');
+
+    w.stopWatching();
+    fs.rmSync(dir3, { recursive: true, force: true });
+  });
 });
