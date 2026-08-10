@@ -14,7 +14,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "tsc && node --test dist/**/*.test.js"
+    "test": "tsc && node --test 'dist/**/*.test.js'"
   },
   "dependencies": {
     "ajv": "^8.17.1",
