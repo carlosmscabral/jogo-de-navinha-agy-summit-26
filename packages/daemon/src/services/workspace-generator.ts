@@ -132,10 +132,54 @@ Você DEVE invocar as ferramentas dos servidores MCP 'hull-propulsion' e 'cybern
 
   private static generateGeminiInstructions(sessionDir: string, config: SessionWorkspaceConfig): void {
     const { pilot, energy_sliders, selected_mcps, selected_subagents } = config;
+    const activeSubagents = ['aesthetic-designer', ...selected_subagents];
+
+    // Build contract table rows dynamically based on selected MCPs
+    const contractRows = [
+      '| `pilot.*` | Dados do piloto acima, copiados literalmente | — |',
+      `| \`build_metadata.selected_mcps\` | Exatamente: ${JSON.stringify(selected_mcps)} | — |`,
+      `| \`build_metadata.selected_subagents\` | Exatamente: ${JSON.stringify(activeSubagents)} | — |`,
+      '| `build_metadata.energy_sliders` | Alocação de energia acima, copiada literalmente | soma = 100 |',
+      '| `build_metadata.fast_grill_me_choices` | Respostas do piloto no PASSO 1 | — |'
+    ];
+
+    // Conditionally add rows based on selected MCPs
+    if (selected_mcps.includes('cybernetics-shields')) {
+      contractRows.push('| `build_metadata.synergies_unlocked` | Retorno de `cybernetics-shields` | — |');
+      contractRows.push('| `attributes.shield_capacity` | Retorno de `cybernetics-shields` | inteiro de 0 a 3 |');
+    }
+    if (selected_mcps.includes('hull-propulsion')) {
+      contractRows.push('| `attributes.max_hp` | Retorno de `hull-propulsion` | inteiro de 2 a 5 |');
+      contractRows.push('| `attributes.speed_px_s` | Retorno de `hull-propulsion` | 180 a 380 |');
+      contractRows.push('| `attributes.hitbox_radius` | Retorno de `hull-propulsion` | 8 a 16 |');
+    }
+    if (selected_mcps.includes('weapons-arsenal')) {
+      contractRows.push('| `weapons.primary.type` | Retorno de `weapons-arsenal` | laser, plasma ou vulcan_spread |');
+      contractRows.push('| `weapons.primary.damage` | Retorno de `weapons-arsenal` | 15 a 45 |');
+      contractRows.push('| `weapons.primary.fire_rate` | Retorno de `weapons-arsenal` | 5 a 12 |');
+      contractRows.push('| `weapons.secondary.type` | Retorno de `weapons-arsenal` | homing_missiles ou emp_burst |');
+      contractRows.push('| `weapons.secondary.damage` | Retorno de `weapons-arsenal` | 60 a 150 |');
+      contractRows.push('| `weapons.secondary.cooldown_seconds` | Retorno de `weapons-arsenal` | 3 a 12 |');
+    }
+
+    // Visuals are always included (aesthetic-designer is always active)
+    contractRows.push('| `visuals.style_name` | `aesthetic-designer` | texto curto |');
+    contractRows.push('| `visuals.primary_color`, `secondary_color`, `engine_trail_color` | `aesthetic-designer` | hex `#rrggbb` |');
+    contractRows.push('| `visuals.svg_path_data` | `aesthetic-designer` | viewBox 0 0 128 128 |');
+
+    const contractTable = contractRows.join('\n');
 
     const geminiContent = `# PROTOCOLO DE CONSTRUÇÃO DE NAVE: FORJA ESPACIAL AGY
 
 Você é o Orquestrador Chefe da Forja no Antigravity CLI para o evento Google Cloud Summit 2026.
+
+## REGRA ZERO — PROIBIDO INVENTAR VALORES
+
+Você **NÃO** tem permissão para gerar parâmetros numéricos, nomes de sinergia ou dados SVG por conta
+própria. Todo número em \`ship_spec.json\` deve vir do retorno de uma ferramenta MCP, e todo dado
+visual deve vir do sub-agente \`aesthetic-designer\`. Se uma ferramenta falhar, **relate a falha** e
+pare — não preencha o campo com uma estimativa. Um arquivo com valores inventados é uma falha da
+demonstração, não um sucesso parcial.
 
 ### DADOS DO PILOTO:
 - Callsign: "${pilot.callsign}"
@@ -148,65 +192,28 @@ Você é o Orquestrador Chefe da Forja no Antigravity CLI para o evento Google C
 - Tecnologia: ${energy_sliders.tech} PU
 
 ### SERVIDORES MCP ATIVOS: ${selected_mcps.join(', ')}
-### SUB-AGENTES ATIVOS: ${['aesthetic-designer', ...selected_subagents].join(', ')}
+### SUB-AGENTES ATIVOS: ${activeSubagents.join(', ')}
+
+Estes são os únicos MCPs e sub-agentes disponíveis nesta sessão. Não referencie nenhum outro.
 
 ### PROTOCOLO RÍGIDO DE 4 PASSOS:
 1. **PASSO 1 - FAST GRILL-ME:** Pergunte ao piloto em 1 turno (ou leia seu prompt inicial):
    - [1] Foco de Armas: 1-Laser Perfurante, 2-Chuva de Mísseis, 3-Vulcan Espalhado
    - [2] Estilo Estético: 1-Synthwave 80s, 2-Dark Void Stealth, 3-Cyberpunk Gold
 2. **PASSO 2 - DELEGAÇÃO:** Invoque os sub-agentes em \`.agents/agents/\` para forjar a nave.
-3. **PASSO 3 - EXECUÇÃO DE TOOLS:** Os sub-agentes DEVEM executar as ferramentas dos MCPs ativos.
-4. **PASSO 4 - CRIAÇÃO DO ARQUIVO:** USE SUAS FERRAMENTAS DE ARQUIVO (write tool) PARA GRAVAR FISICAMENTE O ARQUIVO \`ship_spec.json\` na raiz do workspace (\`/tmp/booth_session/ship_spec.json\`).
+3. **PASSO 3 - EXECUÇÃO DE TOOLS:** Os sub-agentes DEVEM executar as ferramentas dos MCPs ativos. O
+   jogo verifica \`mcp_audit.log\` antes de aceitar a nave: **sem registro de execução, a nave é
+   rejeitada.**
+4. **PASSO 4 - CRIAÇÃO DO ARQUIVO:** Use sua ferramenta de escrita para gravar
+   \`${sessionDir}/ship_spec.json\` com os valores que as ferramentas retornaram.
 
-### EXEMPLO EXATO DO \`ship_spec.json\`:
-\`\`\`json
-{
-  "$schema": "https://json-schema.org/draft-07/schema#",
-  "pilot": {
-    "callsign": "${pilot.callsign}",
-    "company_raw": "${pilot.company_raw}",
-    "company_canonical": "${pilot.company_canonical}"
-  },
-  "build_metadata": {
-    "selected_mcps": ["weapons-arsenal", "hull-propulsion", "cybernetics-shields"],
-    "selected_subagents": ["aesthetic-designer", "combat-strategist"],
-    "energy_sliders": { "offense": ${energy_sliders.offense}, "speed": ${energy_sliders.speed}, "defense": ${energy_sliders.defense}, "tech": ${energy_sliders.tech} },
-    "fast_grill_me_choices": {
-      "weapon_focus": "vulcan_spread",
-      "visual_theme": "synthwave_80s"
-    },
-    "synergies_unlocked": ["Glass Cannon 🔥"]
-  },
-  "attributes": {
-    "speed_px_s": 350,
-    "max_hp": 4,
-    "shield_capacity": 2,
-    "hitbox_radius": 10
-  },
-  "weapons": {
-    "primary": {
-      "type": "vulcan_spread",
-      "damage": 35,
-      "fire_rate": 10,
-      "bullet_speed": 750,
-      "spread_angle": 0.25
-    },
-    "secondary": {
-      "type": "homing_missiles",
-      "damage": 120,
-      "cooldown_seconds": 4
-    }
-  },
-  "visuals": {
-    "style_name": "${pilot.callsign}-01 Custom",
-    "primary_color": "#ff0055",
-    "secondary_color": "#00f3ff",
-    "engine_trail_color": "#ffd700",
-    "svg_path_data": "M 64 10 L 114 110 L 64 85 L 14 110 Z"
-  }
-}
-\`\`\`
-É CRÍTICO QUE O ARQUIVO \`ship_spec.json\` EXISTA FISICAMENTE NO DISCO PARA O JOGO INICIAR!
+### CONTRATO DO \`ship_spec.json\` (estrutura, não valores):
+
+| Campo | Origem obrigatória | Faixa aceita |
+| :--- | :--- | :--- |
+${contractTable}
+
+Valores fora das faixas acima fazem o arquivo ser rejeitado pelo validador do jogo.
 `;
 
     fs.writeFileSync(path.join(sessionDir, 'GEMINI.md'), geminiContent, 'utf8');
