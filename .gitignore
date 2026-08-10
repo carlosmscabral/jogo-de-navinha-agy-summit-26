@@ -34,3 +34,6 @@ lerna-debug.log*
 *.njsproj
 *.sln
 *.sw?
+
+# Isolated workspaces for subagent-driven-development
+.worktrees/
