@@ -56,18 +56,36 @@ function armSilenceTimer(sliders: EnergySliders, reasonPrefix: string): void {
   silenceTimer = setTimeout(() => triggerFallback(sliders, `${reasonPrefix}: silêncio de ${AGY_SILENCE_TIMEOUT_MS}ms`), AGY_SILENCE_TIMEOUT_MS);
 }
 
-// TODO(A5): substituir por morte de todo o grupo de processos do agy (process.kill(-pid)).
-// Implementação temporária: mata apenas o PID registrado em .agy_pid.
 function killAgyProcessGroup(): void {
+  const pidFile = path.join(sessionDir, '.agy_pid');
+  if (!fs.existsSync(pidFile)) return;
+
+  let pgid = 0;
   try {
-    const pidFile = path.join(sessionDir, '.agy_pid');
-    if (!fs.existsSync(pidFile)) return;
-    const pid = Number(fs.readFileSync(pidFile, 'utf8').trim());
-    if (!pid || Number.isNaN(pid)) return;
-    process.kill(pid, 'SIGINT');
+    pgid = Number(fs.readFileSync(pidFile, 'utf8').trim());
   } catch {
-    // Processo já pode estar morto.
+    return;
   }
+  if (!pgid || Number.isNaN(pgid) || pgid <= 1) return;
+
+  // Negativo = grupo inteiro. Os 3 MCPs stdio são filhos do agy e morrem junto.
+  const signalGroup = (sig: NodeJS.Signals): boolean => {
+    try {
+      process.kill(-pgid, sig);
+      return true;
+    } catch (err: any) {
+      if (err?.code === 'ESRCH') return false;
+      // Grupo não existe (ex.: agy iniciado sem job control). Cai para o PID isolado.
+      try { process.kill(pgid, sig); } catch {}
+      return false;
+    }
+  };
+
+  console.log(`[Daemon Reset] Encerrando process group ${pgid}...`);
+  signalGroup('SIGINT');
+  setTimeout(() => { signalGroup('SIGKILL'); }, 600);
+
+  try { fs.unlinkSync(pidFile); } catch {}
 }
 
 function triggerFallback(sliders: EnergySliders, reason: string): void {
@@ -264,33 +282,17 @@ app.post('/api/session/reset', (req, res) => {
       try { fs.unlinkSync(activeFile); } catch {}
     }
 
-    // 2. Kill running AGY process in the booth terminal if PID exists
-    const pidFile = path.join(sessionDir, '.agy_pid');
-    if (fs.existsSync(pidFile)) {
-      try {
-        const pid = Number(fs.readFileSync(pidFile, 'utf8').trim());
-        if (!isNaN(pid) && pid > 0) {
-          console.log(`[Daemon Reset] Terminating active terminal AGY process (PID: ${pid})...`);
-          process.kill(pid, 'SIGINT');
-          setTimeout(() => {
-            try { process.kill(pid, 'SIGKILL'); } catch {}
-          }, 600);
-        }
-        fs.unlinkSync(pidFile);
-      } catch (err) {
-        // Process might already be dead
+    // 2. [D4] Encerra o grupo de processos do agy, incluindo os MCPs stdio.
+    killAgyProcessGroup();
+
+    // 3. [Spec 06 §2.1] Higiene: o GEMINI.md do visitante anterior contém nome e empresa.
+    //    Apaga todo o conteúdo preservando o inode do diretório (evita uv_cwd ENOENT no terminal aberto).
+    try {
+      for (const entry of fs.readdirSync(sessionDir)) {
+        fs.rmSync(path.join(sessionDir, entry), { recursive: true, force: true });
       }
-    }
-
-    // 3. Remove old generated session files
-    const specFile = path.join(sessionDir, 'ship_spec.json');
-    if (fs.existsSync(specFile)) {
-      try { fs.unlinkSync(specFile); } catch {}
-    }
-
-    const auditFile = path.join(sessionDir, 'mcp_audit.log');
-    if (fs.existsSync(auditFile)) {
-      try { fs.unlinkSync(auditFile); } catch {}
+    } catch (err) {
+      console.warn('[Daemon Reset] Falha ao limpar o diretório de sessão:', err);
     }
 
     console.log('[Daemon Reset] Session cleared successfully.');

@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# Job control: cada job em background vira líder do próprio process group,
+# de modo que $! é também o PGID e o daemon pode matar a árvore inteira.
+set -m
+
+# O visitante não recebe um shell: Ctrl+C e Ctrl+Z não interrompem o supervisor.
+trap '' SIGINT SIGTSTP
+
 # ==============================================================================
 # Google Cloud Summit 2026 // AGY Space Shooter Booth Terminal Supervisor
 # Runs continuously on Screen 2 (Terminal Station).
@@ -28,7 +35,7 @@ cleanup() {
   rm -f "$PID_FILE"
   exit 0
 }
-trap cleanup SIGINT SIGTERM
+trap cleanup SIGTERM
 
 print_idle_banner() {
   clear
@@ -102,12 +109,14 @@ while true; do
     agy &
     AGY_PID=$!
     echo "$AGY_PID" > "$PID_FILE"
+    echo "[booth-terminal] agy em execução no process group $AGY_PID" >&2
     wait $AGY_PID 2>/dev/null
   else
     echo -e "${AMBER}[Simulação Booth] Comando 'agy' em execução...${RESET}"
     sleep 20 &
     AGY_PID=$!
     echo "$AGY_PID" > "$PID_FILE"
+    echo "[booth-terminal] agy em execução no process group $AGY_PID" >&2
     wait $AGY_PID 2>/dev/null
   fi
 
