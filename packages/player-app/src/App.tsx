@@ -131,7 +131,18 @@ export function App() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(matchRecord)
-    }).catch((err) => console.warn('[App] Falha ao gravar a partida no bridge:', err));
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          // O daemon responde 400 quando telemetry/snapshot/pilot_id estão
+          // ausentes (Tarefa A7) — isso resolve a Promise normalmente, então
+          // só um .catch() nunca detectaria a rejeição. Sem este log, o score
+          // do visitante desaparece sem rastro visível para ninguém.
+          const detail = await response.text().catch(() => '');
+          console.error(`[App] Partida rejeitada pelo bridge (HTTP ${response.status}):`, detail);
+        }
+      })
+      .catch((err) => console.warn('[App] Falha ao gravar a partida no bridge:', err));
 
     setStage('DEBRIEF');
   };
