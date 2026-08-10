@@ -74,7 +74,6 @@ function killAgyProcessGroup(): void {
       process.kill(-pgid, sig);
       return true;
     } catch (err: any) {
-      if (err?.code === 'ESRCH') return false;
       // Grupo não existe (ex.: agy iniciado sem job control). Cai para o PID isolado.
       try { process.kill(pgid, sig); } catch {}
       return false;
