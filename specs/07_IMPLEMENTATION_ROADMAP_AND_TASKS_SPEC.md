@@ -1,84 +1,132 @@
-# Spec 07: Tech Stack, Implementation Roadmap & Validation Strategy
+# Spec 07: Stack Tecnológica e Estratégia de Validação
 
-> **Status:** ESPECIFICAÇÃO REFINADA & BLINDADA  
-> **Objetivo:** Definir a stack tecnológica oficial do projeto, o cronograma de implementação dividido por prioridades (P0, P1, P2), a estratégia de testes e simulações, e os critérios formais de aceitação (Definition of Done).
+> **Status:** RECONCILIADA COM A IMPLEMENTAÇÃO — 2026-08-10
+> **Objetivo:** Registrar a stack efetivamente adotada, o estado do ferramental de build e teste, e a
+> Definition of Done do evento.
+> **Endereça:** P8, D8, U6 (ver [Spec 00](./00_AUDIT_AND_DRIFT_REPORT.md)).
+> **O cronograma saiu daqui.** O roadmap P0/P1/P2 desta especificação descrevia trabalho já concluído,
+> abandonado ou renomeado. O plano vigente é a [Spec 10](./10_IMPLEMENTATION_PLAN.md).
 
 ---
 
-## 1. Stack Tecnológica Oficial
+## 1. Stack real
 
-| Camada | Tecnologia | Justificativa Técnica |
+| Camada | Tecnologia | Nota |
 | :--- | :--- | :--- |
-| **Frontend (Player & Leaderboard)** | React 18 + TypeScript + Vite | Inicialização instantânea (<1s), tipagem estrita e reatividade. |
-| **Estilização** | TailwindCSS + CRT/Neon Design System | Estética retrô-futurista responsiva com shaders arcade. |
-| **Terminal Embutido** | `xterm.js` + `@xterm/addon-fit` | Renderização nativa de terminal no navegador sem troca de janelas do SO. |
-| **Game Engine** | Phaser.js 3 (WebGL / Canvas 2D) | 60 FPS estáveis, física Arcade Physics e texturas dinâmicas em memória. |
-| **Áudio** | Howler.js (Sound Sprites Atlas) | Latência zero, consumo mínimo de CPU e áudio pré-carregado. |
-| **Local Bridge Daemon** | Node.js (TypeScript) + Express + `node-pty` | Gestão de sessão PTY, File Watcher com Chokidar e mocks MCP. |
-| **Servidores MCP Mockados** | `@modelcontextprotocol/sdk` (Stdio) | Resposta local em $< 10$ms por tool sem chamadas externas. |
-| **Persistência Local** | SQLite (`better-sqlite3`) | Buffer offline idempotente e catálogo canônico de empresas. |
-| **Nuvem & Banco de Dados** | Google Cloud Firestore (Modo Nativo) | Sincronização em tempo real via listeners `onSnapshot`. |
-| **Backend Cloud SDK** | Firebase Admin SDK (Node.js) | Gravações com assinatura segura exclusivas pelo daemon. |
-| **Inteligência Artificial** | Gemini 1.5 Flash API | Moderação semântica e normalização de empresas em $< 600$ms. |
+| Frontend | React 18 + TypeScript 5.7 + Vite 6 | Dois apps: `player-app` e `leaderboard-app`. |
+| Estilização | TailwindCSS 3.4 + design system CRT/Neon | `lucide-react` para ícones. |
+| Terminal | **Terminal nativo do SO** + `scripts/booth-terminal.sh` | **P1.** Não há `xterm.js` nem `@xterm/addon-fit`. |
+| Game engine | Phaser 3.88, WebGL, Arcade Physics | Texturas geradas em runtime por Canvas2D. |
+| Áudio | **Síntese WebAudio própria** | **P8.** Ver §2. |
+| Local bridge | Node.js + Express 4 + `ws` 8 + `chokidar` 4 | **Sem `node-pty`.** O daemon não cria PTY. |
+| MCPs mockados | `@modelcontextprotocol/sdk` 1.6 sobre stdio + `zod` 3 | Três servidores, resposta local. |
+| Persistência local | `better-sqlite3` 11 | Buffer de partidas e catálogo de empresas. |
+| Nuvem | **Ausente** | Firestore e Admin SDK não instalados (**U1**). |
+| Modelo | **Ausente** | Alvo: `gemini-3.6-flash` via Vertex AI (**U2**). |
+
+> **Correção de modelo.** Toda referência a *Gemini 1.5 Flash API* está superada. O consumo é
+> exclusivamente pelo flavor **Vertex AI / Gemini Enterprise Agent Platform**, com credencial de conta
+> de serviço. Nenhuma chave de API de modelo existe neste projeto, em nenhum ambiente. Ver
+> [Spec 08](./08_DEPLOYMENT_TOPOLOGY_AND_CLOUD_SPLIT.md) §6.
+
+### 1.1. [P8] Áudio: síntese, não sound sprites
+
+A especificação definia Howler.js com atlas de sprites. A implementação é um sintetizador WebAudio
+escrito à mão: osciladores, envelopes e ruído gerados no cliente, sem nenhum arquivo de áudio. Para
+esta ativação é a decisão certa — zero bytes de asset, latência determinística e variação paramétrica
+por evento de jogo.
+
+**`howler` e `@types/howler` continuam no `package.json` do `player-app` e não são importados em lugar
+nenhum** (**D10**). Devem ser removidos: uma dependência não usada em uma lista de dependências é uma
+afirmação falsa sobre a arquitetura.
 
 ---
 
-## 2. Roadmap de Implementação por Prioridades
+## 2. Build
 
-```mermaid
-gantt
-    title Cronograma de Implementação por Prioridades
-    dateFormat  YYYY-MM-DD
-    section Prioridade P0: Fundação & Contratos
-    P0.1: Contrato estrito ship_spec.json & Types      :p01, 2026-08-10, 3d
-    P0.2: Mocks MCP TypeScript Stdio Server           :p02, after p01, 3d
-    P0.3: node-pty Bridge + xterm.js Canvas UI        :p03, after p01, 4d
-    P0.4: SQLite Local Repositories & Seed Companies  :p04, 2026-08-12, 3d
-    P0.5: Phaser.js ShipTextureFactory (SVG->Canvas)  :p05, after p03, 3d
-    section Prioridade P1: Mecânicas & Cloud
-    P1.1: GEMINI.md Template & Fast Grill-Me Flow     :p11, after p02, 3d
-    P1.2: Shmup Combat Loop & Boss 2000 HP (3 Fases)  :p12, after p05, 5d
-    P1.3: Normalizador de Empresas (Fuzzy + Gemini)   :p13, after p04, 3d
-    P1.4: Firestore Rules & Firebase Admin SDK Worker :p14, after p13, 3d
-    P1.5: Howler.js Sound Sprites & Autoplay Unlock   :p15, after p12, 2d
-    section Prioridade P2: Polish & Operação do Booth
-    P2.1: Leaderboard TV Display com onSnapshot       :p21, after p14, 4d
-    P2.2: Scripts Linux Kiosk & Dual-Head (xrandr)    :p22, after p21, 3d
-    P2.3: Reset Pipeline < 1s & Hotkey Ctrl+Shift+F12 :p23, after p22, 2d
-    P2.4: Suíte de Autoteste Matinal (./self_test.sh) :p24, after p23, 2d
-    P2.5: End-to-End SLA Tuning (<2m30s) & Dry-Run    :p25, after p24, 4d
+O monorepo usa workspaces npm com uma regra bem resolvida: **todo build e todo teste rodam
+`build:shared` primeiro**, porque os quatro pacotes consomem `@jogo/shared` por referência de
+workspace. Isso já é o comportamento dos scripts da raiz.
+
+Scripts principais da raiz:
+
+| Script | Faz |
+| :--- | :--- |
+| `npm run build` | `shared` → `mcps` → `daemon` → `player-app` → `leaderboard-app` |
+| `npm run start:daemon` | Mata o :3000, rebuilda e sobe o daemon |
+| `npm run dev:player` / `dev:leaderboard` | Vite em modo dev |
+| `npm run start:terminal` | Supervisor da Tela 2 |
+
+A [Spec 09](./09_GAME_BALANCE_AND_DEV_MODE.md) acrescenta `dev:game`, `sim:balance` e `gen:schema`.
+
+---
+
+## 3. [D8] Testes: o estado é pior do que "cobertura baixa"
+
+Dois problemas compostos:
+
+**O runner da raiz não alcança o `player-app`.** O `npm test` executa `shared`, `mcps` e `daemon`, e
+para. Todo o código de jogo — engine, balística, score — está fora da suíte.
+
+**O script de teste do `player-app` foi escrito para nunca falhar:**
+
+```
+node --loader ts-node/esm --test src/game/scoring/ScoreCalculator.test.ts 2>/dev/null || node --test
 ```
 
+`ts-node` **não é dependência do pacote**, então o primeiro comando falha sempre; o `2>/dev/null`
+esconde o erro; e o `|| node --test` roda um comando que não encontra nenhum teste e **sai com
+sucesso**. O resultado é um script de teste verde que não testou nada.
+
+**E o teste escondido está vermelho.** `ScoreCalculator.test.ts` afirma quatro constantes que mudaram:
+
+| Asserção do teste | Valor real |
+| :--- | :--- |
+| `bossBonus: 5000` | 10.000 |
+| `timeBonus: 15 × 50` | segundos × 80 |
+| `survivalBonus: 3000` | HP × 1.200 |
+| `synergyBonus: 1500` | 2.000 |
+
+Não é um teste ausente: é um teste **errado e silenciado**. Ele documenta uma fórmula que não existe
+mais, e o mecanismo que deveria ter avisado foi desligado.
+
+**Correção, nesta ordem:** consertar o runner primeiro, ver o teste ficar vermelho, e só então corrigir
+as asserções. Consertar as asserções antes prova nada. Isso é o gate **M0**.
+
+### 3.1. Cobertura-alvo
+
+Prioridade por risco, não por percentual:
+
+1. `ScoreCalculator` — pura, determinística, barata de testar.
+2. `normalizeSpec` e `validateShipSpecification` — o par que decide o que vira nave (**D1**).
+3. `resolveCompanyFromCatalog` e `validateCallsign` — entrada de usuário exibida em telão público.
+4. Conformidade entre o simulador e a engine, com tolerância de 5% ([Spec 09](./09_GAME_BALANCE_AND_DEV_MODE.md) §5).
+5. Gate de taxa de vitória em CI, na faixa de 15% a 25%.
+
 ---
 
-## 3. Detalhamento dos Pacotes de Trabalho
+## 4. [U6] Validação de carga
 
-### Prioridade P0: Fundação, Contratos & Bloqueadores
-- [ ] **P0.1 Contrato Estrito:** Implementação do schema `ship_spec.json` e exportação dos tipos TypeScript compartilhados.
-- [ ] **P0.2 Servidores MCP:** Implementação dos 3 mocks locais Stdio (`weapons-arsenal`, `hull-propulsion`, `cybernetics-shields`).
-- [ ] **P0.3 Terminal Embutido:** Criação do endpoint WebSocket `/pty` e componente React com `xterm.js`.
-- [ ] **P0.4 SQLite Local:** Setup das tabelas `canonical_companies`, `company_aliases_cache` e `local_matches_buffer`.
-- [ ] **P0.5 ShipTextureFactory:** Pipeline de rasterização SVG $\rightarrow$ textura Phaser.js e colisão circular no cockpit.
+Não existe. As duas verificações necessárias:
 
-### Prioridade P1: Mecânicas de Jogo, IA & Cloud
-- [ ] **P1.1 Fast Grill-Me:** Configuração do prompt do `GEMINI.md` com caixas ANSI e 2 perguntas em 1 turno.
-- [ ] **P1.2 Shmup Core & Boss:** Implementação dos 3 tipos de armas, 32 Drones, 6 Cruisers e o Boss com 2.000 HP em 3 fases.
-- [ ] **P1.3 Normalizador de Empresas:** Pipeline de 3 etapas (SQLite Seed $\rightarrow$ Levenshtein $\rightarrow$ Gemini Flash 600ms).
-- [ ] **P1.4 Firestore & Admin SDK:** Gravação assíncrona segura no Firestore e transações atômicas de score corporativo.
-- [ ] **P1.5 Áudio:** Montagem do atlas de áudio no Howler.js e desbloqueio do `AudioContext` no primeiro clique.
-
-### Prioridade P2: Telão TV, Scripts de Estande & Validação
-- [ ] **P2.1 Leaderboard TV:** Visões Hall da Fama (Top 10), Batalha Corporativa e Recent Runs Ticker com `onSnapshot`.
-- [ ] **P2.2 Scripts do Host Linux:** `setup_monitors.sh`, `launch_kiosks.sh` e `reset_booth.sh`.
-- [ ] **P2.3 Reset Instantâneo:** Interceptação global de `Ctrl+Shift+F12` e limpeza de processos residuais.
-- [ ] **P2.4 Autoteste:** Script `./self_test.sh` para diagnóstico automático matinal.
-- [ ] **P2.5 Validação de SLA:** Simulação de 100 partidas consecutivas para validar estabilidade e tempo de ciclo $< 2\text{m}30\text{s}$.
+- **Soak de 100 partidas consecutivas automatizadas**, medindo memória do daemon, contagem de processos
+  e tempo de ciclo. Gate **M5**.
+- **Ensaio completo de 3 superfícies** com cronômetro no ciclo do visitante. Gate **M4**.
 
 ---
 
-## 4. Critérios de Aceitação para o Evento (Definition of Done)
-1. **SLA Rígido:** Ciclo completo do participante entre 2m00s e 2m45s.
-2. **Zero Janelas no SO:** 100% da experiência roda dentro do Chromium Kiosk com terminal `xterm.js` integrado.
-3. **Determinismo:** 100% das naves geradas pelo AGY passam na validação do schema e são renderizadas sem erros visuais.
-4. **Resiliência Offline:** Nenhuma perda de score em caso de queda de Wi-Fi durante o evento.
-5. **Estabilidade Contínua:** Capacidade de operar 8 horas ininterruptas sem intervenção técnica manual.
+## 5. Definition of Done do evento
+
+1. **SLA de ciclo:** 2m00s a 2m45s do início do registro ao debrief.
+2. **Sem janelas soltas no SO:** a Tela 1 roda em kiosk; a Tela 2 roda o supervisor em tela cheia e
+   nunca expõe um prompt de shell. *(A redação original — "100% dentro do Chromium com terminal
+   `xterm.js` integrado" — descreve uma arquitetura abandonada, **P1**.)*
+3. **Determinismo do contrato:** 100% das naves passam na validação de schema **executada** (**D1**),
+   e nenhuma decola sem registro correspondente em `mcp_audit.log` (**D3**).
+4. **A nave forjada é a nave pilotada:** o `svg_path_data` do agente é renderizado (**D17**).
+5. **O jogo é vencível na proporção pretendida:** taxa de vitória medida entre 15% e 25%
+   (**D12**, [Spec 09](./09_GAME_BALANCE_AND_DEV_MODE.md)).
+6. **Resiliência offline:** nenhuma pontuação perdida em queda de Wi-Fi.
+7. **Estabilidade:** 8 horas contínuas sem intervenção técnica e sem acúmulo de processos.
+8. **Telemetria preservada:** toda partida chega à nuvem com telemetria e snapshot da nave preenchidos
+   (**D5**).

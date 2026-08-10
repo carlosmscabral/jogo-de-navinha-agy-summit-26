@@ -1,107 +1,253 @@
-# Spec 04: Web Game Engine, Gameplay & Boss Fight
+# Spec 04: Game Engine, Gameplay e Boss Fight
 
-> **Status:** ESPECIFICAÇÃO REFINADA & BLINDADA  
-> **Objetivo:** Definir a engine Phaser.js 3, a conversão do SVG da nave em textura WebGL, a colisão circular Arcade Physics, o balanceamento matemático do Boss de 2.000 HP, a balística das armas e a fórmula de score à prova de exploits.
-
----
-
-## 1. Engine Gráfica & Pipeline de Textura SVG
-- [ ] **Engine Web:** Phaser.js 3 com renderizador WebGL a 60 FPS fixos.
-- [ ] **Conversão do SVG em Textura em Tempo de Execução (`ShipTextureFactory`):**
-  1. O SVG recebido no `ship_spec.json` possui `viewBox="0 0 128 128"`.
-  2. É criado um `Blob` SVG $\rightarrow$ `Image` $\rightarrow$ rasterizado em um `HTMLCanvasElement` em resolução retina 2x ($256\times 256$px).
-  3. Inserido no cache do Phaser via `this.textures.addCanvas('player_ship', canvas)`.
-  4. Sprite instanciado no jogo com escala $0.5$ (tamanho visual na tela: $64\times 64$px).
+> **Status:** RECONCILIADA COM A IMPLEMENTAÇÃO — 2026-08-10
+> **Objetivo:** Descrever a engine Phaser 3 tal como construída: pipeline de textura, física de voo,
+> balística, pacing da partida de 90s, o boss e a fórmula de score.
+> **Endereça:** P3, P4, P5, D12, D13, D15, D17 (ver [Spec 00](./00_AUDIT_AND_DRIFT_REPORT.md)).
+> **Fonte de verdade numérica:** esta especificação **descreve** o comportamento; todo valor de tuning
+> é governado por [Spec 09](./09_GAME_BALANCE_AND_DEV_MODE.md). Onde os dois divergirem, vale a 09.
 
 ---
 
-## 2. Física de Voo & Colisão Circular no Cockpit (*Graze Box*)
+## 1. Pipeline de textura
+
+### 1.1. O que existe
+
+`ShipTextureFactory` (`packages/player-app/src/game/factories/ShipTextureFactory.ts`) gera todas as
+texturas em tempo de execução com Canvas2D e as registra via `scene.textures.addCanvas()`. Não há
+nenhum asset de imagem no bundle — nave do jogador, drones e boss são desenhados por código. Para uma
+ativação de estande isso é uma boa decisão: zero requisições de rede, zero tempo de carregamento, zero
+risco de asset faltando.
+
+A nave do jogador é um canvas de **128×128** renderizado com `setScale(0.65)`, ou seja ≈83px na tela.
+
+### 1.2. [D17] O SVG do agente não é renderizado
+
+> **Correção.** Esta especificação definia: `svg_path_data` → `Blob` → `Image` → rasterização em canvas
+> retina 256×256 → `addCanvas`. **Esse pipeline não existe.** A fábrica desenha **três silhuetas fixas
+> no código**, escolhidas por substring de `visuals.style_name`:
+>
+> | `style_name` contém | Silhueta |
+> | :--- | :--- |
+> | `interceptor` | Agulha aerodinâmica |
+> | `fortress` ou `vanguard` | Casco pesado |
+> | qualquer outra coisa | Asa invertida |
+>
+> Do `ship_spec.json`, a aparência consome apenas `primary_color`, `secondary_color` e
+> `engine_trail_color`. O `svg_path_data` — produzido pelo `aesthetic-designer`, o único sub-agente
+> sempre ativo, validado pelo schema com `minLength: 10` e transportado até o browser — é descartado.
+>
+> E como os `style_name` gerados na prática (`<callsign>-01 Swarmstrike` no `normalizeSpec`,
+> `<callsign>-01 Custom` no exemplo do `GEMINI.md`) não casam com nenhuma das duas primeiras condições,
+> **quase toda nave do evento cai no mesmo terceiro desenho**.
+
+**Requisito.** O visitante precisa pilotar a nave que viu o agente desenhar. O pipeline a construir:
+
+1. `Path2D(svg_path_data)` desenhado em um canvas 256×256 com transformação de `viewBox 0 0 128 128`,
+   preenchido com `primary_color` e contornado com `secondary_color`.
+2. **Validação prévia de sanidade** antes de aceitar o path: comprimento máximo, conjunto de comandos
+   permitido (`M L C Q A Z` e minúsculas), e bounding box resultante dentro do viewBox. Um path
+   degenerado — uma linha, um ponto, ou algo que renderize fora da caixa — cai para a silhueta padrão.
+   Isso não é paranoia: é o mesmo argumento de D16, um modelo pode devolver qualquer string.
+3. As três silhuetas atuais permanecem como **fallback**, usadas quando o path é inválido ou quando a
+   nave veio de um preset de fallback.
+4. Os propulsores, o brilho e o `shadowBlur` continuam aplicados por código sobre o path recebido.
+
+O gate objetivo: com dois `svg_path_data` visivelmente diferentes no mesmo `style_name`, as duas naves
+renderizadas devem ser visivelmente diferentes. Hoje são idênticas.
+
+---
+
+## 2. Física de voo e colisão
+
+- **Corpo circular.** `PlayerShip` aplica `body.setCircle(hitbox_radius, offsetX, offsetY)` com o raio
+  vindo do spec e o offset centralizando o círculo no sprite (`PlayerShip.ts:48-49`). O corpo é menor
+  que a arte: asas e fuselagem externa não colidem. É a *graze box* pretendida, e funciona.
+- **Movimento.** Oito direções por teclado, WASD e setas, velocidade `attributes.speed_px_s` aplicada
+  diretamente como velocidade do corpo, sem aceleração nem inércia (`PlayerShip.ts:104-118`).
+- **Dano ao jogador é sempre 1.** Bala inimiga, bala do boss e colisão por aríete removem exatamente um
+  ponto de casco (`MainGameScene.ts:670,687,357`). `shield_capacity` absorve os primeiros impactos antes
+  do casco. Não existe dano variável contra o jogador — só frequência de impacto.
+- **Invulnerabilidade de 1,5s** após cada impacto (`PlayerShip.ts:158`).
+
 ```mermaid
 graph TD
-    subgraph Sprite_Visual [Tamanho Visual: 64x64 px]
-        ASAS[Asas & Fuselagem Exterior: Decorativo / Sem Colisão]
-        COCKPIT[Núcleo / Cockpit Central: Hitbox Circular]
-    end
-    COCKPIT -->|body.setCircle 8px a 16px| ARCADE_PHYSICS[Arcade Physics Body]
+    SPRITE[Sprite 128x128 escalado para 0.65]
+    ARTE[Asas e fuselagem: decorativo, sem colisao]
+    NUCLEO[Nucleo central: corpo circular Arcade]
+    SPRITE --> ARTE
+    SPRITE --> NUCLEO
+    NUCLEO -->|setCircle com hitbox_radius| FISICA[Arcade Physics Body]
 ```
 
-- [ ] **Corpo de Colisão:** Utiliza **Arcade Physics** com corpo circular no núcleo:
-  `player.body.setCircle(hitbox_radius, offsetX, offsetY)` com raio variando de 8px (builds ágeis) a 16px (builds pesadas).
-- [ ] **Offsets Fixos de Hardpoints:**
-  - Canhão Frontal Primário: $(x + 0, y - 28)$
-  - Asas de Dispersão Vulcan: $(x - 20, y - 10)$ e $(x + 20, y - 10)$
-  - Exaustão dos Propulsores (Partículas): $(x + 0, y + 26)$
+---
+
+## 3. Balística
+
+### 3.1. Arma primária
+
+Disparo contínuo com a barra de espaço. O `WeaponSystem` **reescreve** os valores do spec antes de
+usá-los (`WeaponSystem.ts:64-74`):
+
+- `fire_rate` é grampeado em **5 a 12** tiros/s.
+- `damage` é grampeado em **15 a 45**.
+- `vulcan_spread` dispara três projéteis com dano de `round(damage × 0,65)` cada.
+- `laser` e `plasma` disparam um projétil por ciclo com o dano cheio.
+
+Esses clamps são o coração de **D14**: o schema aceita `fire_rate` de 2 a 60 e `damage` de 10 a 60,
+`normalizeSpec` grampeia em outra faixa, e aqui há uma terceira. Um preset `interceptor` com
+`fire_rate: 60` voa como se tivesse 12. A [Spec 09](./09_GAME_BALANCE_AND_DEV_MODE.md) §2.3 unifica as
+três em uma tabela gerada; **nenhum número de faixa deve permanecer escrito à mão aqui.**
+
+### 3.2. [D13] Arma secundária
+
+Acionada por Shift, com cooldown de `secondary.cooldown_seconds`. Quatro falhas independentes a tornam
+quase inexistente — a evidência completa está em [Spec 00](./00_AUDIT_AND_DRIFT_REPORT.md) §2.12. Em
+resumo, e como requisitos:
+
+| Falha | Requisito |
+| :--- | :--- |
+| Mísseis não colidem com inimigos comuns; só o overlap contra o boss existe | Registrar `secondaryMissiles × enemies` em `setupCollisions`. |
+| `emp_burst` só desenha um círculo; o parâmetro `damage` é ignorado | Aplicar dano em área e destruir os projéteis inimigos na tela, como a especificação sempre descreveu. |
+| `spawnMissile` recebe `targets` e ignora | Implementar perseguição, ou remover o parâmetro e reclassificar a arma como *barrage* não-guiada. Uma das duas — o nome `homing_missiles` não pode continuar mentindo. |
+| O pool de 20 mísseis nunca é reciclado; `update()` limpa só `primaryBullets` | Limpar mísseis fora de tela no mesmo laço. |
+| `drone_escort` não é tratado em nenhum ramo | Removido do enum. Ver [Spec 03](./03_AGY_HARNESS_AND_INTEGRATION_SPEC.md) §5. |
+
+E uma quinta, que só aparece quando somada ao boss: o dano do míssil é grampeado em 60–120 aqui, e o
+`takeDamage` do boss corta qualquer impacto em 45. Um míssil de 120 entrega 45 antes da mitigação. Ver §5.
 
 ---
 
-## 3. Balística das Armas Primárias e Secundárias
+## 4. Pacing da partida
 
-### 3.1. Armas Primárias (Disparo Contínuo na Barra de Espaço)
-- `plasma`: Disparo de esferas com rastro luminoso. Dano: $35$ / Cadência: $4\text{ tiros/s}$ / Vel: $650\text{px/s}$.
-- `laser`: Feixe contínuo instantâneo com colisão raycast. Dano: $12\text{ por tick}$ ($60\text{ ticks/s} = 720\text{ DPS}$) com aquecimento/cooldown.
-- `vulcan_spread`: 3 a 5 projéteis balísticos cônicos. Dano: $15\text{ cada}$ / Cadência: $5\text{ tiros/s}$ / Ângulo: $\pm 12^\circ, \pm 24^\circ$.
+> **Correção (P4).** A especificação definia waves **finitas** com contagens exatas — 32 drones, depois
+> 6 cruisers, depois 10 drones de bônus — e o boss aos 60s. A implementação usa um **spawner contínuo
+> por temporizador** e o boss entra aos 45s. A troca é defensável: waves finitas exigem que o ritmo do
+> jogador case com o roteiro, e num estande onde metade dos visitantes nunca jogou um shmup, o spawner
+> contínuo mantém a tela ocupada independentemente da perícia. O código é a verdade.
 
-### 3.2. Armas Secundárias (Tecla Shift com Cooldown)
-- `homing_missiles`: Salva de 2 mísseis que aceleram em direção ao alvo de maior HP. Dano: $120\text{ cada}$ / Cooldown: $6\text{s}$.
-- `emp_burst`: Onda expansiva azul que destrói todos os projéteis inimigos na tela e causa $50\text{ de dano}$. Cooldown: $10\text{s}$.
-- `drone_escort`: 2 satélites orbitais que atiram continuamente por $12\text{s}$. Dano: $10\text{/tiro}$. Cooldown: $15\text{s}$.
+| Janela | O que acontece |
+| :--- | :--- |
+| 00s–20s | Spawner a cada 750ms. Sorteia entre formação em V de 3 drones de 30 HP e esquadrão kamikaze de 2 drones de 25 HP. |
+| 20s–45s | O mesmo spawner passa a sortear também o esquadrão *Elite Cruiser*: 1 cruiser de **140 HP** com 2 drones de escolta. |
+| 42s | Aviso de boss na tela. |
+| 45s | Boss entra. **O spawner de inimigos comuns para**, assim como o disparo inimigo. |
+| 45s–90s | Luta contra o boss, sozinho. |
+| 90s | `triggerTimeoutEnd`. Sem vitória. |
+
+Inimigos disparam a cada 1200ms até os 45s. O **modo hardcore** (`isHardcore`, passado na criação da
+instância) comprime tudo: spawn a 550ms, disparo a 800ms, HP inimigo ×1,3, velocidade ×1,2, e boss com
+22.000 HP. Não há UI para ativá-lo — é um parâmetro de `createGameInstance`, e é exatamente o tipo de
+alavanca que o harness de dev da [Spec 09](./09_GAME_BALANCE_AND_DEV_MODE.md) §4 expõe.
+
+Note que **o cruiser tem 140 HP, não os 350 da especificação original**, e não existe a mini-wave de
+respiro dos 50s–60s. A janela de respiro entre a última onda e o boss simplesmente não existe: o
+spawner roda até 45s e o boss entra em seguida.
 
 ---
 
-## 4. Pacing da Partida & Waves Determinísticas (90 Segundos)
+## 5. Boss: The Cyber Overlord
 
-| Janela de Tempo | Fase da Partida | Inimigos & Comportamento | HP & Quantidade |
+> **Correção (P3).** A especificação definia 2.000 HP em três fases **cronometradas**, com duas torres
+> laterais destrutíveis e um core invulnerável. A implementação tem **15.000 HP**, um corpo único sem
+> torres, e fases por **limiar de HP**. O código é a verdade quanto à estrutura; quanto aos números,
+> ver D12 logo abaixo.
+
+| Fase | Entra em | Mitigação de dano | Padrão de tiro |
 | :--- | :--- | :--- | :--- |
-| **00s - 03s** | Launch & Warp In | Efeito visual de entrada no hiperespaço | - |
-| **03s - 25s** | Wave 1: Drone Swarm | Caças rápidos em formações em V e ziguezague | 30 HP cada (32 drones finitos) |
-| **25s - 50s** | Wave 2: Elite Cruisers | Naves blindadas com disparos teleguiados | 350 HP cada (6 cruisers finitos) |
-| **50s - 60s** | Mini-Wave / Respiro | Drones de energia rápida (Powerups / Score boost) | 50 HP cada (10 drones de bônus) |
-| **60s - 90s** | Final Boss Fight | **"The Cyber Overlord / Cloud Dreadnought"** | **2.000 HP Total (3 Fases)** |
+| 1 | Início, 15.000 HP | **50%** | Salvas duplas miradas a partir dos dois canhões laterais |
+| 2 | HP ≤ 66% | **30%** | Leque circular mais denso |
+| 3 | HP ≤ 33% | **0%** | Enrage: projéteis mais rápidos, cadência maior |
 
----
+Cada transição concede **2,0s de invulnerabilidade total** ao boss. O intervalo entre salvas cai de
+140ms para 110ms e depois 80ms; a velocidade dos projéteis sobe de 300 para 340 e 380 px/s.
 
-## 5. Balanceamento do Boss Final (*The Cyber Overlord* - 2.000 HP)
+### 5.1. [D12] O boss é invencível para os três presets, e um penhasco para o resto
 
-```mermaid
-graph TD
-    subgraph Fase1 [Fase 1: 60s a 70s - 2 Torres Laterais 800 HP]
-        T1[Torre Esquerda: 400 HP]
-        T2[Torre Direita: 400 HP]
-        CORE_SHIELD[Core Principal: 100% Invulnerável]
-    end
+`BossOverlord.takeDamage()` (`:305-308`) aplica, nesta ordem:
 
-    subgraph Fase2 [Fase 2: 70s a 80s - Core Exposto 1.200 HP]
-        CORE_EXPOSED[Core Exposto: Bullet Hell Circular 360°]
-    end
-
-    subgraph Fase3 [Fase 3: 80s a 90s - Enrage Final]
-        ENRAGE[Sobrecarga de Projéteis 40% mais rápidos]
-    end
-
-    Fase1 -->|Ambas Torres Destruídas| Fase2
-    Fase2 -->|Últimos 10 Segundos| Fase3
+```ts
+const cappedPelletDamage = Math.min(45, amount);
+const mitigation = this.phase === 1 ? 0.50 : this.phase === 2 ? 0.70 : 1.0;
+const actualDamage = Math.max(5, Math.round(cappedPelletDamage * mitigation));
 ```
 
-- [ ] **Calibração de Dificuldade (~20% Taxa de Vitória):**
-  - Jogador Médio (DPS 70): Causa ~980 de dano nos 14s sob mira e é derrotado pelo enrage/tempo.
-  - Jogador com Build Otimizada e Boa Mira (DPS 130): Causa ~2.340 de dano e derrota o Boss entre os 82s e 86s de jogo.
+O teto de 45 por impacto é aplicado **antes** da mitigação e vale para qualquer fonte de dano —
+inclusive mísseis, cujo dano nominal chega a 120 e que entregam 45 antes da mitigação. Os 15.000 HP se
+repartem em 5.100 na fase 1, 4.950 na fase 2 e 4.950 na fase 3, e das 45s disponíveis 4,0s são de
+invulnerabilidade nas transições.
+
+Aplicando isso aos três presets de fallback, o TTK do boss fica entre ≈115s e ≈130s contra uma janela
+de 45s: **taxa de vitória exatamente 0%**, por um fator de ≈2,7×. E como o `interceptor` é também a base
+de `normalizeSpec` (**D1**), toda nave malformada herda esse perfil. A tabela completa está em
+[Spec 00](./00_AUDIT_AND_DRIFT_REPORT.md) §2.11.
+
+Uma nave gerada pelo AGY pode escapar disso, mas de forma binária e não intencional. No melhor caso que
+as travas permitem — dano 45, cadência 12/s:
+
+- `vulcan_spread` com os três projéteis acertando entrega 87 por ciclo, porque cada projétil de 29
+  passa **abaixo** do teto de 45. TTK ≈ 21s: vence com folga.
+- `laser` e `plasma`, de projétil único, batem no teto de 45 e chegam a TTK ≈ 44,6s contra 45s
+  disponíveis — vitória por 0,4s, exigindo 100% de precisão e uptime.
+
+Ou seja, o que decide a partida hoje não é a build do visitante: é se a arma primária dispara um
+projétil ou três. Isso é o oposto de uma curva de dificuldade de 15–25%.
+
+O ajuste não é escolher outro número por intuição — foi assim que se chegou aqui. É o que a
+[Spec 09](./09_GAME_BALANCE_AND_DEV_MODE.md) resolve: extrair o tuning para uma fonte única, simular, e
+travar a taxa de vitória em CI. Enquanto isso não existir, qualquer número novo é outro palpite.
+
+### 5.2. [D15] As sinergias não afetam o boss nem nada
+
+Nenhum modificador de `build_metadata.synergies_unlocked` é aplicado em `PlayerShip`, `WeaponSystem` ou
+`MainGameScene`. A sinergia é anunciada no builder, calculada pelo MCP, gravada no spec — e ignorada
+pela engine. Ver [Spec 02](./02_BUILDER_AND_BUDGET_MECHANICS_SPEC.md) §6 para a matriz que precisa
+passar a ter efeito.
 
 ---
 
-## 6. Fórmula de Pontuação Blindada (Anti-Exploit)
+## 6. Fórmula de pontuação
 
-$$\text{Score Total} = \sum_{k=1}^{N_{\text{kills}}} \left( \text{BasePts}_k \times \text{Combo}_k \right) + \text{BossDefeated} \cdot 5000 + \text{BossDefeated} \cdot \left[ (90 - T_{\text{final}}) \times 50 \right] + \left( \text{HP}_{\text{restante}} \times 1000 \right) + \text{SynergyBonus}$$
+> **Correção (P5).** Todas as constantes mudaram em relação à especificação original, e foi adicionado
+> um **multiplicador de especialização por MCP** que nenhuma especificação previa. O código é a verdade.
 
-- [ ] **Regras Estritas:**
-  - `BasePts`: Drones = 100 pts / Cruisers = 500 pts / Boss = 5.000 pts.
-  - `Combo Multiplier`: Incrementa +0.1x a cada abate consecutivo (limite 3.0x). Volta para 1.0x caso o jogador sofra dano.
-  - `Time Bonus`: Concedido **exclusivamente se `BossDefeated === true`** (impede que mortes precoces recebam bônus de tempo).
-  - `HP Restante`: 1.000 pts por ponto de vida preservado.
-  - `Synergy Bonus`: 1.500 pts se o participante ativou uma sinergia especial no AGY.
+```
+combatScore     soma de basePts × combo, acumulada por abate
+bossBonus       10.000, apenas se o boss foi derrotado
+timeBonus       segundos restantes × 80, apenas se o boss foi derrotado
+survivalBonus   HP restante × 1.200
+synergyBonus    2.000
+mcpMultiplier   1 MCP = 1,25x | 2 MCPs = 1,10x | 3 MCPs = 1,00x
+
+finalScore = round( (combatScore + bossBonus + timeBonus + survivalBonus + synergyBonus) × mcpMultiplier )
+```
+
+- `basePts`: drone 100, cruiser 500, boss **10.000**.
+- Combo: +0,1× por abate consecutivo, teto de 3,0×, zerado ao sofrer dano. A proteção anti-exploit
+  original — bônus de tempo só com boss derrotado — **foi preservada**, e é a razão pela qual o
+  `timeBonus` hoje é sempre zero: ninguém derrota o boss (D12).
+- O `synergyBonus` **não consulta a sinergia**: a chamada passa `synergyBonusUnlocked: this.isVictory`
+  (`MainGameScene.ts:598`). São 2.000 pontos que funcionam como um segundo bônus de vitória. Parte de
+  D15; quando as sinergias passarem a ter efeito, este campo precisa passar a consultá-las.
+- O multiplicador de MCP é o contrapeso de score da mecânica de 1–3 MCPs descrita em
+  [Spec 02](./02_BUILDER_AND_BUDGET_MECHANICS_SPEC.md) §1.2.
+
+> **[D8] O teste desta fórmula está vermelho e silenciado.** `ScoreCalculator.test.ts` ainda afirma
+> `bossBonus: 5000`, `timeBonus: 15 × 50`, `survivalBonus: 3000` e `synergyBonus: 1500` — as quatro
+> constantes antigas. O arquivo não falha o build porque o `npm test` da raiz não alcança o `player-app`.
+> Corrigir o runner **antes** de corrigir as asserções: é o gate M0, e é o que prova que o teste voltou
+> a ter valor.
 
 ---
 
-## 7. Critérios de Aceitação Deste Módulo
-- [ ] A engine mantém 60 FPS estáveis mesmo na fase de Bullet Hell com centenas de projéteis na tela.
-- [ ] A textura da nave customizada é gerada a partir do SVG em menos de 100ms.
-- [ ] A taxa de vitória sobre o Boss fica calibrada em torno de 15% a 25% dos jogadores.
+## 7. Critérios de aceitação
+
+- [ ] 60 FPS estáveis com o boss na fase 3 e o pool de 300 projéteis próximo da saturação.
+- [ ] Duas naves com `svg_path_data` diferentes renderizam silhuetas diferentes; um path inválido cai
+      para a silhueta de fallback sem exceção no console.
+- [ ] A arma secundária causa dano mensurável contra inimigos comuns e contra o boss, e continua
+      funcionando após 20 disparos.
+- [ ] Uma sinergia ativa produz diferença mensurável em atributo ou dano, verificável no harness de dev.
+- [ ] A taxa de vitória sobre o boss, medida pelo simulador da [Spec 09](./09_GAME_BALANCE_AND_DEV_MODE.md),
+      fica na faixa de 15% a 25%, e o teste de CI falha fora dela.
+- [ ] `ScoreCalculator.test.ts` executa no `npm test` da raiz e passa.

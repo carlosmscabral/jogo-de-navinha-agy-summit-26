@@ -1,88 +1,113 @@
-# Especificações do Projeto: Jogo de Navinha (Google Cloud Summit 2026)
+# Especificações: Jogo de Navinha AGY (Google Cloud Summit 2026)
 
-## 1. Visão Geral do Projeto
-Este repositório contém o ecossistema completo para a ativação interativa no **Google Cloud Summit**: um jogo arcade de navinha vertical (*retro space shooter / shmup*) com visual retrô-moderno integrado com o **Antigravity CLI (AGY)** como gerador inteligente e determinístico das naves dos jogadores.
+## 1. Visão geral
 
-### 1.1. Resumo da Experiência do Visitante (Booth Flow Calibrado)
+Ativação interativa de estande: um shmup arcade vertical cuja nave é **forjada pelo Antigravity CLI
+(`agy`)** na frente do visitante, a partir das escolhas que ele faz num builder web. O visitante
+registra um callsign, distribui 100 unidades de energia, escolhe servidores MCP e sub-agentes, assiste
+o agente construir a nave num terminal real, pilota essa nave por 90 segundos e vê sua pontuação
+aparecer num placar corporativo.
+
+### 1.1. Fluxo do visitante
+
 ```mermaid
 graph TD
-    A[Visitante Chega ao Booth] --> B[Registro Web: Callsign, Empresa & Consentimento]
-    B --> C[Web Builder: Sliders de Energia 100 PU & Seleção de MCPs/Agentes]
-    C --> D[Geração Local de Configs: mcp_config.json, .agents/, GEMINI.md]
-    D --> E[Terminal Embutido xterm.js: Boot Automático com Fast Grill-Me]
-    E --> F[Escolha Tática/Visual em 1 Toque: 1, 2 ou 3]
-    F --> G[Visualização em Tempo Real no CLI: Mock MCPs + Sub-Agentes + Artefato Markdown]
-    G --> H[Emissão de ship_spec.json & Detecção de Prontidão pelo File Watcher]
-    H --> I[Handoff Instantâneo para Phaser.js: Pressione Barra de Espaço]
-    I --> J[Gameplay Arcade no Teclado Físico: Waves + Boss 2000 HP < 90s]
-    J --> K[Score Calculado & Gravação Segura via Firebase Admin SDK]
-    K --> L[Leaderboard Dual-Head em Tempo Real na TV]
-    L --> M[Auto-Reset do Booth em 15s / Manual em <1s para o Próximo Visitante]
+    A[Tela de atracao] --> B[Registro: callsign e empresa]
+    B --> C[Instrucoes]
+    C --> D[Builder: 100 PU, MCPs e sub-agentes]
+    D --> E[Bridge gera o workspace em /tmp/booth_session]
+    E --> F[Tela 2: supervisor sobe o agy no terminal nativo]
+    F --> G[Fast Grill-Me: 2 escolhas em 1 turno]
+    G --> H[Sub-agentes executam tools MCP e gravam mcp_audit.log]
+    H --> I[agy grava ship_spec.json]
+    I --> J[File watcher valida e emite EVENT_SHIP_READY]
+    J --> K[Tela 1: partida no Phaser, 90s com boss]
+    K --> L[Debrief e envio da pontuacao]
+    L --> M[Placar na TV]
+    M --> N[Reset e proximo visitante]
 ```
 
 ---
 
-## 2. Estrutura Modular de Especificações
-As especificações estão organizadas em 7 módulos detalhados e integrados:
+## 2. Como ler estas especificações
 
-| Arquivo de Especificação | Escopo & Tópicos Principais |
-| :--- | :--- |
-| **[01_BOOTH_AND_EXPERIENCE_SPEC.md](./01_BOOTH_AND_EXPERIENCE_SPEC.md)** | Fluxo UX (2m30s SLA), Terminal Embutido (`xterm.js`), Teclado Físico, Dual-Head, Fast Grill-Me, Autoplay de Áudio e Pipeline de Reset (Automático + Manual). |
-| **[02_BUILDER_AND_BUDGET_MECHANICS_SPEC.md](./02_BUILDER_AND_BUDGET_MECHANICS_SPEC.md)** | Sliders de Energia (100 PU), Catálogo Unificado de Armas Primárias/Secundárias, 3 MCP Servers mockados (`@modelcontextprotocol/sdk`), 3 Sub-Agentes e Matriz de Sinergias. |
-| **[03_AGY_HARNESS_AND_INTEGRATION_SPEC.md](./03_AGY_HARNESS_AND_INTEGRATION_SPEC.md)** | Terminal Embutido (`xterm.js` + `node-pty`), `GEMINI.md` com diretivas visuais, Contrato Estrito Draft-07 de `ship_spec.json`, File Watcher e Controle de Processos (`SIGKILL -PGID`). |
-| **[04_GAME_ENGINE_AND_MECHANICS_SPEC.md](./04_GAME_ENGINE_AND_MECHANICS_SPEC.md)** | Engine Phaser.js 3, Renderização SVG $\rightarrow$ Textura 2x, Colisão Circular no Cockpit (Arcade Physics), Balanceamento do Boss (2.000 HP em 3 Fases), Áudio Sound Sprites e Fórmula de Score sem Exploits. |
-| **[05_LEADERBOARD_AND_CLOUD_SPEC.md](./05_LEADERBOARD_AND_CLOUD_SPEC.md)** | Gravação Segura via Firebase Admin SDK no Daemon, Pipeline de Normalização de Empresas (SQLite Seed + Levenshtein + Gemini Flash 600ms), Display 2 TV em Kiosk Mode com `onSnapshot`. |
-| **[06_RELIABILITY_FAILOVER_AND_SECURITY_SPEC.md](./06_RELIABILITY_FAILOVER_AND_SECURITY_SPEC.md)** | 3 Presets Fallback (<50ms), Buffer Offline SQLite Idempotente, Shell Lockdown, Hotkey Global `Ctrl+Shift+F12`, Scripts Host (`setup_monitors.sh`, `launch_kiosks.sh`, `reset_booth.sh`) e Autoteste. |
-| **[07_IMPLEMENTATION_ROADMAP_AND_TASKS_SPEC.md](./07_IMPLEMENTATION_ROADMAP_AND_TASKS_SPEC.md)** | Stack Tecnológica Oficial, Fases de Desenvolvimento por Prioridade (P0, P1, P2), Estratégia de Testes de Carga e Critérios Formais de Aceitação (Definition of Done). |
+**Comece pela [Spec 00](./00_AUDIT_AND_DRIFT_REPORT.md).** As especificações 01–07 foram escritas
+antes da implementação e divergiram dela ao longo de 44 commits. A Spec 00 audita essa divergência
+item a item, com evidência em `arquivo:linha`, e atribui um ID estável a cada achado — **D** para
+defeito, **P** para pivô aceito, **U** para não construído, **L** para requisito perdido. As demais
+especificações e o plano de implementação referenciam esses IDs.
+
+As especificações 01–07 foram **reconciliadas com a implementação em 2026-08-10**. Onde o código
+divergiu por decisão deliberada, a especificação foi reescrita e a mudança marcada com uma nota de
+correção. Onde a especificação definia uma salvaguarda que nunca foi construída, o requisito
+permanece e ganhou um ID de defeito.
+
+| Especificação | Escopo | Estado |
+| :--- | :--- | :--- |
+| **[00 Auditoria](./00_AUDIT_AND_DRIFT_REPORT.md)** | Todos os achados, com evidência e IDs | Base de tudo |
+| **[01 Estande & Experiência](./01_BOOTH_AND_EXPERIENCE_SPEC.md)** | Três superfícies, fluxo de 7 etapas, SLA de ciclo, handoff, reset | Reconciliada |
+| **[02 Builder & Componentes](./02_BUILDER_AND_BUDGET_MECHANICS_SPEC.md)** | Sliders de 100 PU, 1–3 MCPs, sub-agentes, matriz de sinergias | Reconciliada |
+| **[03 Harness AGY](./03_AGY_HARNESS_AND_INTEGRATION_SPEC.md)** | Terminal nativo, geração de workspace, contrato de `ship_spec.json`, contenção de processos | Reconciliada |
+| **[04 Engine & Mecânicas](./04_GAME_ENGINE_AND_MECHANICS_SPEC.md)** | Phaser 3, texturas, balística, pacing, boss, score | Reconciliada |
+| **[05 Placar & Nuvem](./05_LEADERBOARD_AND_CLOUD_SPEC.md)** | Firestore, ingestão no Cloud Run, normalização de empresas, TV | Reconciliada; subsistema não construído |
+| **[06 Resiliência & Segurança](./06_RELIABILITY_FAILOVER_AND_SECURITY_SPEC.md)** | Fallbacks, watchdogs, modo offline, moderação, runbook | Reconciliada; scripts ausentes |
+| **[07 Stack & Validação](./07_IMPLEMENTATION_ROADMAP_AND_TASKS_SPEC.md)** | Stack real, build, testes, Definition of Done | Reconciliada |
+| **[08 Topologia & Nuvem](./08_DEPLOYMENT_TOPOLOGY_AND_CLOUD_SPLIT.md)** | O que roda local e o que roda em GCP, e por quê | Nova |
+| **[09 Balanceamento & Dev Mode](./09_GAME_BALANCE_AND_DEV_MODE.md)** | Fonte única de tuning, harness isolado, simulador de dificuldade | Nova |
+| **[10 Plano de Implementação](./10_IMPLEMENTATION_PLAN.md)** | Sequenciamento por fases e gates de ensaio manual | Nova |
 
 ---
 
-## 3. Matriz de Dependências Técnicas & Arquitetura do Host
+## 3. Arquitetura-alvo
+
+A decisão de topologia está na [Spec 08](./08_DEPLOYMENT_TOPOLOGY_AND_CLOUD_SPLIT.md): **o `agy` e o
+bridge de sessão são locais; todo o resto vai para a nuvem.** O `agy` é o único componente que não
+degrada graciosamente — se ele cai, o estande para — e por isso não depende da rede do evento.
 
 ```mermaid
 graph LR
-    subgraph Host_Machine [Host Linux - Dual Head Output]
-        subgraph Player_Station [Display 1: Estação do Jogador]
-            SPA[Web App: Registro & Sliders]
-            XTERM[Terminal Embutido: xterm.js]
-            PHASER[Game Engine: Phaser.js 3]
-        end
-        subgraph Local_Daemon [Local Bridge Daemon & Background Services]
-            DAEMON[Node.js Daemon :3000]
-            PTY[node-pty / AGY CLI Process]
-            WATCHER[File Watcher: Chokidar]
-            SQLITE[(SQLite Buffer & Seed Companies)]
-            MCPS[3 Mock MCP Servers Stdio]
-            ADMIN_SDK[Firebase Admin SDK]
-        end
-        subgraph TV_Display [Display 2: TV Pública]
-            LEAD_TV[Leaderboard Kiosk Web App]
-        end
+    subgraph Booth [Maquina do estande]
+        SPA[Tela 1: player-app servido pelo bridge]
+        TERM[Tela 2: terminal nativo com agy]
+        DAEMON[Local Bridge :3000]
+        MCPS[3 servidores MCP stdio]
+        SQLITE[(SQLite: buffer e empresas)]
     end
 
-    subgraph GCP_Cloud [Google Cloud Platform]
-        GEMINI_API[Gemini 1.5 Flash - Moderação/Empresa]
-        FS[(Cloud Firestore - Base Central)]
+    subgraph Cloud [Google Cloud]
+        RUN[Cloud Run: API de ingestao]
+        FS[(Cloud Firestore)]
+        VERTEX[Vertex AI: gemini-3.6-flash]
+        TVAPP[Leaderboard hospedado]
     end
 
-    SPA -->|Configs & Sliders| DAEMON
-    DAEMON -->|Spawns via PTY| XTERM
-    PTY -->|Executa Tools| MCPS
-    PTY -->|Grava ship_spec.json| WATCHER
-    WATCHER -->|EVENT_SHIP_READY| PHASER
-    PHASER -->|Telemetria da Partida| DAEMON
-    DAEMON -->|Gravação Segura| ADMIN_SDK
-    ADMIN_SDK --> FS
-    DAEMON -->|Fuzzy Match / Fallback| GEMINI_API
-    DAEMON -->|Buffer Offline| SQLITE
-    FS -->|onSnapshot Stream| LEAD_TV
+    TV[Tela 3: TV do estande]
+
+    SPA -->|sliders e telemetria| DAEMON
+    DAEMON -->|gera workspace| TERM
+    TERM --> MCPS
+    TERM -->|ship_spec.json| DAEMON
+    DAEMON -->|EVENT_SHIP_READY| SPA
+    DAEMON --> SQLITE
+    DAEMON -->|sync com backoff| RUN
+    RUN --> FS
+    RUN -->|moderacao e canonicalizacao| VERTEX
+    FS -->|onSnapshot| TVAPP
+    TVAPP --> TV
 ```
+
+**Modelo:** `gemini-3.6-flash`, consumido **exclusivamente** pelo flavor Vertex AI / Gemini Enterprise
+Agent Platform, com credencial de conta de serviço. Nenhuma chave de API de modelo existe neste
+projeto, em nenhum ambiente.
 
 ---
 
-## 4. Status do Projeto
-- [x] Estrutura Inicial de Especificações
-- [x] Refinamento de Fluxo UX, Dual-Head e Sliders
-- [x] Auditoria Crítica via Sub-Agente Owl
-- [x] Unificação Contratual e Blindagem Técnica de Todas as Especificações
-- [ ] Fase de Implementação (P0 $\rightarrow$ P1 $\rightarrow$ P2)
+## 4. Estado do projeto
+
+- [x] Especificações iniciais 01–07
+- [x] Implementação do núcleo: builder, harness AGY, MCPs, engine, placar local
+- [x] Auditoria de divergência entre especificação e código ([Spec 00](./00_AUDIT_AND_DRIFT_REPORT.md))
+- [x] Reconciliação das especificações 01–07
+- [x] Decisão de topologia local/nuvem ([Spec 08](./08_DEPLOYMENT_TOPOLOGY_AND_CLOUD_SPLIT.md))
+- [x] Estratégia de balanceamento e modo de desenvolvimento isolado ([Spec 09](./09_GAME_BALANCE_AND_DEV_MODE.md))
+- [ ] Execução do [plano de implementação](./10_IMPLEMENTATION_PLAN.md)

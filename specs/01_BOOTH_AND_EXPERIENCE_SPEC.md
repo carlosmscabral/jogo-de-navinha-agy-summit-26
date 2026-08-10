@@ -1,131 +1,214 @@
-# Spec 01: Booth Setup, UX Flow & Event Operations
+# Spec 01: Booth Setup, Fluxo UX e Operação do Evento
 
-> **Status:** ESPECIFICAÇÃO REFINADA & BLINDADA  
-> **Objetivo:** Definir a jornada completa do visitante no estande do Google Cloud Summit, tempos de ciclo (SLA de 2m30s), arquitetura de terminal embutido (`xterm.js`), setup Dual-Head, recuperação de foco de tela, políticas de áudio Kiosk e pipelines de Reset Automático e Manual.
-
----
-
-## 1. Escopo & Objetivos de Experiência
-- [ ] **SLA de Tempo por Visitante:** Meta de **2m30s** no total (teto máximo rígido de **3m00s**).
-- [ ] **Perfil do Visitante:** Desde desenvolvedores experientes até executivos e arquitetos sem familiaridade prévia com linha de comando.
-- [ ] **Objetivo de Ativação:** Proporcionar uma experiência altamente fluida onde o usuário configura na Web, experimenta a sensação autêntica de um terminal de IA com sub-agentes e ferramentas MCP atuando visualmente, e joga um arcade super polido com a nave gerada.
+> **Status:** RECONCILIADA COM A IMPLEMENTAÇÃO — 2026-08-10
+> **Objetivo:** Definir a jornada do visitante no estande do Google Cloud Summit, o SLA de 2m30s, a
+> arquitetura de **três superfícies** de exibição, o handoff para terminal nativo e os pipelines de
+> reset.
+> **Endereça:** P1, P2, P7, D11 (ver [Spec 00](./00_AUDIT_AND_DRIFT_REPORT.md)).
+> **Depende de:** [Spec 08](./08_DEPLOYMENT_TOPOLOGY_AND_CLOUD_SPLIT.md) para a topologia local/nuvem.
 
 ---
 
-## 2. Jornada do Visitante Passo a Passo (User Journey Map)
+## 1. Escopo e Objetivos de Experiência
 
-### 2.1. Etapa 1: Attract & Welcome Screen (Web UI - Idle State)
-- [ ] **Visual de Atração:** Tela de abertura estilo arcade anos 80/cyberpunk com loop de gameplay gravado, logo dinâmico e chamada luminosa: "*PRESSIONE A BARRA DE ESPAÇO PARA INICIAR*".
-- [ ] **Instruções Visuais em 3 Passos:**
-  1. *Configure na Web:* Escolha MCPs, Agentes e distribua 100 Power Units nos Sliders.
-  2. *Construa no Terminal AGY:* Responda ao Fast Grill-Me com 1 toque no teclado.
-  3. *Pilote no Arcade:* Destrua as waves e derrote o Boss em 90 segundos.
-
-### 2.2. Etapa 2: Registro Obrigatório & Termo de Consentimento
-- [ ] **Campos de Entrada:**
-  - `Callsign` (Nome de guerra do piloto - max 15 caracteres alfanuméricos).
-  - `Company` (Empresa do participante - com autocomplete e normalização inteligente).
-- [ ] **Termo de Consentimento:** Banner visível informando sobre a exibição do codinome e da pontuação na TV pública do evento.
-- [ ] **Moderação de Entrada:** Validação assíncrona local por Regex e verificação instantânea no backend antes de prosseguir.
-
-### 2.3. Etapa 3: Seleção de Componentes & Sliders de Energia (Web Builder)
-- [ ] **Interface de Sliders:** 4 controles deslizantes balanceados (Soma estrita = 100 Power Units):
-  - *Offense* (Armamento), *Speed* (Velocidade/Esquiva), *Defense* (Escudo/Blindagem), *Tech* (Cybernetics/Sinergias).
-- [ ] **Seleção de Componentes:** Escolha de até 2 Servidores MCP e até 2 Sub-Agentes.
-- [ ] **Disparo do Workspace:** Ao clicar em "*Construir Nave*", a Web UI envia os dados para o daemon local, que grava:
-  - `mcp_config.json` (apontando para os mocks MCP locais Stdio).
-  - `.agents/agents.md` (definindo papéis dos sub-agentes selecionados).
-  - `GEMINI.md` (com instruções estritas de formatação visual, Fast Grill-Me e gravação do `ship_spec.json`).
-
-### 2.4. Etapa 4: Terminal Embutido na SPA (`xterm.js` + Fast Grill-Me)
-- [ ] **Arquitetura de Terminal Embutido:** Em vez de abrir uma janela nativa do SO (que causaria problemas de foco e conflito com o modo Kiosk do Chrome), a SPA transiciona suavemente para uma tela de terminal embutida via **`xterm.js`**, conectada por WebSocket com uma sessão `node-pty` no host.
-- [ ] **Boot Automático do Fast Grill-Me:** O terminal inicia automaticamente sem necessidade de digitação de comandos pelo visitante, exibindo de imediato as 2 perguntas táticas:
-  1. *Foco de Armamento:* (1) Laser Perfurante, (2) Mísseis Teleguiados, (3) Vulcan Spread.
-  2. *Tema Estético:* (1) Synthwave 80s, (2) Dark Void Stealth, (3) Cyberpunk Gold.
-- [ ] **Interação em 1 Toque:** O usuário pressiona apenas `1`, `2` ou `3` no teclado físico.
-- [ ] **Logs Visuais & Artefato Final:**
-  - O terminal exibe caixas ANSI coloridas, progresso dos sub-agentes e MCP tools executando em paralelo.
-  - Ao concluir, renderiza um relatório técnico formatado em Markdown e grava o `ship_spec.json` em $< 8$ segundos.
-
-### 2.5. Etapa 5: Handoff de Prontidão & Foco Automático no Jogo
-- [ ] **Detecção pelo File Watcher:** O Local Bridge detecta a gravação de `ship_spec.json`, valida o schema e emite `EVENT_SHIP_READY`.
-- [ ] **Transição de Tela:** A SPA troca a visão do terminal pelo canvas da Game Engine (Phaser.js 3), exibindo a nave montada com iluminação neon e a mensagem: "*SISTEMAS ONLINE! Pressione Barra de Espaço para Decolar*".
-- [ ] **Recuperação de Foco no Canvas:** O listener global `window.addEventListener('keydown', ...)` força programaticamente `canvas.focus()` no primeiro toque de tecla, garantindo que o teclado físico responda instantaneamente aos comandos de voo.
-
-### 2.6. Etapa 6: Gameplay Arcade no Teclado Físico (60s a 90s)
-- [ ] **Mapeamento de Controles:** Setas / WASD (Voo), Barra de Espaço (Tiro Contínuo / Autofire), Tecla Shift (Arma Secundária / Especial).
-- [ ] **Progressão da Partida:** Wave 1 (Drones) $\rightarrow$ Wave 2 (Cruisers) $\rightarrow$ Mini-Wave $\rightarrow$ Final Boss (*The Cyber Overlord* - 2.000 HP).
-- [ ] **Condições de Término:** Derrota do Boss, destruição da nave do jogador ou esgotamento do tempo limite de 90 segundos.
-
-### 2.7. Etapa 7: Debrief, Gravação Segura de Score & Auto-Reset (15s)
-- [ ] **Exibição de Resultados:** Score final detalhado, medalhas de precisão, combo e sinergias desbloqueadas.
-- [ ] **Gravação via Daemon:** A telemetria é enviada ao daemon local, que grava no Firestore via **Firebase Admin SDK** (garantindo segurança contra adulterações).
-- [ ] **Contagem Regressiva de Reset:** Timer de 15 segundos para auto-reset total da sessão.
+- **SLA por visitante:** meta de **2m30s**, teto rígido de **3m00s**.
+- **Perfil:** de desenvolvedores experientes a executivos sem familiaridade com linha de comando. O
+  fluxo não pode exigir que ninguém digite um comando.
+- **Objetivo da ativação:** o visitante configura na Web, vê um agente de IA real operando com
+  sub-agentes e ferramentas MCP, e pilota o resultado num arcade polido.
 
 ---
 
-## 3. Arquitetura de Hardware & Setup Dual-Head
+## 2. Jornada do Visitante
+
+O fluxo implementado tem **sete etapas** (`player-app/src/App.tsx:13`). A etapa `INSTRUCTIONS` foi
+adicionada durante a implementação e não constava desta especificação (**P7**); está incorporada
+abaixo porque cumpre um papel real — dar ao visitante leigo um modelo mental antes dos sliders.
+
+### 2.1. `ATTRACT` — Tela de atração
+
+- Abertura estilo arcade cyberpunk, logo dinâmico e chamada *"PRESSIONE A BARRA DE ESPAÇO PARA
+  INICIAR"*.
+- Instruções visuais em 3 passos: configure na Web → construa no terminal AGY → pilote no arcade.
+- O primeiro `pointerdown`/`keydown` desbloqueia o áudio (`audioManager.unlockAudio()`).
+
+### 2.2. `REGISTER` — Registro e consentimento
+
+- `Callsign`: máximo 15 caracteres alfanuméricos.
+- `Company`: com autocomplete e normalização (Spec 05 §2).
+- Banner de consentimento sobre exibição de codinome e pontuação na TV pública.
+- Moderação em duas camadas: regex local imediata e verificação semântica no backend (Spec 08 §6.2).
+
+### 2.3. `INSTRUCTIONS` — Preparação do prompt *(etapa não especificada originalmente — P7)*
+
+Tela intermediária (`InstructionsPromptScreen.tsx`, 206 linhas) que explica o que vai acontecer no
+terminal e oferece prompts de inspiração copiáveis.
+
+> **Lacuna conhecida (L1):** o `INITIAL_IDEA.md` exige que *"melhor prompt, melhor nave"*. Esta tela
+> ajuda o visitante a escrever, mas **nada avalia o que ele escreveu** nem converte isso em vantagem.
+> Tratado como escopo opcional na Fase E do plano de implementação.
+
+### 2.4. `BUILDER` — Sliders de energia e seleção de componentes
+
+- Quatro sliders somando exatamente **100 Power Units**: *Offense*, *Speed*, *Defense*, *Tech*.
+- Seleção de **1 a 3 servidores MCP** e de sub-agentes. Ver [Spec 02](./02_BUILDER_AND_BUDGET_MECHANICS_SPEC.md)
+  §1 — o orçamento rígido de 2 MCPs virou tradeoff de pontuação (**P6**).
+- Ao confirmar, `POST /api/session/start` faz o daemon gravar em `/tmp/booth_session`:
+  `mcp_config.json`, `.agents/agents/*.md` e `GEMINI.md`.
+
+### 2.5. `HANDOFF` — A forja no terminal nativo da Tela 2
+
+> **Substitui a arquitetura anterior.** Esta especificação exigia terminal embutido via `xterm.js` +
+> `node-pty` e justificava explicitamente a rejeição da janela nativa. A implementação fez o oposto
+> (commits `94d02a2` e `4e1c75e`): não há `xterm.js` nem `node-pty` em nenhum `package.json`. O
+> supervisor `scripts/booth-terminal.sh` conduz uma sessão `agy` em um terminal nativo na **Tela 2**,
+> coordenando-se com o daemon por arquivos-flag (`.session_active`, `.agy_pid`). Ver **P1**.
+>
+> **Este pivô é condicional.** Se o hardware do estande não puder rodar o `agy` localmente, a Spec 08
+> §7 reintroduz o terminal embutido sobre WSS. A decisão depende do hardware confirmado.
+
+- A Tela 1 exibe a `HandoffTerminalScreen`: o que está acontecendo na Tela 2, progresso dos
+  sub-agentes e das tools MCP, recebidos por WebSocket.
+- **Fast Grill-Me:** o AGY faz duas perguntas táticas respondidas com um único toque (`1`, `2` ou `3`)
+  no teclado da Tela 2:
+  1. *Foco de armamento:* Laser Perfurante / Mísseis Teleguiados / Vulcan Spread.
+  2. *Tema estético:* Synthwave 80s / Dark Void Stealth / Cyberpunk Gold.
+- O AGY grava `ship_spec.json` em menos de 8 segundos.
+
+**Requisitos de qualidade ainda em aberto nesta etapa** — permanecem obrigatórios:
+
+- **D1:** o `ship_spec.json` deve passar por validação Draft-07 estrita antes de virar nave.
+- **D2:** timeout rígido de 15s com injeção automática de preset de fallback. Hoje só existe um botão
+  de emergência que depende de o visitante perceber a falha.
+- **D3:** gate de auditoria — sem chamadas de tool registradas em `mcp_audit.log`, a nave não decola.
+
+### 2.6. `GAMEPLAY` — Partida no teclado físico
+
+- O daemon detecta o `ship_spec.json`, valida e emite `EVENT_SHIP_READY`; a Tela 1 troca para o canvas
+  Phaser.
+- Controles: setas / WASD (voo), Espaço (tiro), Shift (arma secundária).
+- Partida de **90 segundos**. Waves contínuas até 45s, quando entra o boss *The Cyber Overlord*
+  (aviso aos 42s).
+
+> Os números de balanceamento desta etapa vivem na [Spec 09](./09_GAME_BALANCE_AND_DEV_MODE.md), que é
+> a fonte de verdade de tuning. **Atenção:** a auditoria (§2.11) demonstrou que, com os valores atuais,
+> **nenhuma nave derrota o boss** (**D12**). Corrigir isso é P0.
+
+### 2.7. `DEBRIEF` — Resultado, gravação e reset
+
+- Score detalhado com breakdown, combo e sinergias.
+- A telemetria é enviada ao daemon, que grava no buffer SQLite e sincroniza com o Firestore via a API
+  Cloud Run (Spec 08 §2.2).
+- Contagem regressiva de 15s para auto-reset.
+
+> **D5:** hoje `handleMatchComplete` (`App.tsx:112-133`) envia apenas score e identificação. Toda a
+> telemetria calculada é descartada. Corrigir isso é pré-requisito da Spec 09 §6.
+
+---
+
+## 3. Arquitetura de Hardware: Três Superfícies
+
+> **Correção (P2):** esta especificação descrevia duas telas. A implementação usa **três**, porque o
+> terminal nativo do AGY ocupa uma superfície própria — e é justamente a que dá credibilidade à
+> ativação: o público vê o agente trabalhando.
 
 ```mermaid
 graph TD
-    subgraph Host_Linux [Computador Principal do Booth - Host Linux]
-        subgraph Display_1 [Display 1: Monitor do Jogador]
-            SPA_KIOSK[Chromium Kiosk: Web Builder / xterm.js / Phaser.js Game]
+    subgraph Host [Maquina do Estande]
+        subgraph D1 [Tela 1: Estacao do Jogador]
+            SPA[Chromium Kiosk: Builder e Jogo Phaser]
         end
-        subgraph Display_2 [Display 2: TV Pública no Corredor]
-            LEAD_KIOSK[Chromium Kiosk: Leaderboard em Tempo Real]
+        subgraph D2 [Tela 2: A Forja]
+            TERM[Terminal nativo: booth-terminal.sh e agy]
         end
+        BRIDGE[Session Bridge :3000]
     end
+    subgraph D3 [Tela 3: TV Publica]
+        LEAD[Leaderboard em tempo real]
+    end
+
+    SPA <-->|HTTP e WebSocket| BRIDGE
+    BRIDGE -->|gera workspace e observa| TERM
+    LEAD -->|Firestore onSnapshot| CLOUD[(Google Cloud)]
 ```
 
-### 3.1. Topologia de Monitores (Dual-Head na Mesma Máquina)
-- [ ] **Display 1 (Estação do Jogador):**
-  - Monitor gamer (1080p ou 1440p @ 144Hz+) conectado via DisplayPort/HDMI 1.
-  - Janela Chromium em modo Kiosk fullscreen executando a SPA do jogador.
-- [ ] **Display 2 (TV Pública do Leaderboard):**
-  - TV 4K grande conectada via HDMI 2.
-  - Janela Chromium independente em modo Kiosk fullscreen exibindo o placar público em tempo real.
+### 3.1. Topologia
 
-### 3.2. Configuração de Inicialização e Áudio no Linux Kiosk
-- [ ] **Script de Inicialização dos Monitores (`setup_monitors.sh`):** Configura `xrandr` com resoluções nativas e posicionamento lado a lado (`--output DP-1 --mode 1920x1080 --primary --output HDMI-1 --mode 3840x2160 --right-of DP-1`).
-- [ ] **Políticas de Autoplay de Áudio:** O Chromium é lançado com as flags:
-  `--kiosk --noerrdialogs --disable-infobars --autoplay-policy=no-user-gesture-required --user-data-dir=/tmp/player_kiosk`.
-- [ ] **Desbloqueio de Áudio:** O evento `pointerdown` / `keydown` na tela de atração executa `Howler.ctx.resume()`.
+| Superfície | Hardware | Conteúdo |
+| :--- | :--- | :--- |
+| **Tela 1** | Monitor 1080p+ voltado ao visitante | Chromium kiosk com a SPA do jogador |
+| **Tela 2** | Monitor secundário, visível ao público | Terminal nativo rodando `agy` |
+| **Tela 3** | TV grande no corredor | Leaderboard público |
+
+A Tela 3 **não precisa sair da máquina do estande**: sendo o leaderboard hospedado em GCP (Spec 08
+§2.2), qualquer dispositivo com navegador serve, inclusive um Chromebook. Isso reduz a exigência de
+saídas de vídeo do host de três para duas.
+
+### 3.2. Inicialização e áudio
+
+- `setup_monitors.sh` configura `xrandr` com resoluções nativas e posicionamento.
+- Chromium em kiosk: `--kiosk --noerrdialogs --disable-infobars --autoplay-policy=no-user-gesture-required --user-data-dir=/tmp/player_kiosk`.
+- Desbloqueio de áudio via `audioManager.unlockAudio()` no primeiro `pointerdown`/`keydown`.
+
+> **Correções:** o desbloqueio de áudio usa o `AudioManager` próprio, não `Howler.ctx.resume()` —
+> `howler` é dependência declarada e nunca importada (**P8**, **D10**). E os scripts `setup_monitors.sh`
+> e `launch_kiosks.sh` **não existem** (**U4**); só `booth-terminal.sh` foi escrito. A Spec 06 §3 os
+> mantém como requisito.
+>
+> As instruções acima são específicas de Linux. O caminho de desenvolvimento e ensaio é **macOS**
+> (ver os gates M0–M5 da Spec 10), onde `xrandr` não existe. Os scripts precisam detectar a plataforma
+> ou ter equivalente documentado para o Mac.
 
 ---
 
-## 4. Arquitetura de Reset do Harness (Automático & Manual)
+## 4. Arquitetura de Reset
 
 ```mermaid
 graph TD
-    TRIG_AUTO[Timeout 15s Pós-Jogo / Inatividade] --> PIPELINE[Pipeline de Reset do Daemon]
-    TRIG_MANUAL[Hotkey Ctrl+Shift+F12 / Script ./reset_booth.sh / Botão Oculto] --> PIPELINE
+    AUTO[Timeout 15s pos-jogo ou watchdog de inatividade] --> PIPE[Pipeline de reset do daemon]
+    MAN[Hotkey Ctrl+Shift+F12, botao na UI ou reset_booth.sh] --> PIPE
 
-    subgraph Pipeline de Reset em Menos de 1s
-        PIPELINE --> S1[1. SIGKILL -PGID no Process Group do AGY/node-pty]
-        PIPELINE --> S2[2. Purge de Arquivos: rm -rf /tmp/booth_session/*]
-        PIPELINE --> S3[3. Limpeza do xterm.js: terminal.reset()]
-        PIPELINE --> S4[4. Reset de Estado SPA: Redirecionamento para /welcome]
-        PIPELINE --> S5[5. Reativação dos File Watchers e Buffer SQLite]
-    end
+    PIPE --> S1[1. SIGKILL no process group do agy e dos MCPs]
+    PIPE --> S2[2. Purga de /tmp/booth_session]
+    PIPE --> S3[3. Reset do supervisor da Tela 2]
+    PIPE --> S4[4. SPA volta para ATTRACT]
+    PIPE --> S5[5. Reativacao do file watcher e do buffer SQLite]
 ```
 
-### 4.1. Gatilhos de Reset Automático
-- [ ] **Pós-Partida:** 15s após exibição da tela de debrief/score.
-- [ ] **Watchdog Anti-Abandono:**
-  - Registro: 30s sem digitação $\rightarrow$ aviso de 10s $\rightarrow$ reset.
-  - Builder: 45s sem interação $\rightarrow$ reset.
-  - Terminal `xterm.js`: 30s sem resposta $\rightarrow$ auto-conclusão com preset fallback e handoff.
-  - Gameplay: 15s sem toque de teclado $\rightarrow$ Game Over imediato $\rightarrow$ reset.
+### 4.1. Gatilhos automáticos
 
-### 4.2. Gatilhos de Reset Manual (Equipe do Estande)
-- [ ] **Hotkey Global do Teclado:** `Ctrl + Shift + F12` (ou `Ctrl + Shift + R`) interceptada pelo daemon local para restauração imediata.
-- [ ] **Gatilho Oculto na UI:** Triplo clique no logotipo superior esquerdo da tela para abrir modal protegido de reset imediato.
-- [ ] **Script de Manutenção no Host:** Script executável `./reset_booth.sh` no desktop para restaurar o ambiente limpo.
+- **Pós-partida:** 15s após o debrief.
+- **Watchdogs anti-abandono** — registro 30s (com aviso de 10s), builder 45s, forja 30s (auto-conclusão
+  com preset e handoff), gameplay 15s sem input (game over imediato).
+
+> **D11: nenhum dos quatro watchdogs existe.** Um visitante que desiste no meio congela a estação até
+> intervenção humana. Requisito mantido.
+
+### 4.2. Gatilhos manuais
+
+- **Hotkey `Ctrl+Shift+F12`** — implementada apenas como listener de `window` na SPA
+  (`App.tsx:53-62`). **Inoperante quando o foco está na Tela 2**, que é exatamente quando o staff mais
+  precisa dela. Precisa subir para o nível do SO (**D11**).
+- **Botão de reset na UI** — implementado (`App.tsx:155-164`), visível em todas as etapas exceto
+  `ATTRACT`. Substitui o "gatilho oculto por triplo clique" originalmente especificado, que nunca foi
+  construído; o botão explícito é preferível, já que quem o usa é o staff.
+- **`./reset_booth.sh` no host** — não existe (**U4**).
+
+### 4.3. Integridade do encerramento
+
+O reset atual (`daemon/src/index.ts:194-209`) envia `SIGINT` e depois `SIGKILL` para **um único PID**.
+Como os 3 servidores MCP são processos-filho stdio do AGY, eles podem sobreviver. A Spec 03 §5.1 exige
+`process.kill(-pgid, 'SIGKILL')` com `{ detached: true }` (**D4**). Com ≈150 sessões por dia, o
+vazamento é cumulativo e ataca diretamente o critério de 8 horas contínuas.
 
 ---
 
-## 5. Critérios de Aceitação Deste Módulo
-- [ ] O fluxo completo (Registro $\rightarrow$ Sliders $\rightarrow$ `xterm.js` $\rightarrow$ Phaser.js $\rightarrow$ Firestore $\rightarrow$ Reset) roda sem nenhuma troca de janelas no SO.
-- [ ] O tempo total de permanência do visitante respeita a janela de 2m00s a 2m45s.
-- [ ] O reset (automático ou manual) restaura o ambiente limpo em menos de 1 segundo.
+## 5. Critérios de Aceitação
+
+- [ ] O fluxo completo roda sem que o visitante precise trocar de janela ou digitar comandos.
+- [ ] A permanência total fica entre 2m00s e 2m45s.
+- [ ] O reset restaura ambiente limpo em menos de 1 segundo e **não deixa nenhum processo Node.js de
+      MCP ativo** (verificável por `pgrep -f mcps/dist` retornando vazio).
+- [ ] Os quatro watchdogs disparam nos tempos definidos em §4.1.
+- [ ] `Ctrl+Shift+F12` funciona com o foco em qualquer uma das três superfícies.
+- [ ] Após 20 ciclos consecutivos, a contagem de processos do host permanece estável.
