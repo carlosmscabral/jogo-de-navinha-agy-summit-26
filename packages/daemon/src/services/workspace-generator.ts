@@ -159,6 +159,8 @@ ferramenta MCP por conta própria — os valores já foram obtidos pelo Orquestr
       contractRows.push('| `weapons.primary.type` | Retorno de `weapons-arsenal` | laser, plasma ou vulcan_spread |');
       contractRows.push('| `weapons.primary.damage` | Retorno de `weapons-arsenal` | 15 a 45 |');
       contractRows.push('| `weapons.primary.fire_rate` | Retorno de `weapons-arsenal` | 5 a 12 |');
+      contractRows.push('| `weapons.primary.bullet_speed` | Retorno de `weapons-arsenal` | 400 a 800 |');
+      contractRows.push('| `weapons.primary.spread_angle` | Retorno de `weapons-arsenal` | 0 a 30 |');
       contractRows.push('| `weapons.secondary.type` | Retorno de `weapons-arsenal` | homing_missiles ou emp_burst |');
       contractRows.push('| `weapons.secondary.damage` | Retorno de `weapons-arsenal` | 60 a 150 |');
       contractRows.push('| `weapons.secondary.cooldown_seconds` | Retorno de `weapons-arsenal` | 3 a 12 |');
@@ -197,6 +199,14 @@ demonstração, não um sucesso parcial.
 ### SUB-AGENTES ATIVOS: ${activeSubagents.join(', ')}
 
 Estes são os únicos MCPs e sub-agentes disponíveis nesta sessão. Não referencie nenhum outro.
+
+Campos do \`ship_spec.json\` que pertencem a um MCP **fora** da lista acima (ex.: \`weapons.*\` se
+\`weapons-arsenal\` não estiver listado, \`attributes.max_hp\`/\`speed_px_s\`/\`hitbox_radius\` se
+\`hull-propulsion\` não estiver listado, ou \`attributes.shield_capacity\` se
+\`cybernetics-shields\` não estiver listado) **NÃO fazem parte desta sessão — simplesmente
+OMITA-os do arquivo final.** O jogo preenche esses campos automaticamente a partir da alocação de
+energia do piloto. Isso NÃO é uma violação da REGRA ZERO: você só é proibido de inventar valores
+para os MCPs que ESTÃO ativos.
 
 ### PROTOCOLO RÍGIDO DE 4 PASSOS:
 1. **PASSO 1 - FAST GRILL-ME:** Pergunte ao piloto em 1 turno (ou leia seu prompt inicial):

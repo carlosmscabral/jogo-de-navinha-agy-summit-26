@@ -35,12 +35,17 @@ describe('WorkspaceGeneratorService — GEMINI.md', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it('não declara MCPs ou sub-agentes que o visitante não escolheu', () => {
+  it('não declara MCPs ou sub-agentes que o visitante não escolheu como ativos, nem lhes atribui contrato de retorno', () => {
     const dir = generate();
     const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
-    assert.doesNotMatch(md, /hull-propulsion/);
-    assert.doesNotMatch(md, /cybernetics-shields/);
-    assert.doesNotMatch(md, /systems-engineer/);
+    // hull-propulsion/cybernetics-shields/systems-engineer podem aparecer apenas dentro do
+    // parágrafo que instrui a OMITIR seus campos (ver Fix 3) -- nunca como MCP/sub-agente
+    // ativo, nem como origem de um contrato de retorno.
+    assert.doesNotMatch(md, /SERVIDORES MCP ATIVOS:[^\n]*hull-propulsion/);
+    assert.doesNotMatch(md, /SERVIDORES MCP ATIVOS:[^\n]*cybernetics-shields/);
+    assert.doesNotMatch(md, /SUB-AGENTES ATIVOS:[^\n]*systems-engineer/);
+    assert.doesNotMatch(md, /Retorno de `hull-propulsion`/);
+    assert.doesNotMatch(md, /Retorno de `cybernetics-shields`/);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
@@ -126,6 +131,22 @@ describe('WorkspaceGeneratorService — GEMINI.md', () => {
     assert.match(md, /accent_color/);
     assert.match(md, /N[ÃA]O.*entra em `?(?:build_metadata\.)?fast_grill_me_choices`?/i);
     assert.match(md, /aceita\s+apenas `?weapon_focus`? e `?visual_theme`?/i);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('instrui que campos de MCPs não selecionados podem ser omitidos, sem violar a REGRA ZERO', () => {
+    const dir = generate();
+    const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
+    assert.match(md, /OMITA-os do arquivo final/);
+    assert.match(md, /N[ÃA]O é uma\s+violação da REGRA ZERO/);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('inclui bullet_speed e spread_angle no contrato de weapons-arsenal quando selecionado', () => {
+    const dir = generate(); // generate() already selects weapons-arsenal
+    const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
+    assert.match(md, /weapons\.primary\.bullet_speed/);
+    assert.match(md, /weapons\.primary\.spread_angle/);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 });
