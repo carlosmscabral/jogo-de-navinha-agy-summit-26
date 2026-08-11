@@ -79,9 +79,6 @@ export class WorkspaceGeneratorService {
     const aestheticContent = `---
 name: aesthetic-designer
 description: Especialista em design aeroespacial, arte vetorial SVG e temas visuais retro-futuristas.
-kind: local
-enable_mcp_tools: false
-enable_write_tools: true
 ---
 Você é o Projetista Visual da nave espacial.
 Gere exclusivamente elementos vetoriais SVG (viewBox 0 0 128 128) com estética anos 80 Synthwave, Dark Void ou Cyberpunk Gold.
@@ -105,9 +102,6 @@ opcional, não uma escolha obrigatória.
       const combatContent = `---
 name: combat-strategist
 description: Estrategista tático focado em calibrar sistemas de canhões primários, armas secundárias e cálculo de DPS.
-kind: local
-enable_mcp_tools: true
-enable_write_tools: true
 ---
 Você é o Estrategista Tático de Armas.
 Você DEVE invocar as ferramentas do servidor MCP 'weapons-arsenal' (configure_primary_cannon e attach_secondary_ordnance) para computar os dados reais de dano e cadência.
@@ -120,9 +114,6 @@ Você DEVE invocar as ferramentas do servidor MCP 'weapons-arsenal' (configure_p
       const systemsContent = `---
 name: systems-engineer
 description: Engenheiro de propulsão, blindagem estrutural e matrizes de escudos energéticos.
-kind: local
-enable_mcp_tools: true
-enable_write_tools: true
 ---
 Você é o Engenheiro de Sistemas e Blindagem.
 Você DEVE invocar as ferramentas dos servidores MCP 'hull-propulsion' e 'cybernetics-shields' para computar os atributos de velocidade, HP, escudos e sinergias.
@@ -204,7 +195,10 @@ Estes são os únicos MCPs e sub-agentes disponíveis nesta sessão. Não refere
        (Opcional: cite uma cor de destaque entre Rosa Choque, Ciano Elétrico, Verde Ácido,
        Vermelho Sangue, Dourado Royal ou Branco Gélido — o Projetista Visual vai aplicá-la
        dentro do estilo escolhido, sem abandonar sua identidade estrutural.)
-2. **PASSO 2 - DELEGAÇÃO:** Invoque os sub-agentes em \`.agents/agents/\` para forjar a nave.
+2. **PASSO 2 - DELEGAÇÃO:** Invoque os sub-agentes em \`.agents/agents/\` para forjar a nave, usando
+   \`invoke_subagent\` com a opção de workspace \`inherit\` — isso garante que o sub-agente compartilhe
+   o mesmo contexto de sessão e as conexões de servidores MCP já estabelecidas pela sessão principal,
+   em vez de iniciar um workspace isolado sem esse acesso.
 3. **PASSO 3 - EXECUÇÃO DE TOOLS:** Os sub-agentes DEVEM executar as ferramentas dos MCPs ativos. O
    jogo verifica \`mcp_audit.log\` antes de aceitar a nave: **sem registro de execução, a nave é
    rejeitada.**

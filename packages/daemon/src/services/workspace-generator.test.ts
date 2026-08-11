@@ -56,6 +56,14 @@ describe('WorkspaceGeneratorService — GEMINI.md', () => {
     assert.match(md, /Opcional/i);
     fs.rmSync(dir, { recursive: true, force: true });
   });
+
+  it('PASSO 2 instrui a usar invoke_subagent com workspace inherit para preservar o acesso MCP', () => {
+    const dir = generate();
+    const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
+    assert.match(md, /invoke_subagent/);
+    assert.match(md, /inherit/);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
 });
 
 describe('WorkspaceGeneratorService — aesthetic-designer.md', () => {
@@ -80,6 +88,33 @@ describe('WorkspaceGeneratorService — aesthetic-designer.md', () => {
     // and fall back to the theme's default palette when no (recognized) color is given.
     assert.match(md, /identidade estrutural/i);
     assert.match(md, /opcional/i);
+
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('WorkspaceGeneratorService — frontmatter dos sub-agentes', () => {
+  it('não usa campos fictícios de frontmatter (kind, enable_mcp_tools, enable_write_tools)', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'booth-ws-'));
+    WorkspaceGeneratorService.generateWorkspace({
+      sessionDir: dir,
+      pilot: { callsign: 'TESTE', company_raw: 'Acme', company_canonical: 'Acme' },
+      energy_sliders: { offense: 40, speed: 20, defense: 25, tech: 15 },
+      selected_mcps: ['weapons-arsenal', 'hull-propulsion', 'cybernetics-shields'],
+      selected_subagents: ['combat-strategist', 'systems-engineer'],
+      mcpsDistDir: '/tmp/fake-mcps'
+    });
+
+    const agentFiles = ['aesthetic-designer.md', 'combat-strategist.md', 'systems-engineer.md'];
+    for (const file of agentFiles) {
+      const md = fs.readFileSync(path.join(dir, '.agents', 'agents', file), 'utf8');
+      assert.doesNotMatch(md, /enable_mcp_tools/, `${file} não deve conter enable_mcp_tools`);
+      assert.doesNotMatch(md, /enable_write_tools/, `${file} não deve conter enable_write_tools`);
+      assert.doesNotMatch(md, /^kind:/m, `${file} não deve conter uma linha de frontmatter 'kind:'`);
+      // name/description continuam sendo campos reais e obrigatórios.
+      assert.match(md, /^name: /m);
+      assert.match(md, /^description: /m);
+    }
 
     fs.rmSync(dir, { recursive: true, force: true });
   });
