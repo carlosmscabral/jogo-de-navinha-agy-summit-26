@@ -139,6 +139,18 @@ while true; do
 
   echo ""
   echo -e "${COBALT}--------------------------------------------------------------------------------${RESET}"
-  echo -e "${GREEN}✓ Sessão concluída. Retornando para a tela de espera em 2 segundos...${RESET}"
+  echo -e "${GREEN}✓ Forja concluída. Aguardando o piloto voar e o debrief terminar...${RESET}"
+
+  # Do NOT relaunch agy just because .session_active is still present — it stays
+  # set through the entire visitor journey (forge → gameplay → debrief), and is
+  # only cleared by /api/session/reset once the visitor's match is truly over.
+  # Without this wait, the loop would immediately launch a second, pointless
+  # agy session the moment the first one exits, while the visitor is still
+  # mid-flight on Tela 1.
+  while [ -f "$FLAG_FILE" ]; do
+    sleep 0.5
+  done
+
+  echo -e "${GREEN}✓ Sessão encerrada. Retornando para a tela de espera em 2 segundos...${RESET}"
   sleep 2
 done
