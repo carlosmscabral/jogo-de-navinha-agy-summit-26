@@ -107,4 +107,34 @@ describe('FileWatcherService — validação estrita e gate de auditoria', () =>
     w.stopWatching();
     fs.rmSync(dir3, { recursive: true, force: true });
   });
+
+  it('dispara onAuditGateSatisfied exatamente uma vez, quando o último MCP obrigatório é registrado', async () => {
+    const dir4 = tempSession();
+    const auditPath = path.join(dir4, 'mcp_audit.log');
+    fs.writeFileSync(auditPath, '', 'utf8');
+
+    let satisfiedCount = 0;
+    const w = new FileWatcherService();
+    w.startWatching(dir4, {
+      requiredMcps: ['weapons-arsenal', 'hull-propulsion'],
+      onShipReady: () => {},
+      onAuditGateSatisfied: () => { satisfiedCount += 1; }
+    });
+
+    fs.appendFileSync(auditPath, auditLine('weapons-arsenal', 'configure_primary_cannon'));
+    await wait(900);
+    assert.equal(satisfiedCount, 0, 'gate não deve disparar com apenas 1 dos 2 MCPs obrigatórios');
+
+    fs.appendFileSync(auditPath, auditLine('hull-propulsion', 'tune_thrusters'));
+    await wait(900);
+    assert.equal(satisfiedCount, 1, 'gate deve disparar exatamente uma vez quando o último MCP é registrado');
+
+    // Uma terceira chamada MCP não deve disparar de novo
+    fs.appendFileSync(auditPath, auditLine('weapons-arsenal', 'attach_secondary_ordnance'));
+    await wait(900);
+    assert.equal(satisfiedCount, 1, 'gate não deve disparar de novo após já satisfeito');
+
+    w.stopWatching();
+    fs.rmSync(dir4, { recursive: true, force: true });
+  });
 });

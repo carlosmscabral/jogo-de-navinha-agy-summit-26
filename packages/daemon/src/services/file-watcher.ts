@@ -21,6 +21,7 @@ export interface WatchOptions {
   onShipReady: (spec: ShipSpecification) => void;
   onMcpActivity?: (activity: McpActivityEvent) => void;
   onSpecRejected?: (rejection: SpecRejection) => void;
+  onAuditGateSatisfied?: () => void;
 }
 
 export class FileWatcherService {
@@ -32,6 +33,7 @@ export class FileWatcherService {
   private currentSpec?: ShipSpecification;
   private pendingSpec?: ShipSpecification;
   private activityHistory: McpActivityEvent[] = [];
+  private auditGateSatisfiedNotified = false;
 
   startWatching(sessionDir: string, opts: WatchOptions): void {
     this.stopWatching();
@@ -41,6 +43,7 @@ export class FileWatcherService {
     this.currentSpec = undefined;
     this.pendingSpec = undefined;
     this.activityHistory = [];
+    this.auditGateSatisfiedNotified = false;
 
     const targetFile = path.join(sessionDir, 'ship_spec.json');
     const auditFile = path.join(sessionDir, 'mcp_audit.log');
@@ -126,6 +129,13 @@ export class FileWatcherService {
           this.activityHistory.push(entry);
           console.log(`[FileWatcher] MCP Tool Executed: [${entry.server}] ${entry.tool}`);
           this.opts?.onMcpActivity?.(entry);
+          if (!this.auditGateSatisfiedNotified) {
+            const audit = this.auditSatisfied();
+            if (audit.ok) {
+              this.auditGateSatisfiedNotified = true;
+              this.opts?.onAuditGateSatisfied?.();
+            }
+          }
           this.releaseIfAuditSatisfied();
         } catch {
           // Ignore non-json line

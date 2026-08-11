@@ -37,12 +37,14 @@ function broadcast(message: Record<string, unknown>): void {
 
 const AGY_SILENCE_TIMEOUT_MS = Number(process.env.AGY_SILENCE_TIMEOUT_MS) || 15_000;
 const AGY_HARD_TIMEOUT_MS = Number(process.env.AGY_HARD_TIMEOUT_MS) || 150_000;
+const AGY_POST_AUDIT_TIMEOUT_MS = Number(process.env.AGY_POST_AUDIT_TIMEOUT_MS) || 45_000;
 const AGY_LIVENESS_POLL_MS = 1_000;
 
 let silenceTimer: NodeJS.Timeout | undefined;
 let hardTimer: NodeJS.Timeout | undefined;
 let livenessTimer: NodeJS.Timeout | undefined;
 let shipDelivered = false;
+let auditGateSatisfied = false;
 
 function clearAgyTimers(): void {
   if (silenceTimer) clearTimeout(silenceTimer);
@@ -53,7 +55,8 @@ function clearAgyTimers(): void {
 
 function armSilenceTimer(sliders: EnergySliders, reasonPrefix: string): void {
   if (silenceTimer) clearTimeout(silenceTimer);
-  silenceTimer = setTimeout(() => triggerFallback(sliders, `${reasonPrefix}: silêncio de ${AGY_SILENCE_TIMEOUT_MS}ms`), AGY_SILENCE_TIMEOUT_MS);
+  const timeoutMs = auditGateSatisfied ? AGY_POST_AUDIT_TIMEOUT_MS : AGY_SILENCE_TIMEOUT_MS;
+  silenceTimer = setTimeout(() => triggerFallback(sliders, `${reasonPrefix}: silêncio de ${timeoutMs}ms`), timeoutMs);
 }
 
 function killAgyProcessGroup(): void {
@@ -221,10 +224,16 @@ app.post('/api/session/start', (req, res) => {
         armSilenceTimer(energy_sliders, 'após rejeição de spec');
         console.error('[Daemon] Spec rejeitada:', rejection.reason, rejection.details.join('; '));
         broadcast({ type: 'EVENT_SPEC_REJECTED', data: rejection });
+      },
+      onAuditGateSatisfied: () => {
+        auditGateSatisfied = true;
+        console.log('[Daemon] Gate de auditoria MCP satisfeito — ampliando a janela de silêncio para a fase de sub-agentes narrativos/visuais.');
+        armSilenceTimer(energy_sliders, 'após gate de auditoria MCP satisfeito');
       }
     });
 
     shipDelivered = false;
+    auditGateSatisfied = false;
     clearAgyTimers();
     hardTimer = setTimeout(
       () => triggerFallback(energy_sliders, `teto rígido de ${AGY_HARD_TIMEOUT_MS}ms`),
@@ -285,6 +294,7 @@ app.post('/api/session/reset', (req, res) => {
   try {
     clearAgyTimers();
     shipDelivered = false;
+    auditGateSatisfied = false;
     fileWatcher.stopWatching();
     currentSessionMetadata = null;
 
