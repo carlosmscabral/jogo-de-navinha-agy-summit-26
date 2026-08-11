@@ -40,10 +40,10 @@ describe('computeBaselineAttributes', () => {
 });
 
 describe('computeBaselineWeapons', () => {
-  it('produces every weapon field at its schema minimum when offense is at its minimum', () => {
+  it('produces primary damage/fire_rate at their practical-range minimum (not the full schema minimum), while other fields hit the full schema minimum, when offense is at its minimum', () => {
     const weapons = computeBaselineWeapons(MIN_SLIDERS, 'laser_piercing');
-    assert.equal(weapons.primary.damage, 10);
-    assert.equal(weapons.primary.fire_rate, 2);
+    assert.equal(weapons.primary.damage, 15);
+    assert.equal(weapons.primary.fire_rate, 5);
     assert.equal(weapons.primary.bullet_speed, 400);
     assert.equal(weapons.primary.spread_angle, 0);
     assert.equal(weapons.secondary.damage, 0);
@@ -51,10 +51,10 @@ describe('computeBaselineWeapons', () => {
     assert.equal(weapons.secondary.cooldown_seconds, 20);
   });
 
-  it('produces every weapon field at its schema maximum when offense is at its maximum', () => {
+  it('produces primary damage/fire_rate at their practical-range maximum (not the full schema maximum), while other fields hit the full schema maximum, when offense is at its maximum', () => {
     const weapons = computeBaselineWeapons(MAX_SLIDERS, 'laser_piercing');
-    assert.equal(weapons.primary.damage, 60);
-    assert.equal(weapons.primary.fire_rate, 60);
+    assert.equal(weapons.primary.damage, 45);
+    assert.equal(weapons.primary.fire_rate, 12);
     assert.equal(weapons.primary.bullet_speed, 800);
     assert.equal(weapons.primary.spread_angle, 30);
     assert.equal(weapons.secondary.damage, 150);
@@ -64,7 +64,7 @@ describe('computeBaselineWeapons', () => {
 
   it('lands strictly between the bounds for an interior slider value', () => {
     const weapons = computeBaselineWeapons(MID_SLIDERS, 'laser_piercing');
-    assert.ok(weapons.primary.damage > 10 && weapons.primary.damage < 60, `damage ${weapons.primary.damage} should be strictly interior`);
+    assert.ok(weapons.primary.damage > 15 && weapons.primary.damage < 45, `damage ${weapons.primary.damage} should be strictly interior`);
     assert.ok(
       weapons.secondary.cooldown_seconds > 0 && weapons.secondary.cooldown_seconds < 20,
       `cooldown_seconds ${weapons.secondary.cooldown_seconds} should be strictly interior`

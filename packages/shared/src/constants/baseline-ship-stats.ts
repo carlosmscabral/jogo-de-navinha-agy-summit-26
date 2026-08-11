@@ -91,13 +91,20 @@ const WEAPON_FOCUS_TO_TYPES: Record<FastGrillMeWeaponFocus, { primary: PrimaryWe
 
 /**
  * Computes the deterministic baseline `weapons` block from the energy sliders
- * and the visitor's Fast-Grill-Me weapon focus choice. Schema bounds (from
- * `ship_spec.schema.json`), all driven by `offense`:
- *  - primary.damage:            number, [10, 60]
- *  - primary.fire_rate:         number, [2, 60]
- *  - primary.bullet_speed:      number, [400, 800]
- *  - primary.spread_angle:      number, [0, 30]
- *  - secondary.damage:          number, [0, 150]
+ * and the visitor's Fast-Grill-Me weapon focus choice, all driven by `offense`:
+ *  - primary.damage:            number, [15, 45]  -- practical range, NOT the schema's full [10,60].
+ *  - primary.fire_rate:         number, [5, 12]   -- practical range, NOT the schema's full [2,60].
+ *    Both are intentionally narrowed to the range the real `weapons-arsenal` MCP is guided to
+ *    produce (see GEMINI.md's contract table in workspace-generator.ts) and the range
+ *    `WeaponSystem.firePrimary` clamps to at render time
+ *    (packages/player-app/src/game/weapons/WeaponSystem.ts). Targeting the full schema envelope
+ *    here let an unselected-weapons-arsenal baseline out-DPS a real, selected, AI-calibrated
+ *    ship, inverting the "fewer MCPs = weaker but higher score multiplier" tradeoff. The schema's
+ *    full [10,60]/[2,60] bounds remain the hard outer limit the validator enforces; this module
+ *    deliberately targets a narrower practical sub-range within them.
+ *  - primary.bullet_speed:      number, [400, 800] (full schema range -- doesn't affect DPS balance)
+ *  - primary.spread_angle:      number, [0, 30]    (full schema range)
+ *  - secondary.damage:          number, [0, 150]   (full schema range)
  *  - secondary.cooldown_seconds: number, [20, 0], INVERTED
  *    (higher offense -> shorter cooldown, fires more often)
  *
@@ -107,8 +114,8 @@ const WEAPON_FOCUS_TO_TYPES: Record<FastGrillMeWeaponFocus, { primary: PrimaryWe
 export function computeBaselineWeapons(sliders: EnergySliders, weaponFocus: FastGrillMeWeaponFocus): ShipWeapons {
   const types = WEAPON_FOCUS_TO_TYPES[weaponFocus];
 
-  const damage = lerpClamp(sliders.offense, SLIDER_MIN, SLIDER_MAX, 10, 60);
-  const fire_rate = lerpClamp(sliders.offense, SLIDER_MIN, SLIDER_MAX, 2, 60);
+  const damage = lerpClamp(sliders.offense, SLIDER_MIN, SLIDER_MAX, 15, 45);
+  const fire_rate = lerpClamp(sliders.offense, SLIDER_MIN, SLIDER_MAX, 5, 12);
   const bullet_speed = lerpClamp(sliders.offense, SLIDER_MIN, SLIDER_MAX, 400, 800);
   const spread_angle = lerpClamp(sliders.offense, SLIDER_MIN, SLIDER_MAX, 0, 30);
 
