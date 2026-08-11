@@ -154,6 +154,7 @@ export function App() {
     audioManager.stopMusic();
     fetch('http://localhost:3000/api/session/reset', { method: 'POST' }).catch(() => {});
     setPilotId(crypto.randomUUID());
+    setSessionStartError(null);
     setStage('ATTRACT');
   };
 
