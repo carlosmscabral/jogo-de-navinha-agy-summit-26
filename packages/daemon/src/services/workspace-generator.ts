@@ -104,7 +104,12 @@ name: combat-strategist
 description: Estrategista tático focado em calibrar sistemas de canhões primários, armas secundárias e cálculo de DPS.
 ---
 Você é o Estrategista Tático de Armas.
-Você DEVE invocar as ferramentas do servidor MCP 'weapons-arsenal' (configure_primary_cannon e attach_secondary_ordnance) para computar os dados reais de dano e cadência.
+A sessão principal (Orquestrador) já invocou as ferramentas do servidor MCP 'weapons-arsenal' e vai
+te fornecer, no prompt de invocação, os valores exatos retornados (tipo de canhão, dano, cadência,
+tipo de arma secundária, dano e cooldown). Sua tarefa é analisar esses valores JÁ OBTIDOS e produzir
+uma avaliação tática breve (1 a 2 frases, em português) sobre o perfil de combate resultante, para
+exibição no terminal. Você NÃO deve invocar nenhuma ferramenta MCP por conta própria — os valores já
+foram obtidos pelo Orquestrador.
 `;
       fs.writeFileSync(path.join(agentsDir, 'combat-strategist.md'), combatContent, 'utf8');
     }
@@ -116,7 +121,12 @@ name: systems-engineer
 description: Engenheiro de propulsão, blindagem estrutural e matrizes de escudos energéticos.
 ---
 Você é o Engenheiro de Sistemas e Blindagem.
-Você DEVE invocar as ferramentas dos servidores MCP 'hull-propulsion' e 'cybernetics-shields' para computar os atributos de velocidade, HP, escudos e sinergias.
+A sessão principal (Orquestrador) já invocou as ferramentas dos servidores MCP 'hull-propulsion' e
+'cybernetics-shields' e vai te fornecer, no prompt de invocação, os valores exatos retornados
+(velocidade, HP, raio de colisão, capacidade de escudo, sinergias desbloqueadas). Sua tarefa é
+analisar esses valores JÁ OBTIDOS e produzir uma avaliação técnica breve (1 a 2 frases, em português)
+sobre a configuração estrutural resultante, para exibição no terminal. Você NÃO deve invocar nenhuma
+ferramenta MCP por conta própria — os valores já foram obtidos pelo Orquestrador.
 `;
       fs.writeFileSync(path.join(agentsDir, 'systems-engineer.md'), systemsContent, 'utf8');
     }
@@ -195,13 +205,15 @@ Estes são os únicos MCPs e sub-agentes disponíveis nesta sessão. Não refere
        (Opcional: cite uma cor de destaque entre Rosa Choque, Ciano Elétrico, Verde Ácido,
        Vermelho Sangue, Dourado Royal ou Branco Gélido — o Projetista Visual vai aplicá-la
        dentro do estilo escolhido, sem abandonar sua identidade estrutural.)
-2. **PASSO 2 - DELEGAÇÃO:** Invoque os sub-agentes em \`.agents/agents/\` para forjar a nave, usando
-   \`invoke_subagent\` com a opção de workspace \`inherit\` — isso garante que o sub-agente compartilhe
-   o mesmo contexto de sessão e as conexões de servidores MCP já estabelecidas pela sessão principal,
-   em vez de iniciar um workspace isolado sem esse acesso.
-3. **PASSO 3 - EXECUÇÃO DE TOOLS:** Os sub-agentes DEVEM executar as ferramentas dos MCPs ativos. O
-   jogo verifica \`mcp_audit.log\` antes de aceitar a nave: **sem registro de execução, a nave é
-   rejeitada.**
+2. **PASSO 2 - EXECUÇÃO DIRETA DAS FERRAMENTAS MCP:** Você mesmo (a sessão principal) DEVE invocar
+   diretamente as ferramentas de cada servidor MCP ativo — não delegue esta etapa a nenhum
+   sub-agente. O jogo verifica \`mcp_audit.log\` antes de aceitar a nave: **sem registro de execução,
+   a nave é rejeitada.**
+3. **PASSO 3 - NARRATIVA DOS ESPECIALISTAS:** Com os valores já obtidos no Passo 2 em mãos, invoque
+   os sub-agentes em \`.agents/agents/\` via \`invoke_subagent\` (opção de workspace \`inherit\`),
+   incluindo no prompt inicial de cada um os valores exatos que você obteve. Cada sub-agente deve
+   produzir uma breve análise (1 a 2 frases) sobre o resultado, para exibição no terminal — eles NÃO
+   devem invocar nenhuma ferramenta MCP por conta própria.
 4. **PASSO 4 - CRIAÇÃO DO ARQUIVO:** Use sua ferramenta de escrita para gravar
    \`${sessionDir}/ship_spec.json\` com os valores que as ferramentas retornaram.
 

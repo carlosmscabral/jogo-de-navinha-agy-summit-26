@@ -57,11 +57,32 @@ describe('WorkspaceGeneratorService — GEMINI.md', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it('PASSO 2 instrui a usar invoke_subagent com workspace inherit para preservar o acesso MCP', () => {
+  it('PASSO 2 instrui o Orquestrador a invocar as ferramentas MCP diretamente, sem delegar', () => {
     const dir = generate();
     const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
+    assert.match(md, /PASSO 2 - EXECUÇÃO DIRETA DAS FERRAMENTAS MCP/);
+    assert.match(md, /Você mesmo \(a sessão principal\) DEVE invocar/);
+    assert.match(md, /não delegue esta etapa a nenhum\s+sub-agente/);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('PASSO 3 instrui a usar invoke_subagent com workspace inherit, após os valores já terem sido obtidos, apenas para narrativa', () => {
+    const dir = generate();
+    const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
+    assert.match(md, /PASSO 3 - NARRATIVA DOS ESPECIALISTAS/);
     assert.match(md, /invoke_subagent/);
     assert.match(md, /inherit/);
+    assert.match(md, /valores já obtidos no Passo 2/);
+    assert.match(md, /NÃO\s+devem invocar nenhuma ferramenta MCP por conta própria/);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('não afirma mais que os sub-agentes DEVEM executar as ferramentas dos MCPs ativos', () => {
+    const dir = generate();
+    const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
+    assert.doesNotMatch(md, /Os sub-agentes DEVEM executar as ferramentas/);
+    assert.doesNotMatch(md, /PASSO 2 - DELEGAÇÃO/);
+    assert.doesNotMatch(md, /PASSO 3 - EXECUÇÃO DE TOOLS/);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 });
@@ -116,6 +137,41 @@ describe('WorkspaceGeneratorService — frontmatter dos sub-agentes', () => {
       assert.match(md, /^description: /m);
     }
 
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('WorkspaceGeneratorService — sub-agentes táticos são narrativos, não invocam MCP tools', () => {
+  function generateBoth(): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'booth-ws-'));
+    WorkspaceGeneratorService.generateWorkspace({
+      sessionDir: dir,
+      pilot: { callsign: 'TESTE', company_raw: 'Acme', company_canonical: 'Acme' },
+      energy_sliders: { offense: 40, speed: 20, defense: 25, tech: 15 },
+      selected_mcps: ['weapons-arsenal', 'hull-propulsion', 'cybernetics-shields'],
+      selected_subagents: ['combat-strategist', 'systems-engineer'],
+      mcpsDistDir: '/tmp/fake-mcps'
+    });
+    return dir;
+  }
+
+  it('combat-strategist.md não instrui mais a invocar ferramentas MCP por conta própria', () => {
+    const dir = generateBoth();
+    const md = fs.readFileSync(path.join(dir, '.agents', 'agents', 'combat-strategist.md'), 'utf8');
+    assert.doesNotMatch(md, /Você DEVE invocar as ferramentas/);
+    assert.match(md, /já invocou/);
+    assert.match(md, /JÁ OBTIDOS/);
+    assert.match(md, /NÃO deve invocar nenhuma\s+ferramenta MCP por conta própria/);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('systems-engineer.md não instrui mais a invocar ferramentas MCP por conta própria', () => {
+    const dir = generateBoth();
+    const md = fs.readFileSync(path.join(dir, '.agents', 'agents', 'systems-engineer.md'), 'utf8');
+    assert.doesNotMatch(md, /Você DEVE invocar as ferramentas/);
+    assert.match(md, /já invocou/);
+    assert.match(md, /JÁ OBTIDOS/);
+    assert.match(md, /NÃO deve invocar nenhuma\s+ferramenta MCP por conta própria/);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 });
