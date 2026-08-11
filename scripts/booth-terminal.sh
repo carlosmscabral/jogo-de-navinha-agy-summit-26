@@ -17,6 +17,13 @@ FLAG_FILE="$SESSION_DIR/.session_active"
 PID_FILE="$SESSION_DIR/.agy_pid"
 DAEMON_URL="http://localhost:3000/api/session/status"
 
+# A full visitor cycle (registration through debrief) has a planned SLA of
+# 2m00s-2m45s, so waiting for .session_active to clear should never remotely
+# approach 5 minutes under normal conditions. These control the stall warning
+# in the post-agy wait loop below (see its comment for why the warning exists).
+STALL_WARNING_SECONDS=300
+STALL_WARNING_REPEAT_SECONDS=60
+
 # ANSI Color Palette (Aerospace Flight Deck)
 AMBER="\033[38;2;255;158;11m"
 COBALT="\033[38;2;56;189;248m"
@@ -147,7 +154,25 @@ while true; do
   # Without this wait, the loop would immediately launch a second, pointless
   # agy session the moment the first one exits, while the visitor is still
   # mid-flight on Tela 1.
+  #
+  # Safety net: we deliberately do NOT auto-force a reset here — a legitimately
+  # long session must not be interrupted. But if the daemon crashes, or the
+  # browser closes/crashes before its POST /api/session/reset call lands,
+  # nothing else in the codebase ever clears .session_active, and this loop
+  # would otherwise block forever with zero indication anything is wrong. So:
+  # keep waiting indefinitely, but surface a clearly visible, periodically
+  # repeated warning once the wait has gone on far longer than any normal
+  # cycle should (elapsed time is tracked via `date +%s`, not sleep-tick
+  # accumulation, which is fragile with bash integer arithmetic).
+  WAIT_START=$(date +%s)
+  LAST_WARNING=0
   while [ -f "$FLAG_FILE" ]; do
+    NOW=$(date +%s)
+    ELAPSED=$((NOW - WAIT_START))
+    if [ "$ELAPSED" -ge "$STALL_WARNING_SECONDS" ] && [ $((NOW - LAST_WARNING)) -ge "$STALL_WARNING_REPEAT_SECONDS" ]; then
+      echo -e "${AMBER}⚠ AVISO: aguardando .session_active há mais de $((ELAPSED / 60)) minuto(s). Se nenhum visitante está jogando, o daemon pode ter travado — verifique com 'npm run kill:daemon && npm run start:daemon', ou force o reset manualmente removendo ${FLAG_FILE}.${RESET}"
+      LAST_WARNING=$NOW
+    fi
     sleep 0.5
   done
 
