@@ -26,6 +26,7 @@ export function App() {
   const [isMuted, setIsMuted] = useState(false);
   const [lastMatch, setLastMatch] = useState<Partial<MatchRecord> & { victory?: boolean; breakdown?: any } | undefined>();
   const [pilotId, setPilotId] = useState<string>(() => crypto.randomUUID());
+  const [sessionStartError, setSessionStartError] = useState<string | null>(null);
 
   const gameContainerRef = useRef<HTMLDivElement>(null);
   const gameInstanceRef = useRef<Phaser.Game | null>(null);
@@ -86,7 +87,7 @@ export function App() {
 
     try {
       // Call Local Daemon to prepare workspace /tmp/booth_session
-      await fetch('http://localhost:3000/api/session/start', {
+      const res = await fetch('http://localhost:3000/api/session/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -94,10 +95,13 @@ export function App() {
           ...config
         })
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setSessionStartError(null);
+      setStage('HANDOFF');
     } catch (err) {
-      console.warn('[App] Daemon offline, proceeding to handoff:', err);
+      console.error('[App] Falha ao iniciar sessão no daemon, permanecendo na Forja:', err);
+      setSessionStartError('Não foi possível conectar ao servidor da Forja. Verifique a conexão e tente novamente.');
     }
-    setStage('HANDOFF');
   };
 
   const handleShipReady = (forgedSpec: ShipSpecification) => {
@@ -160,6 +164,19 @@ export function App() {
 
   return (
     <div className="flex h-screen w-screen bg-[#07080c] text-white overflow-hidden select-none font-sans">
+      {/* Session-Start Error Banner */}
+      {sessionStartError && (
+        <div className="absolute top-4 left-4 z-50 max-w-md p-3 rounded-xl bg-red-950/90 border border-red-500/60 text-red-200 text-xs font-mono shadow-lg backdrop-blur-md flex items-start gap-3">
+          <span>{sessionStartError}</span>
+          <button
+            onClick={() => setSessionStartError(null)}
+            className="ml-auto text-red-300 hover:text-white font-bold"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Top Floating Controls Bar */}
       <div className="absolute top-4 right-4 z-50 flex items-center gap-3">
         {/* Reset Button */}
