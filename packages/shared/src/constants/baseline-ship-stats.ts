@@ -63,7 +63,7 @@ function roundClampInt(value: number, min: number, max: number): number {
 export function computeBaselineAttributes(sliders: EnergySliders): ShipAttributes {
   const max_hp = roundClampInt(lerpClamp(sliders.defense, SLIDER_MIN, SLIDER_MAX, 2, 5), 2, 5);
   const shield_capacity = roundClampInt(lerpClamp(sliders.tech, SLIDER_MIN, SLIDER_MAX, 0, 3), 0, 3);
-  const speed_px_s = Math.round(lerpClamp(sliders.speed, SLIDER_MIN, SLIDER_MAX, 180, 380));
+  const speed_px_s = lerpClamp(sliders.speed, SLIDER_MIN, SLIDER_MAX, 180, 380);
   // Inverted: outMin (16) > outMax (8) -- higher speed slider yields a smaller radius.
   const hitbox_radius = lerpClamp(sliders.speed, SLIDER_MIN, SLIDER_MAX, 16, 8);
 
