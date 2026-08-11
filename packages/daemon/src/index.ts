@@ -37,7 +37,7 @@ function broadcast(message: Record<string, unknown>): void {
 
 const AGY_SILENCE_TIMEOUT_MS = Number(process.env.AGY_SILENCE_TIMEOUT_MS) || 15_000;
 const AGY_HARD_TIMEOUT_MS = Number(process.env.AGY_HARD_TIMEOUT_MS) || 150_000;
-const AGY_POST_AUDIT_TIMEOUT_MS = Number(process.env.AGY_POST_AUDIT_TIMEOUT_MS) || 45_000;
+const AGY_POST_AUDIT_TIMEOUT_MS = Number(process.env.AGY_POST_AUDIT_TIMEOUT_MS) || 90_000;
 const AGY_LIVENESS_POLL_MS = 1_000;
 
 let silenceTimer: NodeJS.Timeout | undefined;
@@ -91,6 +91,13 @@ function killAgyProcessGroup(): void {
 }
 
 function triggerFallback(sliders: EnergySliders, reason: string): void {
+  // Última checagem antes de desistir: uma spec válida pode ter sido escrita
+  // bem perto do estouro do temporizador, mas ainda não processada pelo
+  // watcher — sem isso, encerrar a sessão custaria a nave real por uma
+  // corrida de poucos milissegundos contra o polling. Se essa checagem
+  // encontrar e liberar uma spec real, o onShipReady já configurado abaixo
+  // marca shipDelivered, e o guard logo em seguida cancela o fallback.
+  fileWatcher.forceCheckNow();
   if (shipDelivered) return;
   shipDelivered = true;
   clearAgyTimers();

@@ -137,4 +137,51 @@ describe('FileWatcherService — validação estrita e gate de auditoria', () =>
     w.stopWatching();
     fs.rmSync(dir4, { recursive: true, force: true });
   });
+
+  it('forceCheckNow() libera uma spec válida e já auditada antes mesmo do poll de 400ms ou do chokidar rodarem', () => {
+    const dir5 = tempSession();
+    const auditPath = path.join(dir5, 'mcp_audit.log');
+    fs.writeFileSync(auditPath, '', 'utf8');
+
+    const readySpecs: any[] = [];
+    const w = new FileWatcherService();
+    w.startWatching(dir5, {
+      requiredMcps: ['weapons-arsenal'],
+      onShipReady: (s) => readySpecs.push(s)
+    });
+
+    // Escreve a auditoria e a spec, e chama forceCheckNow() imediatamente —
+    // na mesma volta síncrona, sem nenhum await/setTimeout entre a escrita e
+    // a checagem. Como Node.js é single-threaded e tanto o pollIntervalTimer
+    // (400ms) quanto o chokidar (que depende de I/O assíncrono e de um
+    // awaitWriteFinish com pollInterval de 50ms) só entregam eventos em ciclos
+    // futuros do event loop, nenhum dos dois pode ter processado estes
+    // arquivos dentro desta mesma função síncrona. A única forma de
+    // readySpecs já conter o resultado na asserção abaixo é o efeito
+    // síncrono do próprio forceCheckNow() — não uma coincidência de timing
+    // com o poller de fundo.
+    fs.appendFileSync(auditPath, auditLine('weapons-arsenal', 'configure_primary_cannon'));
+    fs.writeFileSync(path.join(dir5, 'ship_spec.json'), JSON.stringify(FALLBACK_PRESETS.interceptor), 'utf8');
+    w.forceCheckNow();
+
+    assert.equal(readySpecs.length, 1, 'forceCheckNow deve liberar a spec sincronamente, sem esperar o poll/chokidar');
+    assert.equal(readySpecs[0].pilot.callsign, FALLBACK_PRESETS.interceptor.pilot.callsign);
+
+    w.stopWatching();
+    fs.rmSync(dir5, { recursive: true, force: true });
+  });
+
+  it('forceCheckNow() é um no-op seguro antes de startWatching() e depois de stopWatching()', () => {
+    const w = new FileWatcherService();
+    assert.doesNotThrow(() => w.forceCheckNow());
+
+    const dir6 = tempSession();
+    fs.writeFileSync(path.join(dir6, 'mcp_audit.log'), '', 'utf8');
+    w.startWatching(dir6, { requiredMcps: [], onShipReady: () => {} });
+    w.stopWatching();
+
+    assert.doesNotThrow(() => w.forceCheckNow());
+
+    fs.rmSync(dir6, { recursive: true, force: true });
+  });
 });

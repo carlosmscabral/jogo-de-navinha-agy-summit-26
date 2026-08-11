@@ -34,6 +34,9 @@ export class FileWatcherService {
   private pendingSpec?: ShipSpecification;
   private activityHistory: McpActivityEvent[] = [];
   private auditGateSatisfiedNotified = false;
+  private currentTargetFile?: string;
+  private currentAuditFile?: string;
+  private currentSessionDir?: string;
 
   startWatching(sessionDir: string, opts: WatchOptions): void {
     this.stopWatching();
@@ -47,6 +50,9 @@ export class FileWatcherService {
 
     const targetFile = path.join(sessionDir, 'ship_spec.json');
     const auditFile = path.join(sessionDir, 'mcp_audit.log');
+    this.currentTargetFile = targetFile;
+    this.currentAuditFile = auditFile;
+    this.currentSessionDir = sessionDir;
 
     // 1. Chokidar watch on sessionDir (watches directory creation & file updates)
     try {
@@ -88,6 +94,18 @@ export class FileWatcherService {
 
   getCurrentSpec(): ShipSpecification | undefined {
     return this.currentSpec;
+  }
+
+  /**
+   * Checagem síncrona sob demanda, chamada pelo daemon logo antes de desistir
+   * por timeout. Uma spec válida pode ter sido escrita no exato instante em
+   * que o temporizador também estourou — sem isso, o daemon descartaria uma
+   * nave real por uma corrida de poucos milissegundos contra o polling normal.
+   */
+  forceCheckNow(): void {
+    if (!this.currentTargetFile || !this.currentAuditFile || !this.currentSessionDir) return;
+    this.checkAndProcessAuditLog(this.currentAuditFile);
+    this.checkAndProcessSpecFile(this.currentTargetFile, this.currentSessionDir);
   }
 
   getActivityHistory(): McpActivityEvent[] {
@@ -285,5 +303,8 @@ export class FileWatcherService {
       clearInterval(this.pollIntervalTimer);
       this.pollIntervalTimer = undefined;
     }
+    this.currentTargetFile = undefined;
+    this.currentAuditFile = undefined;
+    this.currentSessionDir = undefined;
   }
 }
