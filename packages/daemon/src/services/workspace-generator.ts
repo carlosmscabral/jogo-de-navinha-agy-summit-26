@@ -138,11 +138,11 @@ ferramenta MCP por conta própria — os valores já foram obtidos pelo Orquestr
 
     // Build contract table rows dynamically based on selected MCPs
     const contractRows = [
-      '| `pilot.*` | Dados do piloto acima, copiados literalmente | — |',
+      '| `pilot.callsign`, `pilot.company_raw`, `pilot.company_canonical` | Dados do piloto acima — NUNCA um campo único `pilot.company` | — |',
       `| \`build_metadata.selected_mcps\` | Exatamente: ${JSON.stringify(selected_mcps)} | — |`,
       `| \`build_metadata.selected_subagents\` | Exatamente: ${JSON.stringify(activeSubagents)} | — |`,
-      '| `build_metadata.energy_sliders` | Alocação de energia acima, copiada literalmente | soma = 100 |',
-      '| `build_metadata.fast_grill_me_choices` | Respostas do piloto no PASSO 1 | — |'
+      '| `build_metadata.energy_sliders` | Objeto com EXATAMENTE as chaves `offense`, `speed`, `defense`, `tech` (não `attack`) | soma = 100 |',
+      '| `build_metadata.fast_grill_me_choices` | EXATAMENTE `{ weapon_focus, visual_theme }` (ver PASSO 1 para os slugs) — NUNCA inclui `accent_color` | — |'
     ];
 
     // Conditionally add rows based on selected MCPs
@@ -184,14 +184,14 @@ pare — não preencha o campo com uma estimativa. Um arquivo com valores invent
 demonstração, não um sucesso parcial.
 
 ### DADOS DO PILOTO:
-- Callsign: "${pilot.callsign}"
-- Empresa: "${pilot.company_canonical}" (Raw: "${pilot.company_raw}")
+- Callsign: "${pilot.callsign}" → grave em \`pilot.callsign\`
+- Empresa: "${pilot.company_canonical}" → grave em **DOIS** campos separados: \`pilot.company_raw\` E \`pilot.company_canonical\` (ambos com este mesmo valor). NUNCA grave um único campo \`pilot.company\` — esse nome não existe no schema.
 
 ### ALOCAÇÃO DE ENERGIA (Total 100 PU):
-- Ataque: ${energy_sliders.offense} PU
-- Velocidade: ${energy_sliders.speed} PU
-- Defesa: ${energy_sliders.defense} PU
-- Tecnologia: ${energy_sliders.tech} PU
+- Ataque: ${energy_sliders.offense} PU → grave em \`build_metadata.energy_sliders.offense\` (NUNCA \`attack\`)
+- Velocidade: ${energy_sliders.speed} PU → grave em \`build_metadata.energy_sliders.speed\`
+- Defesa: ${energy_sliders.defense} PU → grave em \`build_metadata.energy_sliders.defense\`
+- Tecnologia: ${energy_sliders.tech} PU → grave em \`build_metadata.energy_sliders.tech\`
 
 ### SERVIDORES MCP ATIVOS: ${selected_mcps.join(', ')}
 ### SUB-AGENTES ATIVOS: ${activeSubagents.join(', ')}
@@ -205,6 +205,25 @@ Estes são os únicos MCPs e sub-agentes disponíveis nesta sessão. Não refere
        (Opcional: cite uma cor de destaque entre Rosa Choque, Ciano Elétrico, Verde Ácido,
        Vermelho Sangue, Dourado Royal ou Branco Gélido — o Projetista Visual vai aplicá-la
        dentro do estilo escolhido, sem abandonar sua identidade estrutural.)
+
+   Grave as respostas em \`build_metadata.fast_grill_me_choices\` com EXATAMENTE estas duas chaves,
+   usando estes slugs em inglês (nunca o texto em português, nunca outro nome de campo):
+
+   \`weapon_focus\` (grave exatamente uma destas strings):
+     1-Laser Perfurante   → "laser_piercing"
+     2-Chuva de Mísseis   → "missile_barrage"
+     3-Vulcan Espalhado   → "vulcan_spread"
+
+   \`visual_theme\` (grave exatamente uma destas strings — o nome do campo é \`visual_theme\`,
+   NUNCA \`aesthetic_style\` ou qualquer outro nome):
+     1-Synthwave 80s      → "synthwave_80s"
+     2-Dark Void Stealth  → "dark_void_stealth"
+     3-Cyberpunk Gold     → "cyberpunk_gold"
+
+   A cor de destaque (se citada) **NÃO** entra em \`fast_grill_me_choices\` — esse objeto aceita
+   apenas \`weapon_focus\` e \`visual_theme\`, mais nenhuma chave (\`accent_color\` incluído). A cor de
+   destaque só deve influenciar \`visuals.primary_color\`, \`visuals.secondary_color\` e
+   \`visuals.engine_trail_color\`, através do sub-agente \`aesthetic-designer\`.
 2. **PASSO 2 - EXECUÇÃO DIRETA DAS FERRAMENTAS MCP:** Você mesmo (a sessão principal) DEVE invocar
    diretamente as ferramentas de cada servidor MCP ativo — não delegue esta etapa a nenhum
    sub-agente. O jogo verifica \`mcp_audit.log\` antes de aceitar a nave: **sem registro de execução,

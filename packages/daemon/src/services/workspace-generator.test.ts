@@ -85,6 +85,49 @@ describe('WorkspaceGeneratorService — GEMINI.md', () => {
     assert.doesNotMatch(md, /PASSO 3 - EXECUÇÃO DE TOOLS/);
     fs.rmSync(dir, { recursive: true, force: true });
   });
+
+  it('instrui a gravar company_raw E company_canonical como dois campos separados, nunca um único "company"', () => {
+    const dir = generate();
+    const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
+    assert.match(md, /pilot\.company_raw/);
+    assert.match(md, /pilot\.company_canonical/);
+    assert.match(md, /NUNCA.*pilot\.company\b/);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('instrui a chave exata "offense" em energy_sliders, nunca "attack"', () => {
+    const dir = generate();
+    const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
+    assert.match(md, /`offense`/);
+    assert.match(md, /NUNCA.*`attack`/);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('mapeia weapon_focus e visual_theme para os slugs exatos em inglês exigidos pelo schema', () => {
+    const dir = generate();
+    const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
+    assert.match(md, /weapon_focus/);
+    assert.match(md, /"laser_piercing"/);
+    assert.match(md, /"missile_barrage"/);
+    assert.match(md, /"vulcan_spread"/);
+    assert.match(md, /visual_theme/);
+    assert.match(md, /"synthwave_80s"/);
+    assert.match(md, /"dark_void_stealth"/);
+    assert.match(md, /"cyberpunk_gold"/);
+    // aesthetic_style só pode aparecer como nome explicitamente proibido (NUNCA aesthetic_style),
+    // nunca como o nome real do campo a preencher.
+    assert.match(md, /NUNCA `?aesthetic_style`?/);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('proíbe explicitamente accent_color dentro de fast_grill_me_choices', () => {
+    const dir = generate();
+    const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
+    assert.match(md, /accent_color/);
+    assert.match(md, /N[ÃA]O.*entra em `?(?:build_metadata\.)?fast_grill_me_choices`?/i);
+    assert.match(md, /aceita\s+apenas `?weapon_focus`? e `?visual_theme`?/i);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
 });
 
 describe('WorkspaceGeneratorService — aesthetic-designer.md', () => {
