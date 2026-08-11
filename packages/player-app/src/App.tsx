@@ -105,11 +105,6 @@ export function App() {
     setStage('GAMEPLAY');
   };
 
-  const handleEmergencyFallback = () => {
-    setShipSpec(FALLBACK_PRESETS.interceptor);
-    setStage('GAMEPLAY');
-  };
-
   const handleMatchComplete = (result: MatchCompleteData) => {
     // TODO(C1): configuração
     const matchRecord: MatchRecord & { victory: boolean; breakdown: any } = {
@@ -219,7 +214,6 @@ export function App() {
           selectedMcps={selectedMcps}
           selectedSubagents={selectedSubagents}
           onShipReady={handleShipReady}
-          onEmergencyFallback={handleEmergencyFallback}
         />
       )}
 

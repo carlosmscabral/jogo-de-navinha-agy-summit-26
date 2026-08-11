@@ -8,7 +8,6 @@ interface HandoffTerminalScreenProps {
   selectedMcps: McpServerName[];
   selectedSubagents: SubagentName[];
   onShipReady: (spec: ShipSpecification) => void;
-  onEmergencyFallback: () => void;
 }
 
 export interface McpActivityItem {
@@ -26,8 +25,7 @@ export function HandoffTerminalScreen({
   energySliders,
   selectedMcps,
   selectedSubagents,
-  onShipReady,
-  onEmergencyFallback
+  onShipReady
 }: HandoffTerminalScreenProps) {
   const [copiedCmd, setCopiedCmd] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
@@ -424,17 +422,6 @@ export function HandoffTerminalScreen({
                   })}
                 </div>
               )}
-            </div>
-
-            {/* Fallback Option */}
-            <div className="pt-2 flex justify-between items-center text-xs text-slate-400 font-mono">
-              <span>Demorando ou sem conexão no terminal?</span>
-              <button
-                onClick={onEmergencyFallback}
-                className="text-[#ff9e0b] hover:underline font-bold"
-              >
-                Decolar com Nave Balanceada Padrão ➔
-              </button>
             </div>
           </div>
         )}
