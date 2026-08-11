@@ -1,7 +1,7 @@
 import chokidar, { FSWatcher } from 'chokidar';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { validateShipSpecification, ShipSpecification } from '@jogo/shared';
+import { validateShipSpecification, ShipSpecification, computeBaselineAttributes, computeBaselineWeapons } from '@jogo/shared';
 
 export interface McpActivityEvent {
   timestamp: string;
@@ -187,8 +187,12 @@ export class FileWatcherService {
       // 1. Mapeia nomes de campo frouxos para o formato canônico.
       const normalizedSpec = this.normalizeSpec(parsed);
 
+      // 1b. Preenche com a fórmula-base determinística os domínios de MCPs
+      // NÃO selecionados (gamificação: nem todo visitante escolhe os 3 MCPs).
+      const backfilledSpec = this.applyBaselineForUnselectedMcps(normalizedSpec, this.opts?.requiredMcps ?? []);
+
       // 2. [D1] Validação estrita contra o Draft-07. Sem coerção silenciosa.
-      const validation = validateShipSpecification(normalizedSpec);
+      const validation = validateShipSpecification(backfilledSpec);
       if (!validation.isValid) {
         const details = validation.errors ?? ['erro de validação desconhecido'];
         console.error('[FileWatcher] ship_spec.json rejeitado pelo schema:', details.join('; '));
@@ -197,7 +201,7 @@ export class FileWatcherService {
       }
 
       // 3. [D3] Gate de auditoria: nenhuma nave decola sem prova de execução das tools.
-      this.pendingSpec = normalizedSpec;
+      this.pendingSpec = backfilledSpec;
       const audit = this.auditSatisfied();
       if (!audit.ok) {
         console.warn(`[FileWatcher] Spec válida em espera; MCPs sem registro de auditoria: ${audit.missing.join(', ')}`);
@@ -208,6 +212,56 @@ export class FileWatcherService {
     } catch (err) {
       console.error('[FileWatcher] Error reading/parsing ship_spec.json:', err);
     }
+  }
+
+  /**
+   * Preenche, com a fórmula-base determinística de `computeBaselineAttributes`/
+   * `computeBaselineWeapons`, apenas os campos cujo MCP dono NÃO foi selecionado
+   * pelo visitante. Um MCP selecionado nunca tem seu domínio sobrescrito aqui —
+   * mesmo que o agente tenha produzido algo incompleto ou errado, o validador
+   * estrito que roda em seguida deve rejeitar normalmente, preservando a
+   * garantia da REGRA ZERO para tudo que o agente afirma ter vindo de uma tool real.
+   *
+   * Posse de campo por MCP (ver packages/mcps/src/*.ts):
+   *  - hull-propulsion:     attributes.max_hp, attributes.speed_px_s, attributes.hitbox_radius
+   *  - cybernetics-shields: attributes.shield_capacity
+   *  - weapons-arsenal:     weapons.primary.*, weapons.secondary.*
+   */
+  private applyBaselineForUnselectedMcps(spec: ShipSpecification, requiredMcps: string[]): ShipSpecification {
+    const sliders = spec.build_metadata?.energy_sliders;
+    const slidersComplete =
+      !!sliders &&
+      Number.isFinite(sliders.offense) &&
+      Number.isFinite(sliders.speed) &&
+      Number.isFinite(sliders.defense) &&
+      Number.isFinite(sliders.tech);
+
+    // Sem sliders válidos não há como calcular uma base -- deixa a validação
+    // estrita abaixo rejeitar pelo motivo real (energy_sliders ausente/inválido).
+    if (!slidersComplete) return spec;
+
+    const baselineAttrs = computeBaselineAttributes(sliders);
+
+    if (!requiredMcps.includes('hull-propulsion')) {
+      spec.attributes.max_hp = baselineAttrs.max_hp;
+      spec.attributes.speed_px_s = baselineAttrs.speed_px_s;
+      spec.attributes.hitbox_radius = baselineAttrs.hitbox_radius;
+    }
+
+    if (!requiredMcps.includes('cybernetics-shields')) {
+      spec.attributes.shield_capacity = baselineAttrs.shield_capacity;
+    }
+
+    if (!requiredMcps.includes('weapons-arsenal')) {
+      const weaponFocus = spec.build_metadata?.fast_grill_me_choices?.weapon_focus as string | undefined;
+      if (weaponFocus === 'laser_piercing' || weaponFocus === 'missile_barrage' || weaponFocus === 'vulcan_spread') {
+        spec.weapons = computeBaselineWeapons(sliders, weaponFocus);
+      }
+      // weapon_focus ausente/inválido: deixa `weapons` como está (provavelmente
+      // incompleto) e a validação estrita abaixo rejeita pelo motivo real.
+    }
+
+    return spec;
   }
 
   private normalizeSpec(raw: any): ShipSpecification {

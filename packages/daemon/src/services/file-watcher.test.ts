@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { FALLBACK_PRESETS } from '@jogo/shared';
+import { FALLBACK_PRESETS, computeBaselineAttributes, computeBaselineWeapons } from '@jogo/shared';
 import { FileWatcherService } from './file-watcher.js';
 
 function tempSession(): string {
@@ -183,5 +183,139 @@ describe('FileWatcherService — validação estrita e gate de auditoria', () =>
     assert.doesNotThrow(() => w.forceCheckNow());
 
     fs.rmSync(dir6, { recursive: true, force: true });
+  });
+});
+
+describe('FileWatcherService — backfill de baseline para MCPs não selecionados', () => {
+  it('preenche attributes com a fórmula-base quando hull-propulsion e cybernetics-shields não são selecionados', async () => {
+    const dir = tempSession();
+    const auditPath = path.join(dir, 'mcp_audit.log');
+    fs.writeFileSync(auditPath, '', 'utf8');
+
+    const readySpecs: any[] = [];
+    const rejections: any[] = [];
+    const w = new FileWatcherService();
+    w.startWatching(dir, {
+      requiredMcps: ['weapons-arsenal'],
+      onShipReady: (s) => readySpecs.push(s),
+      onSpecRejected: (r) => rejections.push(r)
+    });
+
+    const sliders = { offense: 42, speed: 18, defense: 27, tech: 33 };
+    const rawSpec = {
+      pilot: FALLBACK_PRESETS.interceptor.pilot,
+      build_metadata: {
+        selected_mcps: ['weapons-arsenal'],
+        selected_subagents: ['aesthetic-designer', 'combat-strategist'],
+        energy_sliders: sliders,
+        fast_grill_me_choices: { weapon_focus: 'laser_piercing', visual_theme: 'synthwave_80s' },
+        synergies_unlocked: []
+      },
+      // attributes ausente de propósito -- simula o que agy escreve quando
+      // hull-propulsion/cybernetics-shields nunca foram chamados
+      weapons: FALLBACK_PRESETS.interceptor.weapons,
+      visuals: FALLBACK_PRESETS.interceptor.visuals
+    };
+
+    fs.appendFileSync(auditPath, auditLine('weapons-arsenal', 'configure_primary_cannon'));
+    fs.writeFileSync(path.join(dir, 'ship_spec.json'), JSON.stringify(rawSpec), 'utf8');
+    await wait(900);
+
+    assert.equal(rejections.length, 0, JSON.stringify(rejections));
+    assert.equal(readySpecs.length, 1);
+    const expected = computeBaselineAttributes(sliders);
+    assert.deepEqual(readySpecs[0].attributes, expected);
+
+    w.stopWatching();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('preenche weapons com a fórmula-base quando weapons-arsenal não é selecionado', async () => {
+    const dir = tempSession();
+    const auditPath = path.join(dir, 'mcp_audit.log');
+    fs.writeFileSync(auditPath, '', 'utf8');
+
+    const readySpecs: any[] = [];
+    const rejections: any[] = [];
+    const w = new FileWatcherService();
+    w.startWatching(dir, {
+      requiredMcps: ['hull-propulsion'],
+      onShipReady: (s) => readySpecs.push(s),
+      onSpecRejected: (r) => rejections.push(r)
+    });
+
+    const sliders = { offense: 22, speed: 40, defense: 12, tech: 46 };
+    const rawSpec = {
+      pilot: FALLBACK_PRESETS.interceptor.pilot,
+      build_metadata: {
+        selected_mcps: ['hull-propulsion'],
+        selected_subagents: ['aesthetic-designer', 'systems-engineer'],
+        energy_sliders: sliders,
+        fast_grill_me_choices: { weapon_focus: 'vulcan_spread', visual_theme: 'dark_void_stealth' },
+        synergies_unlocked: []
+      },
+      attributes: {
+        max_hp: 4,
+        speed_px_s: 340,
+        hitbox_radius: 10,
+        shield_capacity: 2
+      },
+      // weapons ausente de propósito -- simula uma sessão onde weapons-arsenal
+      // nunca foi chamado
+      visuals: FALLBACK_PRESETS.interceptor.visuals
+    };
+
+    fs.appendFileSync(auditPath, auditLine('hull-propulsion', 'tune_thrusters'));
+    fs.writeFileSync(path.join(dir, 'ship_spec.json'), JSON.stringify(rawSpec), 'utf8');
+    await wait(900);
+
+    assert.equal(rejections.length, 0, JSON.stringify(rejections));
+    assert.equal(readySpecs.length, 1);
+    const expectedWeapons = computeBaselineWeapons(sliders, 'vulcan_spread');
+    assert.deepEqual(readySpecs[0].weapons, expectedWeapons);
+    // attributes de hull-propulsion (MCP selecionado) passam intactos
+    assert.equal(readySpecs[0].attributes.max_hp, 4);
+    assert.equal(readySpecs[0].attributes.speed_px_s, 340);
+    assert.equal(readySpecs[0].attributes.hitbox_radius, 10);
+
+    w.stopWatching();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('rejeita weapons fora do schema quando weapons-arsenal FOI selecionado, mesmo com a fórmula-base disponível', async () => {
+    const dir = tempSession();
+    const auditPath = path.join(dir, 'mcp_audit.log');
+    fs.writeFileSync(auditPath, '', 'utf8');
+
+    const readySpecs: any[] = [];
+    const rejections: any[] = [];
+    const w = new FileWatcherService();
+    w.startWatching(dir, {
+      requiredMcps: ['weapons-arsenal'],
+      onShipReady: (s) => readySpecs.push(s),
+      onSpecRejected: (r) => rejections.push(r)
+    });
+
+    const rawSpec = {
+      ...FALLBACK_PRESETS.interceptor,
+      weapons: {
+        ...FALLBACK_PRESETS.interceptor.weapons,
+        primary: {
+          ...FALLBACK_PRESETS.interceptor.weapons.primary,
+          damage: 9999 // fora do range [10,60] do schema
+        }
+      }
+    };
+
+    fs.appendFileSync(auditPath, auditLine('weapons-arsenal', 'configure_primary_cannon'));
+    fs.writeFileSync(path.join(dir, 'ship_spec.json'), JSON.stringify(rawSpec), 'utf8');
+    await wait(900);
+
+    assert.equal(readySpecs.length, 0, 'nunca deve mascarar dano inválido de um MCP selecionado com a fórmula-base');
+    assert.equal(rejections.length, 1);
+    assert.equal(rejections[0].reason, 'SCHEMA_INVALID');
+
+    w.stopWatching();
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });
