@@ -321,7 +321,7 @@ export class FileWatcherService {
       attributes: {
         speed_px_s: Math.max(150, Math.min(500, Number(raw.attributes?.speed_px_s || raw.speed_px_s || raw.speed))),
         max_hp: Math.max(1, Math.min(10, Number(raw.attributes?.max_hp || raw.max_hp || raw.hp))),
-        shield_capacity: Math.max(0, Math.min(10, Number(raw.attributes?.shield_capacity || raw.shield_capacity || raw.shield))),
+        shield_capacity: Math.max(0, Math.min(10, Number(raw.attributes?.shield_capacity ?? raw.shield_capacity ?? raw.shield))),
         hitbox_radius: Math.max(5, Math.min(25, Number(raw.attributes?.hitbox_radius || raw.hitbox_radius || raw.hitbox)))
       },
       weapons: {
@@ -335,7 +335,7 @@ export class FileWatcherService {
         secondary: {
           type: secondaryType,
           damage: Number(raw.weapons?.secondary?.damage),
-          cooldown_seconds: Math.max(1, Math.min(10, Number(raw.weapons?.secondary?.cooldown_seconds || raw.cooldown)))
+          cooldown_seconds: Math.max(0, Math.min(10, Number(raw.weapons?.secondary?.cooldown_seconds ?? raw.cooldown)))
         }
       },
       visuals: {

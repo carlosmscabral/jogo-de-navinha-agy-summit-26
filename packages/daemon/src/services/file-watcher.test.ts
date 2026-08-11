@@ -318,4 +318,51 @@ describe('FileWatcherService — backfill de baseline para MCPs não selecionado
     w.stopWatching();
     fs.rmSync(dir, { recursive: true, force: true });
   });
+
+  it('aceita shield_capacity: 0 (valor legítimo do schema) quando cybernetics-shields é o único MCP selecionado, nos sliders padrão do app', async () => {
+    const dir = tempSession();
+    const auditPath = path.join(dir, 'mcp_audit.log');
+    fs.writeFileSync(auditPath, '', 'utf8');
+
+    const readySpecs: any[] = [];
+    const rejections: any[] = [];
+    const w = new FileWatcherService();
+    w.startWatching(dir, {
+      requiredMcps: ['cybernetics-shields'],
+      onShipReady: (s) => readySpecs.push(s),
+      onSpecRejected: (r) => rejections.push(r)
+    });
+
+    // Sliders padrão do player-app (App.tsx) -- tech: 15 é < 20, então o retorno
+    // real de calibrate_energy_barrier é shield_capacity: 0 (um valor legítimo,
+    // não "ausente").
+    const sliders = { offense: 35, speed: 35, defense: 15, tech: 15 };
+    const rawSpec = {
+      pilot: FALLBACK_PRESETS.interceptor.pilot,
+      build_metadata: {
+        selected_mcps: ['cybernetics-shields'],
+        selected_subagents: ['aesthetic-designer', 'systems-engineer'],
+        energy_sliders: sliders,
+        fast_grill_me_choices: { weapon_focus: 'laser_piercing', visual_theme: 'synthwave_80s' },
+        synergies_unlocked: []
+      },
+      attributes: {
+        shield_capacity: 0
+      },
+      // max_hp/speed_px_s/hitbox_radius e weapons ausentes de propósito -- hull-propulsion
+      // e weapons-arsenal não foram selecionados
+      visuals: FALLBACK_PRESETS.interceptor.visuals
+    };
+
+    fs.appendFileSync(auditPath, auditLine('cybernetics-shields', 'calibrate_energy_barrier'));
+    fs.writeFileSync(path.join(dir, 'ship_spec.json'), JSON.stringify(rawSpec), 'utf8');
+    await wait(900);
+
+    assert.equal(rejections.length, 0, JSON.stringify(rejections));
+    assert.equal(readySpecs.length, 1);
+    assert.equal(readySpecs[0].attributes.shield_capacity, 0, 'um shield_capacity real de 0 não pode virar NaN nem ser rejeitado');
+
+    w.stopWatching();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
 });
