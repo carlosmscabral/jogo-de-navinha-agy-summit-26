@@ -79,11 +79,43 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
 
   const toggleMcp = (mcp: McpServerName) => {
     if (selectedMcps.includes(mcp)) {
+      // O sub-agente tático ativo narra os resultados do(s) MCP(s) que ele precisa — se o
+      // visitante remover o único MCP restante do par exigido, o sub-agente fica sem nada para
+      // analisar no terminal. Por isso bloqueamos a remoção do(s) MCP(s) que a ainda-ativa
+      // combat-strategist / systems-engineer depende, sem restringir os demais.
+      const isRequiredByCombatStrategist =
+        selectedTacticalAgent === 'combat-strategist' && mcp === 'weapons-arsenal';
+      const isRequiredByPairedSystemsEngineer =
+        selectedTacticalAgent === 'systems-engineer' &&
+        (mcp === 'hull-propulsion' || mcp === 'cybernetics-shields') &&
+        !selectedMcps.some((m) => m !== mcp && (m === 'hull-propulsion' || m === 'cybernetics-shields'));
+
+      if (isRequiredByCombatStrategist || isRequiredByPairedSystemsEngineer) {
+        return;
+      }
+
       if (selectedMcps.length > 1) {
         setSelectedMcps(selectedMcps.filter((m) => m !== mcp));
       }
     } else {
       setSelectedMcps([...selectedMcps, mcp]);
+    }
+  };
+
+  const selectTacticalAgent = (agent: 'combat-strategist' | 'systems-engineer') => {
+    setSelectedTacticalAgent(agent);
+
+    // Ao trocar de sub-agente tático, garanta que ele tenha pelo menos um MCP dos que narra —
+    // caso contrário ele seria dispatchado sem nenhum valor obtido para comentar no terminal.
+    if (agent === 'combat-strategist') {
+      if (!selectedMcps.includes('weapons-arsenal')) {
+        setSelectedMcps([...selectedMcps, 'weapons-arsenal']);
+      }
+    } else {
+      const hasPairedMcp = selectedMcps.includes('hull-propulsion') || selectedMcps.includes('cybernetics-shields');
+      if (!hasPairedMcp) {
+        setSelectedMcps([...selectedMcps, 'hull-propulsion']);
+      }
     }
   };
 
@@ -403,7 +435,7 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <button
               type="button"
-              onClick={() => setSelectedTacticalAgent('combat-strategist')}
+              onClick={() => selectTacticalAgent('combat-strategist')}
               className={`p-3 rounded-xl border text-left text-xs flex justify-between items-center transition-all ${
                 selectedTacticalAgent === 'combat-strategist'
                   ? 'border-[#ff9e0b] bg-[#ff9e0b]/10 text-white font-bold'
@@ -419,7 +451,7 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
 
             <button
               type="button"
-              onClick={() => setSelectedTacticalAgent('systems-engineer')}
+              onClick={() => selectTacticalAgent('systems-engineer')}
               className={`p-3 rounded-xl border text-left text-xs flex justify-between items-center transition-all ${
                 selectedTacticalAgent === 'systems-engineer'
                   ? 'border-[#10b981] bg-[#10b981]/10 text-white font-bold'
