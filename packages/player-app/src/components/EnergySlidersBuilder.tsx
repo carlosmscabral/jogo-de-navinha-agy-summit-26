@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { EnergySliders, McpServerName, SubagentName, PilotInfo } from '@jogo/shared';
+import { EnergySliders, McpServerName, SubagentName, PilotInfo, computeBaselineAttributes, computeBaselineWeapons } from '@jogo/shared';
 import { Zap, Shield, Sparkles, Crosshair, ChevronRight, CheckCircle2, Cpu, Flame, Gauge, Layers, Award, ArrowLeft } from 'lucide-react';
 
 interface EnergySlidersBuilderProps {
@@ -32,15 +32,26 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
   const overclockMultiplier = mcpCount === 1 ? 1.2 : mcpCount === 2 ? 1.1 : 1.0;
   const scoreMultiplier = mcpCount === 1 ? 1.25 : mcpCount === 2 ? 1.1 : 1.0;
 
-  // Live Projected Stats
-  const rawDps = Math.round(sliders.offense * 35);
+  // Live Projected Stats -- calculado com a MESMA fórmula-base que o daemon usa
+  // para preencher os domínios de MCPs não selecionados
+  // (packages/shared/src/constants/baseline-ship-stats.ts), para que o número
+  // mostrado aqui nunca divirja do que a nave realmente recebe.
+  const baselineAttributes = computeBaselineAttributes(sliders);
+  // weapon_focus ainda não foi escolhido nesta tela (isso acontece depois, no
+  // Fast-Grill-Me do terminal AGY) -- mas nenhum dos campos numéricos de
+  // computeBaselineWeapons varia com weaponFocus (só o "type" narrativo varia),
+  // então qualquer valor válido serve aqui só para preview.
+  const baselineWeapons = computeBaselineWeapons(sliders, 'laser_piercing');
+
+  const rawDps = Math.round(baselineWeapons.primary.damage * baselineWeapons.primary.fire_rate);
   const projectedDps = selectedMcps.includes('weapons-arsenal') ? Math.round(rawDps * overclockMultiplier) : rawDps;
 
-  const rawSpeed = Math.round(180 + sliders.speed * 5.2);
+  const rawSpeed = Math.round(baselineAttributes.speed_px_s);
   const projectedSpeed = selectedMcps.includes('hull-propulsion') ? Math.round(rawSpeed * (mcpCount === 1 ? 1.15 : 1.0)) : rawSpeed;
 
-  const projectedHp = Math.max(2, Math.min(8, Math.round(sliders.defense / 6)));
-  const projectedShields = Math.max(1, Math.min(3, Math.round(sliders.tech / 13))) + (mcpCount === 1 && selectedMcps.includes('cybernetics-shields') ? 1 : 0);
+  const projectedHp = baselineAttributes.max_hp;
+  // A camada extra de overclock nunca pode ultrapassar o máximo real do schema (3).
+  const projectedShields = Math.min(3, baselineAttributes.shield_capacity + (mcpCount === 1 && selectedMcps.includes('cybernetics-shields') ? 1 : 0));
 
   // Detect active synergy
   let detectedSynergy = 'Custom Build';
@@ -343,6 +354,9 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
                 {scoreMultiplier.toFixed(2)}x
               </span>
             </div>
+            <p className="mt-2 text-[10px] text-slate-400 font-mono leading-snug">
+              Menos servidores MCP = maior multiplicador de pontuação, mas os sistemas não selecionados usam uma configuração padrão sólida em vez de calibração personalizada.
+            </p>
           </div>
         </div>
 
@@ -376,6 +390,11 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
               <p className="text-[11px] text-slate-300 leading-snug">
                 Canhões primários (Laser, Vulcan, Plasma) e mísseis secundários.
               </p>
+              <p className="text-[10px] text-slate-500 font-mono leading-snug">
+                {selectedMcps.includes('weapons-arsenal')
+                  ? 'Selecionado: calibração real via IA, com sinergias possíveis.'
+                  : 'Sem seleção: dano e cadência usam uma configuração padrão baseada no seu Ataque.'}
+              </p>
               {mcpCount === 1 && selectedMcps.includes('weapons-arsenal') && (
                 <span className="text-[10px] font-bold text-[#ff9e0b] font-mono">⚡ Overclock: +20% DPS Ativo!</span>
               )}
@@ -398,6 +417,11 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
               <p className="text-[11px] text-slate-300 leading-snug">
                 Propulsores de esquiva rápida, aceleração turbo e peso do casco.
               </p>
+              <p className="text-[10px] text-slate-500 font-mono leading-snug">
+                {selectedMcps.includes('hull-propulsion')
+                  ? 'Selecionado: calibração real via IA, com sinergias possíveis.'
+                  : 'Sem seleção: velocidade e resistência do casco (HP) usam uma configuração padrão baseada em Velocidade/Defesa.'}
+              </p>
               {mcpCount === 1 && selectedMcps.includes('hull-propulsion') && (
                 <span className="text-[10px] font-bold text-[#38bdf8] font-mono">⚡ Overclock: +20% Velocidade Ativo!</span>
               )}
@@ -419,6 +443,11 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
               </div>
               <p className="text-[11px] text-slate-300 leading-snug">
                 Camadas de escudos energéticos e módulos de sinergia matricial.
+              </p>
+              <p className="text-[10px] text-slate-500 font-mono leading-snug">
+                {selectedMcps.includes('cybernetics-shields')
+                  ? 'Selecionado: calibração real via IA, com sinergias possíveis.'
+                  : 'Sem seleção: escudo padrão baseado na sua Tecnologia.'}
               </p>
               {mcpCount === 1 && selectedMcps.includes('cybernetics-shields') && (
                 <span className="text-[10px] font-bold text-[#10b981] font-mono">⚡ Overclock: +1 Escudo Extra Ativo!</span>
