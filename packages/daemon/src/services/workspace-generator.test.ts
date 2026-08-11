@@ -43,4 +43,44 @@ describe('WorkspaceGeneratorService — GEMINI.md', () => {
     assert.doesNotMatch(md, /systems-engineer/);
     fs.rmSync(dir, { recursive: true, force: true });
   });
+
+  it('Fast-Grill-Me (PASSO 1) menciona a lista curada de cores de destaque como opcional', () => {
+    const dir = generate();
+    const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
+    assert.match(md, /Rosa Choque/);
+    assert.match(md, /Ciano Elétrico/);
+    assert.match(md, /Verde Ácido/);
+    assert.match(md, /Vermelho Sangue/);
+    assert.match(md, /Dourado Royal/);
+    assert.match(md, /Branco Gélido/);
+    assert.match(md, /Opcional/i);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('WorkspaceGeneratorService — aesthetic-designer.md', () => {
+  it('permite recolorir o tema escolhido para uma cor de destaque sem perder a identidade estrutural', () => {
+    const dir = generate();
+    const md = fs.readFileSync(path.join(dir, '.agents', 'agents', 'aesthetic-designer.md'), 'utf8');
+
+    // The 3 structural themes must still be present and drive the SVG's identity.
+    assert.match(md, /Synthwave/);
+    assert.match(md, /Dark Void/);
+    assert.match(md, /Cyberpunk Gold/);
+
+    // The curated accent-color list must be present for the subagent to honor.
+    assert.match(md, /Rosa Choque/);
+    assert.match(md, /Ciano Elétrico/);
+    assert.match(md, /Verde Ácido/);
+    assert.match(md, /Vermelho Sangue/);
+    assert.match(md, /Dourado Royal/);
+    assert.match(md, /Branco Gélido/);
+
+    // Key concept: recolor toward the requested accent while keeping structure intact,
+    // and fall back to the theme's default palette when no (recognized) color is given.
+    assert.match(md, /identidade estrutural/i);
+    assert.match(md, /opcional/i);
+
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
 });

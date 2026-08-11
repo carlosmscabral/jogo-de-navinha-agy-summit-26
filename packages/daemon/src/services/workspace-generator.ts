@@ -85,6 +85,18 @@ enable_write_tools: true
 ---
 Você é o Projetista Visual da nave espacial.
 Gere exclusivamente elementos vetoriais SVG (viewBox 0 0 128 128) com estética anos 80 Synthwave, Dark Void ou Cyberpunk Gold.
+O tema escolhido (Synthwave 80s, Dark Void Stealth ou Cyberpunk Gold) governa a estrutura geral do SVG,
+a composição e a identidade estilística — isso não muda.
+
+Personalização de cor (opcional): se o piloto mencionar uma cor de destaque da lista curada (Rosa
+Choque, Ciano Elétrico, Verde Ácido, Vermelho Sangue, Dourado Royal ou Branco Gélido), adapte
+\`primary_color\`, \`secondary_color\` e \`engine_trail_color\` em direção a essa cor, mantendo intacta a
+identidade estrutural/geométrica do tema escolhido — por exemplo, uma nave "Dark Void Stealth" com
+destaque "Rosa Choque" continua estruturalmente uma nave Dark Void Stealth (base escura, painéis
+angulares stealth etc.), apenas recolorida em tons de rosa/magenta em vez da paleta padrão
+roxo/violeta desse tema. Se nenhuma cor de destaque for mencionada, ou se a cor citada não estiver na
+lista curada, use a paleta padrão/característica do tema exatamente como hoje — esta é uma refinação
+opcional, não uma escolha obrigatória.
 `;
     fs.writeFileSync(path.join(agentsDir, 'aesthetic-designer.md'), aestheticContent, 'utf8');
 
@@ -153,7 +165,7 @@ Você DEVE invocar as ferramentas dos servidores MCP 'hull-propulsion' e 'cybern
 
     // Visuals are always included (aesthetic-designer is always active)
     contractRows.push('| `visuals.style_name` | `aesthetic-designer` | texto curto |');
-    contractRows.push('| `visuals.primary_color`, `secondary_color`, `engine_trail_color` | `aesthetic-designer` | hex `#rrggbb` |');
+    contractRows.push('| `visuals.primary_color`, `secondary_color`, `engine_trail_color` | `aesthetic-designer` (tema + cor de destaque opcional) | hex `#rrggbb` |');
     contractRows.push('| `visuals.svg_path_data` | `aesthetic-designer` | viewBox 0 0 128 128 |');
 
     const contractTable = contractRows.join('\n');
@@ -189,6 +201,9 @@ Estes são os únicos MCPs e sub-agentes disponíveis nesta sessão. Não refere
 1. **PASSO 1 - FAST GRILL-ME:** Pergunte ao piloto em 1 turno (ou leia seu prompt inicial):
    - [1] Foco de Armas: 1-Laser Perfurante, 2-Chuva de Mísseis, 3-Vulcan Espalhado
    - [2] Estilo Estético: 1-Synthwave 80s, 2-Dark Void Stealth, 3-Cyberpunk Gold
+       (Opcional: cite uma cor de destaque entre Rosa Choque, Ciano Elétrico, Verde Ácido,
+       Vermelho Sangue, Dourado Royal ou Branco Gélido — o Projetista Visual vai aplicá-la
+       dentro do estilo escolhido, sem abandonar sua identidade estrutural.)
 2. **PASSO 2 - DELEGAÇÃO:** Invoque os sub-agentes em \`.agents/agents/\` para forjar a nave.
 3. **PASSO 3 - EXECUÇÃO DE TOOLS:** Os sub-agentes DEVEM executar as ferramentas dos MCPs ativos. O
    jogo verifica \`mcp_audit.log\` antes de aceitar a nave: **sem registro de execução, a nave é
