@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      # Redundante com o `npm test` acima (que já roda packages/sim desde a Tarefa B7) -- este passo
+      # existe só para que uma falha do portão de balanceamento (D12) apareça com nome próprio no log
+      # de CI, em vez de ficar escondida dentro de um passo genérico "test".
+      - name: Balance gate (packages/sim)
+        run: npm run test --workspace=packages/sim
