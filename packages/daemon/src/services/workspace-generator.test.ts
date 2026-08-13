@@ -149,6 +149,18 @@ describe('WorkspaceGeneratorService — GEMINI.md', () => {
     assert.match(md, /weapons\.primary\.spread_angle/);
     fs.rmSync(dir, { recursive: true, force: true });
   });
+
+  it('contrato de svg_path_data exige viewBox 0 0 128 128 (nunca 100 100) e restringe a comandos de path seguros', () => {
+    const dir = generate();
+    const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
+    assert.match(md, /viewBox `0 0 128 128`/);
+    assert.doesNotMatch(md, /viewBox `?0 0 100 100`?/, 'nunca o viewBox 100x100 do rascunho antigo do plano');
+    assert.match(md, /M\/L\/C\/Q\/Z/);
+    assert.match(md, /Sem `<svg>`/);
+    assert.match(md, /sem atributos/);
+    assert.match(md, /sem `url\(\)`/);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
 });
 
 describe('WorkspaceGeneratorService — aesthetic-designer.md', () => {
@@ -173,6 +185,22 @@ describe('WorkspaceGeneratorService — aesthetic-designer.md', () => {
     // and fall back to the theme's default palette when no (recognized) color is given.
     assert.match(md, /identidade estrutural/i);
     assert.match(md, /opcional/i);
+
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('instrui o próprio sub-agente (não só a tabela do orquestrador) a restringir svg_path_data a M/L/C/Q/Z, sem <svg>, atributos ou url()', () => {
+    const dir = generate();
+    const md = fs.readFileSync(path.join(dir, '.agents', 'agents', 'aesthetic-designer.md'), 'utf8');
+
+    // Pre-existing viewBox sentence must still be present and untouched by the new addition.
+    assert.match(md, /viewBox 0 0 128 128/);
+
+    // New safe-path-data constraint, added directly to the sub-agent's own instructions.
+    assert.match(md, /M\/L\/C\/Q\/Z/);
+    assert.match(md, /nunca a tag `<svg>` em si/);
+    assert.match(md, /nenhum atributo/);
+    assert.match(md, /nenhuma referência `url\(\)`/);
 
     fs.rmSync(dir, { recursive: true, force: true });
   });
