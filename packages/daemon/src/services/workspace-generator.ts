@@ -1,6 +1,17 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { EnergySliders, McpServerName, SubagentName } from '@jogo/shared';
+import { BALANCE, EnergySliders, McpServerName, SubagentName } from '@jogo/shared';
+
+/**
+ * Renderiza a faixa numérica de `key` (fonte única: `BALANCE.ranges`, ver
+ * Tarefa B1/B2 -- D14) no formato usado pela tabela de contrato do GEMINI.md,
+ * para que o prompt nunca anuncie ao agente uma faixa diferente da que o
+ * schema realmente aceita.
+ */
+function rangeRow(key: keyof typeof BALANCE.ranges): string {
+  const r = BALANCE.ranges[key];
+  return r.integer ? `inteiro de ${r.min} a ${r.max}` : `${r.min} a ${r.max}`;
+}
 
 export interface SessionWorkspaceConfig {
   sessionDir?: string;
@@ -148,22 +159,22 @@ ferramenta MCP por conta própria — os valores já foram obtidos pelo Orquestr
     // Conditionally add rows based on selected MCPs
     if (selected_mcps.includes('cybernetics-shields')) {
       contractRows.push('| `build_metadata.synergies_unlocked` | Retorno de `cybernetics-shields` | — |');
-      contractRows.push('| `attributes.shield_capacity` | Retorno de `cybernetics-shields` | inteiro de 0 a 3 |');
+      contractRows.push(`| \`attributes.shield_capacity\` | Retorno de \`cybernetics-shields\` | ${rangeRow('attributes.shield_capacity')} |`);
     }
     if (selected_mcps.includes('hull-propulsion')) {
-      contractRows.push('| `attributes.max_hp` | Retorno de `hull-propulsion` | inteiro de 2 a 5 |');
-      contractRows.push('| `attributes.speed_px_s` | Retorno de `hull-propulsion` | 180 a 380 |');
-      contractRows.push('| `attributes.hitbox_radius` | Retorno de `hull-propulsion` | 8 a 16 |');
+      contractRows.push(`| \`attributes.max_hp\` | Retorno de \`hull-propulsion\` | ${rangeRow('attributes.max_hp')} |`);
+      contractRows.push(`| \`attributes.speed_px_s\` | Retorno de \`hull-propulsion\` | ${rangeRow('attributes.speed_px_s')} |`);
+      contractRows.push(`| \`attributes.hitbox_radius\` | Retorno de \`hull-propulsion\` | ${rangeRow('attributes.hitbox_radius')} |`);
     }
     if (selected_mcps.includes('weapons-arsenal')) {
       contractRows.push('| `weapons.primary.type` | Retorno de `weapons-arsenal` | laser, plasma ou vulcan_spread |');
-      contractRows.push('| `weapons.primary.damage` | Retorno de `weapons-arsenal` | 15 a 45 |');
-      contractRows.push('| `weapons.primary.fire_rate` | Retorno de `weapons-arsenal` | 5 a 12 |');
-      contractRows.push('| `weapons.primary.bullet_speed` | Retorno de `weapons-arsenal` | 400 a 800 |');
-      contractRows.push('| `weapons.primary.spread_angle` | Retorno de `weapons-arsenal` | 0 a 30 |');
+      contractRows.push(`| \`weapons.primary.damage\` | Retorno de \`weapons-arsenal\` | ${rangeRow('weapons.primary.damage')} |`);
+      contractRows.push(`| \`weapons.primary.fire_rate\` | Retorno de \`weapons-arsenal\` | ${rangeRow('weapons.primary.fire_rate')} |`);
+      contractRows.push(`| \`weapons.primary.bullet_speed\` | Retorno de \`weapons-arsenal\` | ${rangeRow('weapons.primary.bullet_speed')} |`);
+      contractRows.push(`| \`weapons.primary.spread_angle\` | Retorno de \`weapons-arsenal\` | ${rangeRow('weapons.primary.spread_angle')} |`);
       contractRows.push('| `weapons.secondary.type` | Retorno de `weapons-arsenal` | homing_missiles ou emp_burst |');
-      contractRows.push('| `weapons.secondary.damage` | Retorno de `weapons-arsenal` | 60 a 150 |');
-      contractRows.push('| `weapons.secondary.cooldown_seconds` | Retorno de `weapons-arsenal` | 3 a 12 |');
+      contractRows.push(`| \`weapons.secondary.damage\` | Retorno de \`weapons-arsenal\` | ${rangeRow('weapons.secondary.damage')} |`);
+      contractRows.push(`| \`weapons.secondary.cooldown_seconds\` | Retorno de \`weapons-arsenal\` | ${rangeRow('weapons.secondary.cooldown_seconds')} |`);
     }
 
     // Visuals are always included (aesthetic-designer is always active)
@@ -245,6 +256,10 @@ para os MCPs que ESTÃO ativos.
    devem invocar nenhuma ferramenta MCP por conta própria.
 4. **PASSO 4 - CRIAÇÃO DO ARQUIVO:** Use sua ferramenta de escrita para gravar
    \`${sessionDir}/ship_spec.json\` com os valores que as ferramentas retornaram.
+5. **VERIFIQUE A ACEITAÇÃO.** Depois de gravar o \`ship_spec.json\`, aguarde 2 segundos e verifique se
+   o arquivo \`spec_errors.txt\` existe neste diretório. Se existir, leia-o, corrija exatamente os
+   campos citados, apague o \`spec_errors.txt\` e reescreva o \`ship_spec.json\`. Repita até que ele não
+   reapareça.
 
 ### CONTRATO DO \`ship_spec.json\` (estrutura, não valores):
 

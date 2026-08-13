@@ -232,6 +232,16 @@ app.post('/api/session/start', (req, res) => {
         armSilenceTimer(energy_sliders, 'após rejeição de spec');
         console.error('[Daemon] Spec rejeitada:', rejection.reason, rejection.details.join('; '));
         broadcast({ type: 'EVENT_SPEC_REJECTED', data: rejection });
+
+        // [D14] Motivo da rejeição em disco, para o agente ler e corrigir --
+        // ver PASSO 5 do protocolo em GEMINI.md (workspace-generator.ts).
+        const errorFile = path.join(sessionDir, 'spec_errors.txt');
+        fs.writeFileSync(errorFile,
+          `A ship_spec.json foi RECUSADA pelo validador.\n\n` +
+          rejection.details.map((e) => `- ${e}`).join('\n') +
+          `\n\nCorrija os campos citados e reescreva o arquivo. Apague este spec_errors.txt depois.\n`,
+          'utf8'
+        );
       },
       onAuditGateSatisfied: () => {
         auditGateSatisfied = true;
