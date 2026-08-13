@@ -1,4 +1,5 @@
 export * from './types/ship.js';
+export * from './game/synergies.js';
 export * from './constants/balance.js';
 export * from './constants/fallback-presets.js';
 export * from './constants/baseline-ship-stats.js';
