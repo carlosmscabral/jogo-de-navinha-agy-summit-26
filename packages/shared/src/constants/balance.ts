@@ -69,8 +69,8 @@ export const BALANCE = {
   },
 
   boss: {
-    max_hp: 1750,
-    max_hp_hardcore: 2567,
+    max_hp: 1150,
+    max_hp_hardcore: 1687,
     hardcore_difficulty_factor: 1.4,
     phase2_hp_ratio: 0.66,
     phase3_hp_ratio: 0.33,
