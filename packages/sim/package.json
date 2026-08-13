@@ -1,0 +1,13 @@
+{
+  "name": "@jogo/sim",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "test": "tsc && node --test dist/**/*.test.js",
+    "start": "tsc && node dist/run.js"
+  },
+  "dependencies": { "@jogo/shared": "*" },
+  "devDependencies": { "@types/node": "^22.13.4", "typescript": "^5.7.3" }
+}
