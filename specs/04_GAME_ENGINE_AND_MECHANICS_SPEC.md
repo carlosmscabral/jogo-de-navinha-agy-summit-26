@@ -202,23 +202,36 @@ O ajuste não é escolher outro número por intuição — foi assim que se cheg
 [Spec 09](./09_GAME_BALANCE_AND_DEV_MODE.md) resolve: extrair o tuning para uma fonte única, simular, e
 travar a taxa de vitória em CI. Enquanto isso não existir, qualquer número novo é outro palpite.
 
-> **Correção (B8, medido em 2026-08-13).** Os números de `mitigation`/`max_hp` acima e na tabela da
-> §5 são os que **produziram** D12; eles não valem mais em `balance.ts`. Os valores finais medidos —
-> `boss.max_hp: 1.750` (`max_hp_hardcore: 2.567`), `boss.mitigation: { phase1: 0.65, phase2: 0.70,
-> phase3: 1.0 }`, `weapons.primary.vulcan_pellet_factor: 0.6`, `match.boss_spawn_s: 40`,
-> `match.boss_warning_s: 37` — e o processo que chegou a eles (cinco hipóteses aplicadas uma de cada
-> vez, efeito medido a cada passo) estão registrados na [Spec 09](./09_GAME_BALANCE_AND_DEV_MODE.md)
-> §2.4, que é a fonte numérica autoritativa por definição (Restrições Globais #3). Resultado líquido:
-> os três presets de fallback deixam de ter taxa de vitória 0% (`interceptor` 1,5%, `vanguard` 5,5%,
-> `striker` 0,5% em habilidade mediana, 200 seeds) — o achado literal de D12 está corrigido. A banda
-> agregada de 15–25% do critério abaixo, porém, **não fecha** com o elenco atual de 8 arquétipos do
-> simulador: dois arquétipos sintéticos de teto (`maximo`, `vulcan_max`, que empilham todo atributo de
-> `BALANCE.ranges` no máximo simultaneamente — combinação que nenhuma nave orçamentada pelo forge
-> alcança) saturam perto de 100% em qualquer `boss.max_hp` baixo o bastante para tirar os três
-> fallbacks de 0%, e um arquétipo sintético de piso (`minimo`) morre em ≈2 acertos independentemente
-> do HP do boss. Ver Spec 09 §2.4 para a prova de que isso é estrutural, não falta de tuning, e para a
-> recomendação de próximo passo (revisar o elenco de arquétipos do portão de CI, não os cinco campos
-> de `balance.ts` autorizados nesta tarefa).
+> **Correção (B8, medido em 2026-08-13, números revisados após revisão externa no mesmo dia).** Os
+> números de `mitigation`/`max_hp` acima e na tabela da §5 são os que **produziram** D12; eles não
+> valem mais em `balance.ts`. Os valores finais medidos — `boss.max_hp: 1.150` (`max_hp_hardcore:
+> 1.687`), `boss.mitigation: { phase1: 0.65, phase2: 0.70, phase3: 1.0 }`,
+> `weapons.primary.vulcan_pellet_factor: 0.6`, `match.boss_spawn_s: 40`, `match.boss_warning_s: 37`
+> — e o processo que chegou a eles (cinco hipóteses aplicadas uma de cada vez, efeito medido a cada
+> passo, incluindo duas correções de medição feitas depois de uma revisão externa apontar que a
+> contagem original de 200 seeds não tinha poder estatístico suficiente) estão registrados na
+> [Spec 09](./09_GAME_BALANCE_AND_DEV_MODE.md) §2.4, que é a fonte numérica autoritativa por
+> definição (Restrições Globais #3). Resultado líquido, medido com 2.000–10.000 seeds (não 200,
+> insuficiente para taxas abaixo de ≈1%): os três presets de fallback saem de uma taxa de vitória
+> **média** de 0% para ≈20,6% em habilidade mediana (`interceptor` 9,2%, `vanguard` 51,6%, `striker`
+> 1,0% a 2.000 seeds) — dentro da banda de 15–25% **para essa métrica específica**, que é o achado
+> literal de D12 corrigido. `striker` continua o mais fraco dos três por uma característica
+> pré-existente de `fallback-presets.ts` (fora de escopo aqui), não por falta de tuning.
+>
+> A banda de 15–25% do critério abaixo, porém, usa o `aggregateWinRate` de **8** arquétipos do
+> simulador (3 fallbacks reais + 5 sondas sintéticas de limite), não a média dos 3 reais — e essa
+> métrica de 8 arquétipos fica em 33,8%, fora da banda. Confirmado por uma varredura própria e,
+> independentemente, por uma revisão externa que testou uma grade de 5.760 combinações cobrindo todo
+> o espaço autorizado: **não existe nenhum ponto nos 5 campos de `balance.ts` autorizados por esta
+> tarefa onde as 4 condições do portão de CI fecham simultaneamente.** Causa raiz: `maximo` e
+> `vulcan_max` empilham todo atributo de `BALANCE.ranges` no máximo simultaneamente — uma alocação de
+> energia (equivalente a ≈200 dos 100 pontos que o builder realmente distribui) que nenhuma nave
+> orçamentada pelo forge alcança — e permanecem perto de 100% em qualquer `boss.max_hp` fraco o
+> bastante para dar aos 3 fallbacks reais uma chance; `minimo`/`tanque` (ofensiva no piso de
+> `BALANCE.ranges`) permanecem perto de 0% na mesma faixa. Ver Spec 09 §2.4.1 para a prova completa,
+> a tabela de retune de `boss.max_hp`, e a recomendação de próximo passo (revisar o elenco de
+> arquétipos do portão de CI ou a própria banda-alvo — nenhuma das duas no escopo dos cinco campos de
+> `balance.ts` autorizados nesta tarefa).
 
 ### 5.2. [D15] As sinergias não afetam o boss nem nada
 
@@ -273,15 +286,22 @@ finalScore = round( (combatScore + bossBonus + timeBonus + survivalBonus + syner
 - [ ] Uma sinergia ativa produz diferença mensurável em atributo ou dano, verificável no harness de dev.
 - [ ] A taxa de vitória sobre o boss, medida pelo simulador da
       [Spec 09](./09_GAME_BALANCE_AND_DEV_MODE.md) — **parcialmente cumprido, medido em 2026-08-13**
-      via `npm run sim:balance` e `npm run test --workspace=packages/sim` (200 seeds): os três presets
-      de fallback (`interceptor`/`vanguard`/`striker`) saem de 0% e passam a vencer em habilidade
-      mediana (1,5% / 5,5% / 0,5%), fechando o achado literal de D12. A taxa **agregada** dos 8
-      arquétipos do simulador fica em 25,9% (banda-alvo 15–25%, ≈1pp acima), e o teste de CI de
-      `balance-gate.test.ts` **ainda falha** em 3 das 4 condições — não por falta de tuning, mas porque
-      dois arquétipos sintéticos de teto (`maximo`, `vulcan_max`) saturam perto de 100% sempre que o
-      boss é fraco o bastante para os três fallbacks vencerem, enquanto um arquétipo sintético de piso
-      (`minimo`) morre em ≈2 acertos independentemente do HP do boss — ver a prova em Spec 09 §2.4.
-      Números simulador-somente: o Passo 4 (cinco partidas jogadas à mão) **não foi executado** —
-      nenhuma tarefa desta fase teve acesso a navegador — e continua pendente antes do Gate M1, junto
-      com a captura de conformidade ainda pendente da Tarefa B7.
+      via `npm run sim:balance` e `npm run test --workspace=packages/sim` (2.000 seeds — elevado de
+      200 depois que uma revisão externa mostrou que 200 não tem poder estatístico para taxas abaixo
+      de ≈1%; a medição que decidiu `boss.max_hp` usou 10.000 seeds por arquétipo, ver Spec 09
+      §2.4.1): a **média** de vitória dos três presets de fallback (`interceptor`/`vanguard`/
+      `striker`) sobe de 0% para ≈20,6% em habilidade mediana (`interceptor` 9,2%, `vanguard` 51,6%,
+      `striker` 1,0%) — dentro da banda-alvo de 15–25% para essa métrica, fechando o achado literal de
+      D12. O `aggregateWinRate` de **8** arquétipos que `balance-gate.test.ts` de fato usa (3
+      fallbacks reais + 5 sondas sintéticas de limite, média não ponderada) fica em 33,8%, fora da
+      banda, e o teste de CI **ainda falha** em 3 das 4 condições — não por falta de tuning, mas
+      porque `maximo`/`vulcan_max` (todo atributo de `BALANCE.ranges` no máximo simultaneamente, uma
+      alocação de energia que nenhum forge real permite) permanecem perto de 100% em qualquer
+      `boss.max_hp` fraco o bastante para os três fallbacks reais vencerem, enquanto `minimo`/`tanque`
+      (ofensiva no piso de `BALANCE.ranges`) permanecem perto de 0% na mesma faixa — confirmado por
+      varredura própria e, de forma independente, por uma grade de 5.760 pontos de uma revisão
+      externa cobrindo todo o espaço autorizado. Ver a prova completa em Spec 09 §2.4.1. Números
+      simulador-somente: o Passo 4 (cinco partidas jogadas à mão) **não foi executado** — nenhuma
+      tarefa desta fase teve acesso a navegador — e continua pendente antes do Gate M1, junto com a
+      captura de conformidade ainda pendente da Tarefa B7.
 - [ ] `ScoreCalculator.test.ts` executa no `npm test` da raiz e passa.
