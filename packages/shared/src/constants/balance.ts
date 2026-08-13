@@ -75,7 +75,7 @@ export const BALANCE = {
     phase2_hp_ratio: 0.66,
     phase3_hp_ratio: 0.33,
     /** Fração do dano que atravessa em cada fase. Menor = mais resistente. */
-    mitigation: { phase1: 0.50, phase2: 0.70, phase3: 1.0 },
+    mitigation: { phase1: 0.70, phase2: 0.70, phase3: 1.0 },
     min_damage_per_hit: 5,
     /**
      * Teto por hit aplicado a QUALQUER dano recebido pelo boss. `BossOverlord.takeDamage`
