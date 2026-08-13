@@ -167,6 +167,7 @@ export class WeaponSystem {
       duration: 500,
       onComplete: () => ring.destroy()
     });
+    this.scene.events.emit('secondary-emp-burst', { x, y, damage });
   }
 
   update(): void {
@@ -179,5 +180,28 @@ export class WeaponSystem {
       }
       return true;
     });
+
+    // Clean out of bounds missiles. Without this, the pool of
+    // BALANCE.pools.secondary_missiles exhausts after a few volleys and the
+    // secondary weapon silently stops spawning anything (D13).
+    this.secondaryMissiles.children.iterate((child) => {
+      const m = child as Phaser.Physics.Arcade.Sprite;
+      if (m && m.active && (m.y < -50 || m.y > 900 || m.x < -50 || m.x > 850)) {
+        m.setActive(false);
+        m.setVisible(false);
+      }
+      return true;
+    });
   }
+}
+
+/**
+ * Dano do EMP em função da distância ao epicentro. Pura por design: reusada pelo
+ * simulador (Tarefa B7) sem instanciar Phaser.
+ */
+export function computeEmpDamage(baseDamage: number, distance: number): number {
+  const { emp_radius_px, emp_edge_falloff } = BALANCE.weapons.secondary;
+  if (distance > emp_radius_px) return 0;
+  const t = distance / emp_radius_px;
+  return baseDamage * (1 - t * (1 - emp_edge_falloff));
 }

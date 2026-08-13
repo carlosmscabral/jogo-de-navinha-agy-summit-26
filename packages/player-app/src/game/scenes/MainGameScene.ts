@@ -1,11 +1,22 @@
 import Phaser from 'phaser';
-import { BALANCE, ShipSpecification, FALLBACK_PRESETS, MatchTelemetry, ScoreBreakdown, SeededRandom } from '@jogo/shared';
+import {
+  BALANCE,
+  ShipSpecification,
+  FALLBACK_PRESETS,
+  MatchTelemetry,
+  ScoreBreakdown,
+  SeededRandom,
+  SynergyName,
+  applySynergies,
+  regeneratesHp
+} from '@jogo/shared';
 import { PlayerShip } from '../objects/PlayerShip.js';
 import { BossOverlord } from '../objects/BossOverlord.js';
 import { ShipTextureFactory } from '../factories/ShipTextureFactory.js';
 import { renderSvgShipTexture } from '../factories/SvgShipRenderer.js';
 import { ScoreCalculator } from '../scoring/ScoreCalculator.js';
 import { audioManager } from '../audio/AudioManager.js';
+import { computeEmpDamage } from '../weapons/WeaponSystem.js';
 // Type-only: `game/index.ts` imports `MainGameScene` at the value level, so a value import
 // here would create a runtime circular dependency. `import type` is erased entirely by the
 // compiler/bundler, so no cycle exists at runtime (verified via `npm run build`).
@@ -26,6 +37,7 @@ export class MainGameScene extends Phaser.Scene {
   seed = 0;
   rng!: SeededRandom;
   player!: PlayerShip;
+  appliedSynergies: SynergyName[] = [];
   boss?: BossOverlord;
   scoreCalculator = new ScoreCalculator();
   onMatchComplete?: (data: { finalScore: number; victory: boolean; breakdown: ScoreBreakdown; telemetry: MatchTelemetry }) => void;
@@ -112,13 +124,15 @@ export class MainGameScene extends Phaser.Scene {
     // 3. Create Player Ship
     const startX = this.scale.width / 2;
     const startY = this.scale.height - 120;
+    const synergy = applySynergies(this.shipSpec);
+    this.appliedSynergies = synergy.applied;
     this.player = new PlayerShip(
       this,
       startX,
       startY,
       textureKey,
-      this.shipSpec.attributes,
-      this.shipSpec.weapons,
+      synergy.attributes,
+      synergy.weapons,
       this.shipSpec.visuals
     );
     this.player.godMode = !!this.devOptions?.godMode;
@@ -222,6 +236,15 @@ export class MainGameScene extends Phaser.Scene {
       this.triggerBossWarning();
     } else if (this.elapsedSeconds === BALANCE.match.boss_spawn_s) {
       this.spawnBoss();
+    }
+
+    if (
+      regeneratesHp(this.appliedSynergies) &&
+      this.elapsedSeconds > 0 &&
+      this.elapsedSeconds % BALANCE.synergies.titan_fortress.regen_interval_s === 0 &&
+      this.player.currentHp < this.player.attributes.max_hp
+    ) {
+      this.player.currentHp += 1;
     }
 
     if (this.matchTimer <= 0 && !this.isVictory) {
@@ -550,7 +573,7 @@ export class MainGameScene extends Phaser.Scene {
       bossDefeated: true,
       remainingTimeSeconds: this.matchTimer,
       remainingHp: this.player.currentHp,
-      synergyBonusUnlocked: true,
+      synergyBonusUnlocked: this.appliedSynergies.length > 0,
       mcpCount
     });
 
@@ -647,7 +670,7 @@ export class MainGameScene extends Phaser.Scene {
       bossDefeated: false,
       remainingTimeSeconds: 0,
       remainingHp: 0,
-      synergyBonusUnlocked: false,
+      synergyBonusUnlocked: this.appliedSynergies.length > 0,
       mcpCount
     });
 
@@ -725,7 +748,7 @@ export class MainGameScene extends Phaser.Scene {
       bossDefeated: this.isVictory,
       remainingTimeSeconds: this.matchTimer,
       remainingHp: this.player?.currentHp || 0,
-      synergyBonusUnlocked: this.isVictory,
+      synergyBonusUnlocked: this.appliedSynergies.length > 0,
       mcpCount
     });
 
@@ -784,31 +807,21 @@ export class MainGameScene extends Phaser.Scene {
     this.physics.add.overlap(
       this.player.weaponSystem.primaryBullets,
       this.enemies,
-      (bulletObj, enemyObj) => {
-        if (this.isGameOver || this.isVictory) return;
-        const bullet = bulletObj as Phaser.Physics.Arcade.Sprite;
-        const enemy = enemyObj as Phaser.Physics.Arcade.Sprite;
-        const damage = (bullet.getData('damage') as number) || 30;
+      (bulletObj, enemyObj) => this.handleBulletHitsEnemy(bulletObj, enemyObj)
+    );
 
-        bullet.setActive(false);
-        bullet.setVisible(false);
+    // Secondary Missiles vs Enemies. Missiles fill `getData('damage')` the same way
+    // primary bullets do (see WeaponSystem.spawnMissile), so the exact same
+    // damage/kill/score logic applies unchanged.
+    this.physics.add.overlap(
+      this.player.weaponSystem.secondaryMissiles,
+      this.enemies,
+      (missileObj, enemyObj) => this.handleBulletHitsEnemy(missileObj, enemyObj)
+    );
 
-        let hp = (enemy.getData('hp') as number) || 30;
-        hp -= damage;
-
-        if (hp <= 0) {
-          this.createExplosionFX(enemy.x, enemy.y);
-          enemy.setActive(false);
-          enemy.setVisible(false);
-          const type = (enemy.getData('type') as 'drone' | 'cruiser') || 'drone';
-          this.scoreCalculator.registerKill(type);
-          audioManager.playExplosion();
-        } else {
-          enemy.setData('hp', hp);
-          this.createHitSpark(bullet.x, bullet.y);
-          audioManager.playHit();
-        }
-      }
+    // Secondary EMP bursts vs enemies and boss (see WeaponSystem.triggerEmpBurst).
+    this.events.on('secondary-emp-burst', ({ x, y, damage }: { x: number; y: number; damage: number }) =>
+      this.handleEmpBurst(x, y, damage)
     );
 
     // Enemy Bullets vs Player Ship
@@ -846,6 +859,67 @@ export class MainGameScene extends Phaser.Scene {
         this.triggerPlayerDeath();
       }
     });
+  }
+
+  private handleBulletHitsEnemy(bulletObj: unknown, enemyObj: unknown): void {
+    if (this.isGameOver || this.isVictory) return;
+    const bullet = bulletObj as Phaser.Physics.Arcade.Sprite;
+    const enemy = enemyObj as Phaser.Physics.Arcade.Sprite;
+    const damage = (bullet.getData('damage') as number) || 30;
+
+    bullet.setActive(false);
+    bullet.setVisible(false);
+
+    let hp = (enemy.getData('hp') as number) || 30;
+    hp -= damage;
+
+    if (hp <= 0) {
+      this.createExplosionFX(enemy.x, enemy.y);
+      enemy.setActive(false);
+      enemy.setVisible(false);
+      const type = (enemy.getData('type') as 'drone' | 'cruiser') || 'drone';
+      this.scoreCalculator.registerKill(type);
+      audioManager.playExplosion();
+    } else {
+      enemy.setData('hp', hp);
+      this.createHitSpark(bullet.x, bullet.y);
+      audioManager.playHit();
+    }
+  }
+
+  private handleEmpBurst(x: number, y: number, damage: number): void {
+    this.enemies.children.each((enemyObj) => {
+      const enemy = enemyObj as Phaser.Physics.Arcade.Sprite;
+      if (!enemy.active) return true;
+      const distance = Phaser.Math.Distance.Between(x, y, enemy.x, enemy.y);
+      const dmg = computeEmpDamage(damage, distance);
+      if (dmg <= 0) return true;
+      let hp = (enemy.getData('hp') as number) || 30;
+      hp -= dmg;
+      if (hp <= 0) {
+        this.createExplosionFX(enemy.x, enemy.y);
+        enemy.setActive(false);
+        enemy.setVisible(false);
+        const type = (enemy.getData('type') as 'drone' | 'cruiser') || 'drone';
+        this.scoreCalculator.registerKill(type);
+        audioManager.playExplosion();
+      } else {
+        enemy.setData('hp', hp);
+        audioManager.playHit();
+      }
+      return true;
+    });
+
+    if (this.boss && !this.boss.isDead) {
+      const distance = Phaser.Math.Distance.Between(x, y, this.boss.x, this.boss.y);
+      const dmg = computeEmpDamage(damage, distance);
+      if (dmg > 0) {
+        const hpBefore = this.boss.currentHp;
+        const isKilled = this.boss.takeDamage(dmg);
+        this.recordBossDamage(hpBefore - this.boss.currentHp, this.time.now);
+        if (isKilled) this.triggerBossDefeated();
+      }
+    }
   }
 
   private createExplosionFX(x: number, y: number, isMajor = false): void {
@@ -920,7 +994,7 @@ export class MainGameScene extends Phaser.Scene {
     });
 
     this.hudHpBars = [];
-    const maxHp = this.shipSpec.attributes.max_hp;
+    const maxHp = this.player.attributes.max_hp;
     for (let i = 0; i < maxHp; i++) {
       const bar = this.add.rectangle(66 + i * 16, 53, 12, 7, 0x10b981);
       this.hudHpBars.push(bar);
@@ -933,7 +1007,7 @@ export class MainGameScene extends Phaser.Scene {
     });
 
     this.hudShieldBars = [];
-    const maxShield = this.shipSpec.attributes.shield_capacity;
+    const maxShield = this.player.attributes.shield_capacity;
     for (let i = 0; i < 3; i++) {
       const bar = this.add.rectangle(208 + i * 16, 53, 12, 7, 0x38bdf8);
       bar.setVisible(i < maxShield);
