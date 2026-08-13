@@ -225,6 +225,15 @@ export function DevHarness(): React.JSX.Element {
     URL.revokeObjectURL(url);
   }
 
+  // `time.timeScale`/`physics.world.timeScale` only affect Phaser's TimerEvents and physics delta
+  // accumulation (match clock, wave spawner). `WeaponSystem.firePrimary` and `BossOverlord.update`
+  // both gate their fire-rate cooldowns on the scene's raw, unscaled `time` value, so at e.g. 4x
+  // the match clock races ahead while weapons keep firing at 1x wall-clock cadence. The DPS
+  // readouts are computed against that same raw `time`, so they read roughly unchanged and would
+  // mislead a tuner trying to read TTK off them at any timeScale other than 1x. This is a UI-honesty
+  // flag, not a fix to the underlying math (out of scope for the harness).
+  const dpsUnreliable = timeScale !== 1;
+
   return (
     <div className="flex h-screen w-screen gap-4 overflow-hidden p-4">
       <div className="flex shrink-0 flex-col gap-2">
@@ -373,9 +382,19 @@ export function DevHarness(): React.JSX.Element {
               <div>
                 Boss: {telemetry.bossHp !== null ? `${telemetry.bossHp.toLocaleString()} / ${telemetry.bossMaxHp?.toLocaleString()} (fase ${telemetry.bossPhase})` : '—'}
               </div>
-              <div>DPS instantâneo: {telemetry.bossDpsInstant.toFixed(0)}</div>
-              <div>DPS médio: {telemetry.bossDpsAverage.toFixed(0)}</div>
+              <div className={dpsUnreliable ? 'text-slate-600 line-through decoration-slate-600' : undefined}>
+                DPS instantâneo: {telemetry.bossDpsInstant.toFixed(0)}
+              </div>
+              <div className={dpsUnreliable ? 'text-slate-600 line-through decoration-slate-600' : undefined}>
+                DPS médio: {telemetry.bossDpsAverage.toFixed(0)}
+              </div>
             </div>
+          )}
+          {telemetry && dpsUnreliable && (
+            <p className="mt-1 text-xs text-amber-solar">
+              DPS não é confiável em timeScale ≠ 1x: o relógio da partida acelera, mas o cooldown de
+              disparo da arma primária e do boss continua em cadência de 1x.
+            </p>
           )}
 
           <div className="mt-3 space-y-1">

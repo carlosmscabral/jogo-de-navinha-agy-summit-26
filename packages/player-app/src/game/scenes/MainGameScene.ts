@@ -392,7 +392,12 @@ export class MainGameScene extends Phaser.Scene {
       bullet.setVisible(false);
 
       const isDead = this.player.takeDamage(1);
-      this.scoreCalculator.registerDamageTaken();
+      // Dev-harness god mode (Task B4): takeDamage() already no-ops the HP/shield change, but
+      // this call is unconditional, so without this guard every "hit" still zeroes the combo and
+      // counts as damage taken while god mode is on -- corrupting the very telemetry/score the
+      // harness exists to show. `isDead` can't be used for this: it means "the player died", a
+      // different condition from "was hit".
+      if (!this.player.godMode) this.scoreCalculator.registerDamageTaken();
       audioManager.playHit();
 
       if (isDead) {
@@ -810,7 +815,9 @@ export class MainGameScene extends Phaser.Scene {
       bullet.setVisible(false);
 
       const isDead = this.player.takeDamage(1);
-      this.scoreCalculator.registerDamageTaken();
+      // See the identical guard on the boss-bullets overlap above: god mode must not corrupt the
+      // combo/score telemetry the harness reads.
+      if (!this.player.godMode) this.scoreCalculator.registerDamageTaken();
       audioManager.playHit();
 
       if (isDead) {
@@ -827,7 +834,8 @@ export class MainGameScene extends Phaser.Scene {
       enemy.setVisible(false);
 
       const isDead = this.player.takeDamage(1);
-      this.scoreCalculator.registerDamageTaken();
+      // Same god-mode guard as the two overlap handlers above.
+      if (!this.player.godMode) this.scoreCalculator.registerDamageTaken();
       audioManager.playHit();
 
       if (isDead) {

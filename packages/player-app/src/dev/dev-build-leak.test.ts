@@ -16,6 +16,10 @@ describe('build de produção', () => {
       .map((f) => fs.readFileSync(path.join(distDir, 'assets', f), 'utf8'))
       .join('\n');
 
-    expect(bundled).not.toContain('DevHarness');
+    // Asserting on the `DevHarness` identifier is unreliable: esbuild's production minifier
+    // mangles local identifiers, so a leaked-but-minified bundle would still pass a check against
+    // that name. A PT-BR UI string literal survives minification (string literals aren't
+    // renamed), so it reliably catches a leak even through minification.
+    expect(bundled).not.toContain('Harness de Desenvolvimento');
   });
 });
