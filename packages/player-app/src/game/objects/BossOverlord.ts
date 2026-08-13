@@ -302,7 +302,7 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
     // Cap single-pellet raw damage to prevent instantaneous multi-bullet melting
     const cappedPelletDamage = Math.min(BALANCE.boss.max_damage_per_primary_hit, amount);
 
-    // Phase 1 Kinetic Hex Shield absorbs 50% damage
+    // Phase 1 Kinetic Hex Shield absorbs 35% damage (BALANCE.boss.mitigation.phase1, Task B8)
     // Phase 2 Titanium Armor absorbs 30% damage
     const mitigation = this.phase === 1 ? BALANCE.boss.mitigation.phase1 : this.phase === 2 ? BALANCE.boss.mitigation.phase2 : BALANCE.boss.mitigation.phase3;
     const actualDamage = Math.max(BALANCE.boss.min_damage_per_hit, Math.round(cappedPelletDamage * mitigation));
