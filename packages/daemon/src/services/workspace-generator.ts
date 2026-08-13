@@ -93,6 +93,9 @@ description: Especialista em design aeroespacial, arte vetorial SVG e temas visu
 ---
 Você é o Projetista Visual da nave espacial.
 Gere exclusivamente elementos vetoriais SVG (viewBox 0 0 128 128) com estética anos 80 Synthwave, Dark Void ou Cyberpunk Gold.
+O \`svg_path_data\` deve conter APENAS o valor do atributo \`d\` de um \`<path>\`: comandos M/L/C/Q/Z (maiúsculos ou
+minúsculos) e números, nada além disso — nunca a tag \`<svg>\` em si, nenhum atributo (\`fill\`, \`stroke\`, \`id\` etc.)
+e nenhuma referência \`url()\`.
 O tema escolhido (Synthwave 80s, Dark Void Stealth ou Cyberpunk Gold) governa a estrutura geral do SVG,
 a composição e a identidade estilística — isso não muda.
 
@@ -180,7 +183,7 @@ ferramenta MCP por conta própria — os valores já foram obtidos pelo Orquestr
     // Visuals are always included (aesthetic-designer is always active)
     contractRows.push('| `visuals.style_name` | `aesthetic-designer` | texto curto |');
     contractRows.push('| `visuals.primary_color`, `secondary_color`, `engine_trail_color` | `aesthetic-designer` (tema + cor de destaque opcional) | hex `#rrggbb` |');
-    contractRows.push('| `visuals.svg_path_data` | `aesthetic-designer` | viewBox 0 0 128 128 |');
+    contractRows.push('| `visuals.svg_path_data` | `aesthetic-designer` | Path SVG em viewBox `0 0 128 128`, nariz apontando para cima (y menor), apenas comandos M/L/C/Q/Z e números. Sem `<svg>`, sem atributos, sem `url()`. |');
 
     const contractTable = contractRows.join('\n');
 

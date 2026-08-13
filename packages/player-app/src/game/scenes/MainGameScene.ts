@@ -3,6 +3,7 @@ import { BALANCE, ShipSpecification, FALLBACK_PRESETS, MatchTelemetry, ScoreBrea
 import { PlayerShip } from '../objects/PlayerShip.js';
 import { BossOverlord } from '../objects/BossOverlord.js';
 import { ShipTextureFactory } from '../factories/ShipTextureFactory.js';
+import { renderSvgShipTexture } from '../factories/SvgShipRenderer.js';
 import { ScoreCalculator } from '../scoring/ScoreCalculator.js';
 import { audioManager } from '../audio/AudioManager.js';
 // Type-only: `game/index.ts` imports `MainGameScene` at the value level, so a value import
@@ -101,7 +102,10 @@ export class MainGameScene extends Phaser.Scene {
 
     // 2. Generate Ship & Enemy Textures
     const textureKey = `ship_${this.shipSpec.visuals.style_name.replace(/\s+/g, '_')}`;
-    ShipTextureFactory.createShipTexture(this, textureKey, this.shipSpec.visuals);
+    if (!renderSvgShipTexture(this, textureKey, this.shipSpec.visuals)) {
+      // D17: o casco do agente foi recusado. A nave paramétrica preserva as cores.
+      ShipTextureFactory.createShipTexture(this, textureKey, this.shipSpec.visuals);
+    }
     ShipTextureFactory.createEnemyDroneTexture(this);
     ShipTextureFactory.createBossTexture(this);
 
