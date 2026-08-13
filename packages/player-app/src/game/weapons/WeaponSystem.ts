@@ -60,8 +60,9 @@ export class WeaponSystem {
   }
 
   firePrimary(x: number, y: number, time: number): boolean {
-    // Realistic arcade shmup cadence (6 to 12 shots per second) to prevent instantaneous melting
-    const effectiveFireRate = Math.min(12, Math.max(5, this.weaponsSpec.primary.fire_rate || 8));
+    // [D14] fire_rate já chega validado pelo schema (5 a 12 -- ver BALANCE.ranges);
+    // reclampar aqui seria o próprio bug que a Tarefa B2 elimina.
+    const effectiveFireRate = this.weaponsSpec.primary.fire_rate;
     const fireIntervalMs = 1000 / effectiveFireRate;
 
     if (time - this.lastPrimaryFireTime < fireIntervalMs) {
@@ -70,8 +71,10 @@ export class WeaponSystem {
     this.lastPrimaryFireTime = time;
 
     const { type, damage, bullet_speed, spread_angle } = this.weaponsSpec.primary;
-    const balancedDamage = Math.min(45, Math.max(15, damage || 30));
-    const speed = Math.max(BALANCE.weapons.primary.min_bullet_speed, bullet_speed || BALANCE.weapons.primary.default_bullet_speed);
+    // [D14] damage/bullet_speed já chegam validados pelo schema (15 a 45 / 400 a 800);
+    // os valores chegam intactos.
+    const balancedDamage = damage;
+    const speed = bullet_speed;
 
     if (type === 'laser') {
       // Rapid focused laser pulse
@@ -106,7 +109,8 @@ export class WeaponSystem {
     this.lastSecondaryFireTime = time;
 
     const { type, damage } = this.weaponsSpec.secondary;
-    const balancedDamage = Math.min(120, Math.max(60, damage || 90));
+    // [D14] damage já chega validado pelo schema (60 a 150); o valor chega intacto.
+    const balancedDamage = damage;
 
     if (type === 'homing_missiles') {
       this.spawnMissile(x - 20, y, -BALANCE.weapons.secondary.missile_speed_x, BALANCE.weapons.secondary.missile_speed_y, balancedDamage, targets);

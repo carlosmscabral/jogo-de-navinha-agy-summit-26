@@ -264,6 +264,24 @@ export class FileWatcherService {
     return spec;
   }
 
+  /**
+   * [D14] Faixa numérica NÃO é mais julgada aqui. Antes, cada campo numérico
+   * passava por um `Math.max(N, Math.min(M, ...))` que silenciosamente coagia
+   * qualquer valor fora da faixa para o limite mais próximo -- um segundo
+   * contrato de faixas, independente do schema e capaz de discordar dele. Se
+   * o agente for informado de que `fire_rate` vai de 5 a 12 e enviar 60, o
+   * clamp devolvia 12 sem erro: a faixa anunciada virava ficção.
+   *
+   * A partir de agora, quem julga faixa é exclusivamente `ship_spec.schema.json`
+   * (gerado de `BALANCE.ranges`, ver `gen-schema.ts`). Esta função continua
+   * fazendo apenas o que sempre fez de estrutural/de nomes -- mapear campos
+   * frouxos (`raw.damage`, `raw.callsign` etc.) para o formato canônico e
+   * inferir o tipo de arma a partir de texto livre -- e repassa os valores
+   * numéricos intactos (só convertidos com `Number(...)`) para a validação
+   * estrita logo abaixo. Um valor fora da faixa chega como fora da faixa e é
+   * REJEITADO com um erro claro, em vez de virar um número diferente e
+   * igualmente errado.
+   */
   private normalizeSpec(raw: any): ShipSpecification {
     // Handle primary weapon type mapping
     let primaryType: 'laser' | 'plasma' | 'vulcan_spread' = 'vulcan_spread';
@@ -319,23 +337,23 @@ export class FileWatcherService {
           : ['Glass Cannon 🔥']
       },
       attributes: {
-        speed_px_s: Math.max(150, Math.min(500, Number(raw.attributes?.speed_px_s || raw.speed_px_s || raw.speed))),
-        max_hp: Math.max(1, Math.min(10, Number(raw.attributes?.max_hp || raw.max_hp || raw.hp))),
-        shield_capacity: Math.max(0, Math.min(10, Number(raw.attributes?.shield_capacity ?? raw.shield_capacity ?? raw.shield))),
-        hitbox_radius: Math.max(5, Math.min(25, Number(raw.attributes?.hitbox_radius || raw.hitbox_radius || raw.hitbox)))
+        speed_px_s: Number(raw.attributes?.speed_px_s || raw.speed_px_s || raw.speed),
+        max_hp: Number(raw.attributes?.max_hp || raw.max_hp || raw.hp),
+        shield_capacity: Number(raw.attributes?.shield_capacity ?? raw.shield_capacity ?? raw.shield),
+        hitbox_radius: Number(raw.attributes?.hitbox_radius || raw.hitbox_radius || raw.hitbox)
       },
       weapons: {
         primary: {
           type: primaryType,
           damage: Number(raw.weapons?.primary?.damage || raw.damage) || (primaryType === 'laser' ? 45 : primaryType === 'plasma' ? 60 : 35),
-          fire_rate: Math.max(1, Math.min(25, Number(raw.weapons?.primary?.fire_rate || raw.fire_rate))),
+          fire_rate: Number(raw.weapons?.primary?.fire_rate || raw.fire_rate),
           bullet_speed: Number(raw.weapons?.primary?.bullet_speed || raw.bullet_speed),
           spread_angle: primaryType === 'vulcan_spread' ? 0.25 : 0
         },
         secondary: {
           type: secondaryType,
           damage: Number(raw.weapons?.secondary?.damage),
-          cooldown_seconds: Math.max(0, Math.min(10, Number(raw.weapons?.secondary?.cooldown_seconds ?? raw.cooldown)))
+          cooldown_seconds: Number(raw.weapons?.secondary?.cooldown_seconds ?? raw.cooldown)
         }
       },
       visuals: {

@@ -319,6 +319,44 @@ describe('FileWatcherService — backfill de baseline para MCPs não selecionado
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  it('rejeita fire_rate fora da faixa em vez de clampar (D14 -- normalizeSpec não corrige mais faixas)', async () => {
+    const dir = tempSession();
+    const auditPath = path.join(dir, 'mcp_audit.log');
+    fs.writeFileSync(auditPath, '', 'utf8');
+
+    const readySpecs: any[] = [];
+    const rejections: any[] = [];
+    const w = new FileWatcherService();
+    w.startWatching(dir, {
+      requiredMcps: ['weapons-arsenal'],
+      onShipReady: (s) => readySpecs.push(s),
+      onSpecRejected: (r) => rejections.push(r)
+    });
+
+    const rawSpec = {
+      ...FALLBACK_PRESETS.interceptor,
+      weapons: {
+        ...FALLBACK_PRESETS.interceptor.weapons,
+        primary: {
+          ...FALLBACK_PRESETS.interceptor.weapons.primary,
+          fire_rate: 60 // fora da faixa [5,12] de BALANCE.ranges -- antes disto, normalizeSpec clampava para 12 em silêncio
+        }
+      }
+    };
+
+    fs.appendFileSync(auditPath, auditLine('weapons-arsenal', 'configure_primary_cannon'));
+    fs.writeFileSync(path.join(dir, 'ship_spec.json'), JSON.stringify(rawSpec), 'utf8');
+    await wait(900);
+
+    assert.equal(readySpecs.length, 0, 'um fire_rate fora da faixa nunca pode ser silenciosamente clampado e decolar');
+    assert.equal(rejections.length, 1);
+    assert.equal(rejections[0].reason, 'SCHEMA_INVALID');
+    assert.match(rejections[0].details.join(' '), /fire_rate|maximum/);
+
+    w.stopWatching();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   it('aceita shield_capacity: 0 (valor legítimo do schema) quando cybernetics-shields é o único MCP selecionado, nos sliders padrão do app', async () => {
     const dir = tempSession();
     const auditPath = path.join(dir, 'mcp_audit.log');
