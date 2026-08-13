@@ -41,7 +41,7 @@ export const BALANCE = {
   weapons: {
     primary: {
       /** Cada pelota do vulcan_spread causa esta fração do dano nominal. */
-      vulcan_pellet_factor: 0.65,
+      vulcan_pellet_factor: 0.5,
       vulcan_pellet_count: 3,
       default_bullet_speed: 650,
       min_bullet_speed: 550,
