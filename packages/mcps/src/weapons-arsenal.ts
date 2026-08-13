@@ -67,7 +67,7 @@ export function createWeaponsArsenalServer(): McpServer {
     'attach_secondary_ordnance',
     'Instala e calibra o sistema de armas secundárias ativado pela tecla Shift.',
     {
-      type: z.any().optional().nullable().describe('Tipo de arma secundária (homing_missiles, emp_burst, drone_escort, none)'),
+      type: z.any().optional().nullable().describe('Tipo de arma secundária (homing_missiles, emp_burst, none)'),
       blast_radius: z.any().optional().nullable().describe('Raio de explosão em pixels'),
       cooldown_seconds: z.any().optional().nullable().describe('Tempo de recarga em segundos')
     },
@@ -77,14 +77,11 @@ export function createWeaponsArsenalServer(): McpServer {
       const cooldown_seconds = Number(args?.cooldown_seconds) || 2;
 
       let damage = 0;
-      let type: 'homing_missiles' | 'emp_burst' | 'drone_escort' | 'none' = 'homing_missiles';
+      let type: 'homing_missiles' | 'emp_burst' | 'none' = 'homing_missiles';
 
       if (rawType.includes('emp')) {
         type = 'emp_burst';
         damage = 60;
-      } else if (rawType.includes('drone')) {
-        type = 'drone_escort';
-        damage = 30;
       } else if (rawType.includes('none')) {
         type = 'none';
         damage = 0;
