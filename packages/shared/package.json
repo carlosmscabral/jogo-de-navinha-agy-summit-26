@@ -14,7 +14,8 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "tsc && node --test 'dist/**/*.test.js'"
+    "test": "tsc && node --test 'dist/**/*.test.js'",
+    "gen:schema": "tsc && node dist/schema/gen-schema.js"
   },
   "dependencies": {
     "ajv": "^8.17.1",

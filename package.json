@@ -14,6 +14,7 @@
     "build:leaderboard": "npm run build:shared && npm run build --workspace=packages/leaderboard-app",
     "build": "npm run build:shared && npm run build --workspace=packages/mcps && npm run build --workspace=packages/daemon && npm run build --workspace=packages/player-app && npm run build --workspace=packages/leaderboard-app",
     "test": "npm run build:shared && npm run test --workspace=packages/shared && npm run test --workspace=packages/mcps && npm run test --workspace=packages/daemon && npm run test --workspace=packages/player-app",
+    "gen:schema": "npm run gen:schema --workspace=packages/shared",
     "kill:daemon": "lsof -ti :3000 | xargs kill -9 2>/dev/null || true",
     "start:daemon": "npm run kill:daemon && npm run build:shared && npm run build --workspace=packages/daemon && npm run start --workspace=packages/daemon",
     "start:player": "npm run build:shared && npm run dev --workspace=packages/player-app",
