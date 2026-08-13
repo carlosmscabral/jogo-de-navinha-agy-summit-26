@@ -5,6 +5,10 @@ import { BossOverlord } from '../objects/BossOverlord.js';
 import { ShipTextureFactory } from '../factories/ShipTextureFactory.js';
 import { ScoreCalculator } from '../scoring/ScoreCalculator.js';
 import { audioManager } from '../audio/AudioManager.js';
+// Type-only: `game/index.ts` imports `MainGameScene` at the value level, so a value import
+// here would create a runtime circular dependency. `import type` is erased entirely by the
+// compiler/bundler, so no cycle exists at runtime (verified via `npm run build`).
+import type { DevGameOptions, DevTelemetryFrame } from '../index.js';
 
 interface StarPoint {
   x: number;
@@ -24,6 +28,8 @@ export class MainGameScene extends Phaser.Scene {
   boss?: BossOverlord;
   scoreCalculator = new ScoreCalculator();
   onMatchComplete?: (data: { finalScore: number; victory: boolean; breakdown: ScoreBreakdown; telemetry: MatchTelemetry }) => void;
+  /** Set unconditionally by `createGameInstance` (Task B4). Undefined fields are inert in production. */
+  devOptions?: DevGameOptions;
 
   matchTimer: number = BALANCE.match.duration_s;
   elapsedSeconds = 0;
@@ -31,6 +37,12 @@ export class MainGameScene extends Phaser.Scene {
   isVictory = false;
   hasNotifiedCompletion = false;
   bossKilledAtSeconds: number | null = null;
+
+  // Boss DPS bookkeeping for the dev harness telemetry stream (Task B4). See buildTelemetryFrame's
+  // comment for the exact instant/average algorithm. Cheap to maintain even when unused.
+  private bossDamageSamples: { t: number; dmg: number }[] = [];
+  private bossDamageTotal = 0;
+  private bossFightStartMs: number | null = null;
 
   enemies!: Phaser.Physics.Arcade.Group;
   enemyBullets!: Phaser.Physics.Arcade.Group;
@@ -105,6 +117,7 @@ export class MainGameScene extends Phaser.Scene {
       this.shipSpec.weapons,
       this.shipSpec.visuals
     );
+    this.player.godMode = !!this.devOptions?.godMode;
 
     // 4. Enemy and Enemy Bullet Pools
     this.enemies = this.physics.add.group({
@@ -129,6 +142,19 @@ export class MainGameScene extends Phaser.Scene {
 
     // 5. Collisions & Weapon Overlaps
     this.setupCollisions();
+
+    // --- Dev-harness-only hooks (Spec 09 §4). Inert in production. ---
+    if (this.devOptions?.startAtSeconds) {
+      this.fastForwardTo(this.devOptions.startAtSeconds);
+    }
+    if (this.devOptions?.timeScale) {
+      this.time.timeScale = this.devOptions.timeScale;
+      this.physics.world.timeScale = 1 / this.devOptions.timeScale;
+    }
+    if (this.devOptions?.physicsDebug) {
+      this.physics.world.createDebugGraphic();
+      this.physics.world.drawDebug = true;
+    }
 
     // 6. Modern Aerospace Flight Deck HUD & Controls Legend
     this.setupModernHud();
@@ -307,6 +333,7 @@ export class MainGameScene extends Phaser.Scene {
   private spawnBoss(): void {
     audioManager.setBossMode(true);
     this.boss = new BossOverlord(this, this.scale.width / 2, 140, this.isHardcore);
+    this.bossFightStartMs = this.time.now;
     this.setupBossHud();
 
     // Primary Bullets vs Boss
@@ -321,7 +348,9 @@ export class MainGameScene extends Phaser.Scene {
         bullet.setActive(false);
         bullet.setVisible(false);
 
+        const hpBefore = this.boss.currentHp;
         const isKilled = this.boss.takeDamage(damage);
+        this.recordBossDamage(hpBefore - this.boss.currentHp, this.time.now);
         audioManager.playHit();
         this.createHitSpark(bullet.x, bullet.y);
 
@@ -344,7 +373,9 @@ export class MainGameScene extends Phaser.Scene {
         missile.setVisible(false);
 
         this.createExplosionFX(missile.x, missile.y, true);
+        const hpBefore = this.boss.currentHp;
         const isKilled = this.boss.takeDamage(damage);
+        this.recordBossDamage(hpBefore - this.boss.currentHp, this.time.now);
         audioManager.playExplosion();
 
         if (isKilled) {
@@ -368,6 +399,90 @@ export class MainGameScene extends Phaser.Scene {
         this.triggerPlayerDeath();
       }
     });
+  }
+
+  /** Only the harness calls this. Skips the match clock without simulating what was skipped. */
+  private fastForwardTo(seconds: number): void {
+    this.elapsedSeconds = Math.min(seconds, BALANCE.match.duration_s - 1);
+    this.matchTimer = BALANCE.match.duration_s - this.elapsedSeconds;
+    if (this.elapsedSeconds >= BALANCE.match.boss_spawn_s && !this.boss) {
+      this.spawnBoss();
+      this.applyStartBossPhase(this.devOptions?.startAtBossPhase);
+    }
+  }
+
+  /**
+   * Split out of `fastForwardTo` on purpose: TS's control-flow analysis narrows `this.boss` to
+   * `undefined` inside the `!this.boss` branch above and does not re-widen it across the
+   * `spawnBoss()` call (a documented TS limitation for narrowed member access across calls), so
+   * reading `this.boss` again in that same scope type-checks as `never`. A fresh method call
+   * starts a clean CFA scope, so `this.boss` reads with its real declared type here.
+   */
+  private applyStartBossPhase(phase: 1 | 2 | 3 | undefined): void {
+    const boss = this.boss;
+    if (!boss || !phase || phase <= 1) return;
+    const ratio = phase === 3 ? BALANCE.boss.phase3_hp_ratio : BALANCE.boss.phase2_hp_ratio;
+    boss.currentHp = Math.round(boss.maxHp * ratio);
+    boss.phase = phase;
+    boss.isInvulnerable = false;
+  }
+
+  /**
+   * Records damage actually applied to the boss (post-mitigation, i.e. the observed drop in
+   * `currentHp`), for the dev-harness DPS readout. See `buildTelemetryFrame` for how these
+   * samples are consumed.
+   */
+  private recordBossDamage(amount: number, time: number): void {
+    if (amount <= 0) return;
+    this.bossDamageTotal += amount;
+    this.bossDamageSamples.push({ t: time, dmg: amount });
+  }
+
+  /**
+   * Builds the dev-harness telemetry snapshot. Never called (and never even constructed) unless
+   * `devOptions.onTelemetryFrame` is set, so production pays no cost for this.
+   *
+   * bossDps algorithm (a judgment call — the brief left the exact formula open):
+   *   - instant: sum of boss damage recorded in the trailing 1-second window, i.e. "DPS right now".
+   *     Old samples are pruned every frame so the array never grows past ~1s of hits.
+   *   - average: cumulative boss damage dealt so far, divided by seconds elapsed since the boss
+   *     spawned. This smooths out burst noise and answers "at this rate, how long until the boss
+   *     dies", which is the number that matters for balance iteration.
+   */
+  private buildTelemetryFrame(time: number): DevTelemetryFrame {
+    const windowStart = time - 1000;
+    this.bossDamageSamples = this.bossDamageSamples.filter((s) => s.t >= windowStart);
+    const bossDpsInstant = this.bossDamageSamples.reduce((sum, s) => sum + s.dmg, 0);
+    const fightElapsedS = this.bossFightStartMs !== null ? (time - this.bossFightStartMs) / 1000 : 0;
+    const bossDpsAverage = fightElapsedS > 0.001 ? this.bossDamageTotal / fightElapsedS : 0;
+
+    return {
+      fps: this.game.loop.actualFps,
+      elapsedSeconds: this.elapsedSeconds,
+      playerHp: this.player.currentHp,
+      playerShield: this.player.currentShield,
+      combo: this.scoreCalculator.comboMultiplier,
+      score: this.scoreCalculator.currentScore,
+      bossHp: this.boss?.currentHp ?? null,
+      bossMaxHp: this.boss?.maxHp ?? null,
+      bossPhase: this.boss?.phase ?? null,
+      bossDpsInstant,
+      bossDpsAverage,
+      pools: {
+        primaryBullets: this.player.weaponSystem.primaryBullets.countActive(true),
+        secondaryMissiles: this.player.weaponSystem.secondaryMissiles.countActive(true),
+        enemyBullets: this.enemyBullets.countActive(true),
+        bossBullets: this.boss?.bullets.countActive(true) ?? 0,
+        enemies: this.enemies.countActive(true)
+      },
+      poolCaps: {
+        primaryBullets: BALANCE.pools.primary_bullets,
+        secondaryMissiles: BALANCE.pools.secondary_missiles,
+        enemyBullets: BALANCE.pools.enemy_bullets,
+        bossBullets: BALANCE.pools.boss_bullets,
+        enemies: BALANCE.pools.enemies
+      }
+    };
   }
 
   private setupBossHud(): void {
@@ -946,6 +1061,12 @@ export class MainGameScene extends Phaser.Scene {
           this.hudSecondaryBarFill.setFillStyle(0x38bdf8);
         }
       }
+    }
+
+    // Dev-harness telemetry stream (Task B4). Only built when a consumer is attached, so
+    // production never pays for the pool-size scans or the frame-object allocation.
+    if (this.devOptions?.onTelemetryFrame) {
+      this.devOptions.onTelemetryFrame(this.buildTelemetryFrame(time));
     }
   }
 }

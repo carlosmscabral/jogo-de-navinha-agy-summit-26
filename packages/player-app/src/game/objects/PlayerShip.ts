@@ -10,6 +10,8 @@ export class PlayerShip extends Phaser.Physics.Arcade.Sprite {
   currentHp: number;
   currentShield: number;
   isInvulnerable = false;
+  /** Dev-harness-only (Task B4). Always false in production. */
+  godMode = false;
 
   shieldGraphics?: Phaser.GameObjects.Graphics;
   thrusterEmitter?: Phaser.GameObjects.Particles.ParticleEmitter;
@@ -146,7 +148,7 @@ export class PlayerShip extends Phaser.Physics.Arcade.Sprite {
   }
 
   takeDamage(amount = 1): boolean {
-    if (this.isInvulnerable) return false;
+    if (this.isInvulnerable || this.godMode) return false;
 
     // Absorb with shield first
     if (this.currentShield > 0) {

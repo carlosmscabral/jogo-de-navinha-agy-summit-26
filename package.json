@@ -20,6 +20,7 @@
     "start:player": "npm run build:shared && npm run dev --workspace=packages/player-app",
     "start:leaderboard": "npm run build:shared && npm run dev --workspace=packages/leaderboard-app",
     "dev:player": "npm run build:shared && npm run dev --workspace=packages/player-app",
+    "dev:game": "npm run build:shared && npm run dev:game --workspace=packages/player-app",
     "dev:leaderboard": "npm run build:shared && npm run dev --workspace=packages/leaderboard-app",
     "dev:daemon": "npm run build:shared && npm run dev --workspace=packages/daemon",
     "start:terminal": "bash scripts/booth-terminal.sh"

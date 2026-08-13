@@ -17,6 +17,40 @@ export interface GameOptions {
   onMatchComplete?: (data: MatchCompleteData) => void;
 }
 
+/**
+ * Superset of `GameOptions` consumed only by the standalone dev harness
+ * (Task B4, Spec 09 §4). `createGameInstance` is the single entry point for
+ * both production (`App.tsx`, passing plain `GameOptions`) and the harness
+ * (passing this type) — there is no separate `createDevGameInstance`.
+ */
+export interface DevGameOptions extends GameOptions {
+  /** Starts the match at this second. 45 = boss already on screen. */
+  startAtSeconds?: number;
+  /** Boss enters already in this phase. Requires startAtSeconds >= BALANCE.match.boss_spawn_s. */
+  startAtBossPhase?: 1 | 2 | 3;
+  godMode?: boolean;
+  timeScale?: number;
+  physicsDebug?: boolean;
+  /** Called every frame with observable state. Only the harness uses this. */
+  onTelemetryFrame?: (frame: DevTelemetryFrame) => void;
+}
+
+export interface DevTelemetryFrame {
+  fps: number;
+  elapsedSeconds: number;
+  playerHp: number;
+  playerShield: number;
+  combo: number;
+  score: number;
+  bossHp: number | null;
+  bossMaxHp: number | null;
+  bossPhase: 1 | 2 | 3 | null;
+  bossDpsInstant: number;
+  bossDpsAverage: number;
+  pools: { primaryBullets: number; secondaryMissiles: number; enemyBullets: number; bossBullets: number; enemies: number };
+  poolCaps: { primaryBullets: number; secondaryMissiles: number; enemyBullets: number; bossBullets: number; enemies: number };
+}
+
 export function createGameInstance(container: HTMLElement | string, options: GameOptions = {}): Phaser.Game {
   const seed = options.seed ?? randomSeed();
 
@@ -29,6 +63,8 @@ export function createGameInstance(container: HTMLElement | string, options: Gam
       this.isHardcore = !!options.isHardcore;
       this.seed = seed;
       this.onMatchComplete = options.onMatchComplete;
+      // Always set: harmless in production, where the extra fields are simply undefined.
+      this.devOptions = options as DevGameOptions;
     }
   }
 
