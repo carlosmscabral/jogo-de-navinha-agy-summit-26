@@ -13,8 +13,8 @@ export const BALANCE = {
   /** Linha do tempo da partida, em segundos e milissegundos. */
   match: {
     duration_s: 90,
-    boss_warning_s: 42,
-    boss_spawn_s: 45,
+    boss_warning_s: 37,
+    boss_spawn_s: 40,
     wave2_starts_s: 20,
     wave_interval_ms: 750,
     wave_interval_hardcore_ms: 550,
