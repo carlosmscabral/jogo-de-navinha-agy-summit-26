@@ -45,6 +45,7 @@ let hardTimer: NodeJS.Timeout | undefined;
 let livenessTimer: NodeJS.Timeout | undefined;
 let shipDelivered = false;
 let auditGateSatisfied = false;
+let lastKnownAgyPid: number | null = null;
 
 function clearAgyTimers(): void {
   if (silenceTimer) clearTimeout(silenceTimer);
@@ -241,6 +242,7 @@ app.post('/api/session/start', (req, res) => {
 
     shipDelivered = false;
     auditGateSatisfied = false;
+    lastKnownAgyPid = null;
     clearAgyTimers();
     hardTimer = setTimeout(
       () => triggerFallback(energy_sliders, `teto rígido de ${AGY_HARD_TIMEOUT_MS}ms`),
@@ -248,9 +250,22 @@ app.post('/api/session/start', (req, res) => {
     );
     livenessTimer = setInterval(() => {
       const pidFile = path.join(sessionDir, '.agy_pid');
-      if (!fs.existsSync(pidFile)) return;
+      if (!fs.existsSync(pidFile)) {
+        // booth-terminal.sh apaga o arquivo de PID assim que o processo exec'd
+        // termina -- seja por sucesso, crash ou kill externo -- normalmente
+        // bem mais rápido que este poll de 1s consegue perceber via
+        // process.kill(pid, 0) abaixo. Se já vimos um PID nesta sessão e ele
+        // sumiu, o agy encerrou; triggerFallback() já faz um forceCheckNow()
+        // antes de desistir, então uma sessão que terminou COM SUCESSO ainda
+        // entrega a nave real normalmente, sem corrida.
+        if (lastKnownAgyPid !== null) {
+          triggerFallback(energy_sliders, 'processo do agy encerrou sem entregar a nave');
+        }
+        return;
+      }
       const pid = Number(fs.readFileSync(pidFile, 'utf8').trim());
       if (!pid || Number.isNaN(pid)) return;
+      lastKnownAgyPid = pid;
       try {
         process.kill(pid, 0); // sinal 0: só testa existência
       } catch {
@@ -302,6 +317,7 @@ app.post('/api/session/reset', (req, res) => {
     clearAgyTimers();
     shipDelivered = false;
     auditGateSatisfied = false;
+    lastKnownAgyPid = null;
     fileWatcher.stopWatching();
     currentSessionMetadata = null;
 
