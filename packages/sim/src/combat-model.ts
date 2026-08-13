@@ -35,6 +35,8 @@ export interface SimResult {
   defeatReason: 'timeout' | 'death' | null;
   damageTaken: number;
   finalScore: number;
+  /** Dano real (pós-teto/mitigação/piso) que a arma secundária causou ao boss na partida inteira. */
+  secondaryDamageDealt: number;
 }
 
 const TICK_MS = 1000 / 60;
@@ -101,6 +103,7 @@ export function simulateMatch(input: SimInput): SimResult {
   let playerHp = attributes.max_hp;
   let playerInvulnMsRemaining = 0;
   let damageTaken = 0;
+  let secondaryDamageTotal = 0;
 
   const isVulcan = weapons.primary.type === 'vulcan_spread';
   const pelletCount = isVulcan ? BALANCE.weapons.primary.vulcan_pellet_count : 1;
@@ -180,7 +183,7 @@ export function simulateMatch(input: SimInput): SimResult {
             // capped, mitigated and floored, not one combined hit.
             for (let m = 0; m < BALANCE.weapons.secondary.missile_count_per_volley; m++) {
               if (boss.hp <= 0) break;
-              applyBossHit(boss, weapons.secondary.damage);
+              secondaryDamageTotal += applyBossHit(boss, weapons.secondary.damage);
             }
           }
           // `emp_burst` (and any other type): zero boss damage. `computeEmpDamage` falls off to
@@ -247,7 +250,8 @@ export function simulateMatch(input: SimInput): SimResult {
     bossTtkSeconds,
     defeatReason: victory ? null : defeatReason,
     damageTaken,
-    finalScore: scoreResult.finalScore
+    finalScore: scoreResult.finalScore,
+    secondaryDamageDealt: secondaryDamageTotal
   };
 }
 
@@ -266,13 +270,29 @@ export interface SimMatrixCell {
   /** Share of the *losses* (not all samples) that ended in each way. 0 when there were no losses. */
   timeoutShareOfLosses: number;
   deathShareOfLosses: number;
+  /** Average (across the cell's seeds) real damage the secondary weapon dealt to the boss. */
+  secondaryDamageDealt: number;
+  /** Read directly from the archetype's spec (`weapons.secondary.type`), not simulated. */
+  secondaryType: string;
 }
 
 export interface SimMatrix {
   generatedAt: string;
   seedCount: number;
   cells: SimMatrixCell[];
+  /**
+   * Mean `winRate` across only the `mediano`-skill cells (one value per archetype, averaged) --
+   * matches the scope of the other CI gate checks, which are explicitly `mediano`-only, and
+   * represents "the typical booth visitor" the 15-25% balance target is calibrated for.
+   */
+  aggregateWinRate: number;
 }
+
+/** Balance-gate target band for `aggregateWinRate` (Spec 09 §5.3), inherited from Spec 04 §7. */
+export const WIN_RATE_TARGET = { min: 0.15, max: 0.25 };
+
+/** Balance-gate ceiling for the win-rate spread between the best and worst archetype, in percentage points. */
+export const MAX_ARCHETYPE_SPREAD_PP = 35;
 
 function percentile(sortedAscending: number[], p: number): number | null {
   if (sortedAscending.length === 0) return null;
@@ -302,6 +322,7 @@ export function runMatrix(options: {
       let deaths = 0;
       let damageSum = 0;
       let scoreSum = 0;
+      let secondaryDamageSum = 0;
 
       for (const seed of options.seeds) {
         const result = simulateMatch({ spec, skill, seed, isHardcore: options.isHardcore });
@@ -315,6 +336,7 @@ export function runMatrix(options: {
         }
         damageSum += result.damageTaken;
         scoreSum += result.finalScore;
+        secondaryDamageSum += result.secondaryDamageDealt;
       }
 
       ttks.sort((a, b) => a - b);
@@ -330,14 +352,20 @@ export function runMatrix(options: {
         avgDamageTaken: damageSum / options.seeds.length,
         avgScore: scoreSum / options.seeds.length,
         timeoutShareOfLosses: losses > 0 ? timeouts / losses : 0,
-        deathShareOfLosses: losses > 0 ? deaths / losses : 0
+        deathShareOfLosses: losses > 0 ? deaths / losses : 0,
+        secondaryDamageDealt: secondaryDamageSum / options.seeds.length,
+        secondaryType: spec.weapons.secondary.type
       });
     }
   }
 
+  const medianCells = cells.filter((c) => c.skill === 'mediano');
+  const aggregateWinRate = medianCells.reduce((sum, c) => sum + c.winRate, 0) / medianCells.length;
+
   return {
     generatedAt: new Date().toISOString(),
     seedCount: options.seeds.length,
-    cells
+    cells,
+    aggregateWinRate
   };
 }
