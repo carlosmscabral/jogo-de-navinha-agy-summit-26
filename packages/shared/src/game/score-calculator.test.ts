@@ -1,7 +1,7 @@
-import { describe, it } from 'vitest';
+import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { BALANCE } from '@jogo/shared';
-import { ScoreCalculator } from './ScoreCalculator.js';
+import { BALANCE } from '../constants/balance.js';
+import { ScoreCalculator } from './score-calculator.js';
 
 describe('ScoreCalculator Unit Tests', () => {
   it('should increment score and combo on kills', () => {

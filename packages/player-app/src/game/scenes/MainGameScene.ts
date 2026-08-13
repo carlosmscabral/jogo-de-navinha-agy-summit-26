@@ -5,6 +5,7 @@ import {
   FALLBACK_PRESETS,
   MatchTelemetry,
   ScoreBreakdown,
+  ScoreCalculator,
   SeededRandom,
   SynergyName,
   applySynergies,
@@ -14,7 +15,6 @@ import { PlayerShip } from '../objects/PlayerShip.js';
 import { BossOverlord } from '../objects/BossOverlord.js';
 import { ShipTextureFactory } from '../factories/ShipTextureFactory.js';
 import { renderSvgShipTexture } from '../factories/SvgShipRenderer.js';
-import { ScoreCalculator } from '../scoring/ScoreCalculator.js';
 import { audioManager } from '../audio/AudioManager.js';
 import { computeEmpDamage } from '../weapons/WeaponSystem.js';
 // Type-only: `game/index.ts` imports `MainGameScene` at the value level, so a value import

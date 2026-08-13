@@ -1,4 +1,5 @@
-import { BALANCE, ScoreBreakdown } from '@jogo/shared';
+import { BALANCE } from '../constants/balance.js';
+import type { ScoreBreakdown } from '../types/ship.js';
 
 export class ScoreCalculator {
   currentScore = 0;
