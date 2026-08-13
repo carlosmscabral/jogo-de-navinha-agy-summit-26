@@ -888,6 +888,7 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private handleEmpBurst(x: number, y: number, damage: number): void {
+    if (this.isGameOver || this.isVictory) return;
     this.enemies.children.each((enemyObj) => {
       const enemy = enemyObj as Phaser.Physics.Arcade.Sprite;
       if (!enemy.active) return true;

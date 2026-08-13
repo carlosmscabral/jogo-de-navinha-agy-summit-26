@@ -77,7 +77,15 @@ export const BALANCE = {
     /** Fração do dano que atravessa em cada fase. Menor = mais resistente. */
     mitigation: { phase1: 0.50, phase2: 0.70, phase3: 1.0 },
     min_damage_per_hit: 5,
-    /** Teto por projétil da arma primária. NÃO se aplica à secundária (ver D13). */
+    /**
+     * Teto por hit aplicado a QUALQUER dano recebido pelo boss. `BossOverlord.takeDamage`
+     * é o único ponto de entrada de dano do boss e usa este teto incondicionalmente, então
+     * ele também captura os mísseis secundários e o EMP (Tarefa B6) -- não só a arma
+     * primária, apesar do nome do campo.
+     * TODO(B8): decidir, com dados de balanceamento, se dano secundário/EMP deveria
+     * ignorar este teto (nome do campo sugere que sim); por ora nada muda o comportamento
+     * atual, só a precisão deste comentário.
+     */
     max_damage_per_primary_hit: 45,
     phase_transition_invuln_ms: 2000,
     fire_cooldown_ms: { phase1: 140, phase2: 110, phase3: 80 },

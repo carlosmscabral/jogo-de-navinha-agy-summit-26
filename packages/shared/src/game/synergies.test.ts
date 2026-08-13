@@ -61,4 +61,33 @@ describe('applySynergies', () => {
     assert.notEqual(glass.attributes.max_hp, titan.attributes.max_hp);
     assert.notEqual(glass.weapons.primary.damage, titan.weapons.primary.damage);
   });
+
+  it('reconhece o valor padrão real do daemon ("Glass Cannon 🔥"), não apenas o nome canônico exato', () => {
+    // packages/daemon/src/services/file-watcher.ts's normalizeSpec falls back to this
+    // literal string whenever the agent omits synergies_unlocked -- a common path, not an
+    // edge case. Exact-string matching against KNOWN would silently drop this and every
+    // visitor would lose the synergy (and its score bonus) with zero indication.
+    const spec = specWith(['Glass Cannon 🔥']);
+    const r = applySynergies(spec);
+    assert.deepEqual(r.applied, ['Glass Cannon']);
+    assert.equal(
+      r.weapons.primary.damage,
+      spec.weapons.primary.damage * BALANCE.synergies.glass_cannon.primary_damage_factor
+    );
+    assert.equal(r.attributes.max_hp, BALANCE.synergies.glass_cannon.forced_max_hp);
+  });
+
+  it('reconhece as strings decoradas exibidas pelo builder (emoji + nome + parêntese) para as quatro sinergias', () => {
+    // Mirrors EnergySlidersBuilder.tsx's actual detectedSynergy strings verbatim.
+    const decorated: Record<string, string> = {
+      'Glass Cannon': '⚡ Glass Cannon (+30% DPS)',
+      'Titan Fortress': '🛡️ Titan Fortress (+25% Blindagem)',
+      'Ghost Interceptor': '💨 Ghost Interceptor (+20% Esquiva)',
+      'Balanced Ace': '🎯 Balanced Ace (+15% Geral)'
+    };
+    for (const [canonical, display] of Object.entries(decorated)) {
+      const r = applySynergies(specWith([display]));
+      assert.deepEqual(r.applied, [canonical], `esperava reconhecer "${display}" como ${canonical}`);
+    }
+  });
 });
