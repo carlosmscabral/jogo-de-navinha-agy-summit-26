@@ -46,9 +46,9 @@ describe('computeBaselineWeapons', () => {
     assert.equal(weapons.primary.fire_rate, 5);
     assert.equal(weapons.primary.bullet_speed, 400);
     assert.equal(weapons.primary.spread_angle, 0);
-    assert.equal(weapons.secondary.damage, 0);
+    assert.equal(weapons.secondary.damage, 60);
     // cooldown_seconds is inverted: min offense -> MAX cooldown
-    assert.equal(weapons.secondary.cooldown_seconds, 20);
+    assert.equal(weapons.secondary.cooldown_seconds, 12);
   });
 
   it('produces primary damage/fire_rate at their practical-range maximum (not the full schema maximum), while other fields hit the full schema maximum, when offense is at its maximum', () => {
@@ -59,14 +59,14 @@ describe('computeBaselineWeapons', () => {
     assert.equal(weapons.primary.spread_angle, 30);
     assert.equal(weapons.secondary.damage, 150);
     // cooldown_seconds is inverted: max offense -> MIN cooldown
-    assert.equal(weapons.secondary.cooldown_seconds, 0);
+    assert.equal(weapons.secondary.cooldown_seconds, 3);
   });
 
   it('lands strictly between the bounds for an interior slider value', () => {
     const weapons = computeBaselineWeapons(MID_SLIDERS, 'laser_piercing');
     assert.ok(weapons.primary.damage > 15 && weapons.primary.damage < 45, `damage ${weapons.primary.damage} should be strictly interior`);
     assert.ok(
-      weapons.secondary.cooldown_seconds > 0 && weapons.secondary.cooldown_seconds < 20,
+      weapons.secondary.cooldown_seconds > 3 && weapons.secondary.cooldown_seconds < 12,
       `cooldown_seconds ${weapons.secondary.cooldown_seconds} should be strictly interior`
     );
   });

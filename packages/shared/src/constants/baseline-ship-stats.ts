@@ -104,9 +104,9 @@ const WEAPON_FOCUS_TO_TYPES: Record<FastGrillMeWeaponFocus, { primary: PrimaryWe
  *    deliberately targets a narrower practical sub-range within them.
  *  - primary.bullet_speed:      number, [400, 800] (full schema range -- doesn't affect DPS balance)
  *  - primary.spread_angle:      number, [0, 30]    (full schema range)
- *  - secondary.damage:          number, [0, 150]   (full schema range)
- *  - secondary.cooldown_seconds: number, [20, 0], INVERTED
- *    (higher offense -> shorter cooldown, fires more often)
+ *  - secondary.damage:          number, [60, 150]  (full schema range)
+ *  - secondary.cooldown_seconds: number, [12, 3], INVERTED
+ *    (higher offense -> shorter cooldown, fires more often, within the schema's [3,12] range)
  *
  * None of these fields require `"type": "integer"` in the schema, so they are
  * left as the raw interpolated float (no rounding forced).
@@ -119,9 +119,9 @@ export function computeBaselineWeapons(sliders: EnergySliders, weaponFocus: Fast
   const bullet_speed = lerpClamp(sliders.offense, SLIDER_MIN, SLIDER_MAX, 400, 800);
   const spread_angle = lerpClamp(sliders.offense, SLIDER_MIN, SLIDER_MAX, 0, 30);
 
-  const secondaryDamage = lerpClamp(sliders.offense, SLIDER_MIN, SLIDER_MAX, 0, 150);
-  // Inverted: outMin (20) > outMax (0) -- higher offense yields a shorter cooldown.
-  const cooldownSeconds = lerpClamp(sliders.offense, SLIDER_MIN, SLIDER_MAX, 20, 0);
+  const secondaryDamage = lerpClamp(sliders.offense, SLIDER_MIN, SLIDER_MAX, 60, 150);
+  // Inverted: outMin (12) > outMax (3) -- higher offense yields a shorter cooldown, within the new [3,12] schema range.
+  const cooldownSeconds = lerpClamp(sliders.offense, SLIDER_MIN, SLIDER_MAX, 12, 3);
 
   return {
     primary: {
