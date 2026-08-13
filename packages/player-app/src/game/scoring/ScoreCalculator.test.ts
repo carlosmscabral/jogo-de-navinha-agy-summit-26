@@ -15,6 +15,17 @@ describe('ScoreCalculator Unit Tests', () => {
     assert.equal(calc.comboMultiplier, 1.2);
   });
 
+  it('should treat an out-of-union enemyType (e.g. kamikaze, reachable via the unsound getData cast at the MainGameScene call site) as drone-worth points instead of NaN', () => {
+    const calc = new ScoreCalculator();
+    // 'kamikaze' isn't in the `'drone' | 'cruiser' | 'boss'` union registerKill declares, but
+    // MainGameScene.ts reads the enemy type back from Phaser sprite data via an unsound cast, so a
+    // real 'kamikaze' value does reach this method at runtime. Cast here to reproduce that exact path.
+    const earned = calc.registerKill('kamikaze' as unknown as 'drone');
+    assert.equal(earned, 100);
+    assert.equal(calc.currentScore, 100);
+    assert.ok(!Number.isNaN(calc.currentScore));
+  });
+
   it('should reset combo multiplier when damage is taken', () => {
     const calc = new ScoreCalculator();
     calc.registerKill('drone');

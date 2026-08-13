@@ -9,7 +9,13 @@ export class ScoreCalculator {
   shotsHit = 0;
 
   registerKill(enemyType: 'drone' | 'cruiser' | 'boss'): number {
-    const basePoints = BALANCE.score.points[enemyType];
+    // enemyType is widened by an unsound cast at the MainGameScene call site (enemy sprite data is
+    // read back as `any`), so a runtime value outside the declared union (e.g. 'kamikaze') can reach
+    // here despite the type annotation. BALANCE.score.points has no entry for such values, so fall
+    // back to the drone rate -- the same value the pre-B1 fall-through `if` chain gave anything that
+    // wasn't explicitly 'cruiser' or 'boss'. Do NOT add a 'kamikaze' key to BALANCE.score.points: that
+    // would be a new scoring tier, a design decision outside this refactor's scope.
+    const basePoints = BALANCE.score.points[enemyType] ?? BALANCE.score.points.drone;
     const earned = Math.round(basePoints * this.comboMultiplier);
     this.currentScore += earned;
     this.totalKills += 1;
