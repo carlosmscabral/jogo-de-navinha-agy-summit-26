@@ -18,9 +18,13 @@ jobs:
 
       - run: npm ci
       - run: npm run build
-      - run: npm test
-      # Redundante com o `npm test` acima (que já roda packages/sim desde a Tarefa B7) -- este passo
-      # existe só para que uma falha do portão de balanceamento (D12) apareça com nome próprio no log
-      # de CI, em vez de ficar escondida dentro de um passo genérico "test".
+      # Roda ANTES do `npm test` da raiz de propósito, não depois: `npm test` já inclui
+      # `packages/sim` como seu último workspace (desde a Tarefa B7), então se o portão de
+      # balanceamento falhar ali, `npm test` sai com código de erro e o job para -- o passo nomeado
+      # abaixo nunca chegaria a rodar, exatamente no caso em que ele existe para ajudar. `npm run
+      # build` já constrói tudo que `packages/sim` importa (`@jogo/shared` incluso), então rodar o
+      # pacote isolado aqui, antes do `npm test` completo, é seguro. `npm test` mais abaixo continua
+      # re-executando os testes do sim como parte normal da suíte -- redundante, mas inofensivo.
       - name: Balance gate (packages/sim)
         run: npm run test --workspace=packages/sim
+      - run: npm test
