@@ -4,7 +4,12 @@ import { fileURLToPath } from 'node:url';
 import { runMatrix, type SimMatrix, type SimMatrixCell } from './combat-model.js';
 import { ARCHETYPES, SKILL_PROFILES } from './archetypes.js';
 
-const SEED_COUNT = 200;
+// 200 seeds lacks the statistical power to reliably distinguish a true win rate near 0% from a
+// true win rate of, say, 0.5%: at 200 samples, a handful of lucky/unlucky seeds can flip a cell's
+// reported rate by several percentage points. 2,000 seeds (confirmed to still complete in a few
+// seconds, well inside the 60s budget) is enough for events down to roughly the 0.1-1% range to
+// show up reliably as nonzero (or reliably as zero) instead of as sampling noise.
+const SEED_COUNT = 2000;
 const seeds = Array.from({ length: SEED_COUNT }, (_, i) => i + 1);
 
 function pctBr(fraction: number): string {

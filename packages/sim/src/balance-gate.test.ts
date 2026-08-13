@@ -40,9 +40,23 @@ import { ARCHETYPES, SKILL_PROFILES } from './archetypes.js';
  * irrealista no teto de todas as faixas de `BALANCE.ranges`) têm taxa de vitória 0%. Este é
  * exatamente o D12 medido: o boss é matematicamente quase invencível para qualquer build real.
  * Este comentário é o "antes" contra o qual a Tarefa B8 mede o efeito de cada hipótese aplicada.
+ *
+ * NOTA (revisão pós-review, mesma data): a contagem de seeds foi elevada de 200 para 2.000 depois
+ * desta linha de base ter sido registrada -- 200 seeds não tem poder estatístico para distinguir
+ * de forma confiável uma taxa real de ~0% de uma taxa real de ~0,5-1% (uma célula "zero" em 200
+ * seeds pode ter uma taxa real de até ~1-2% sem que isso apareça). Isso não muda a conclusão
+ * acima: um evento que já é 0/200 amostras tende a permanecer 0 ou quase-0 em 2.000 amostras, e a
+ * matriz "antes" (`boss.max_hp: 15000`) não foi reexecutada com a contagem nova porque o achado
+ * qualitativo -- praticamente tudo em 0% -- não depende da contagem de seeds. O que a contagem
+ * mais alta corrigiu foi a leitura de células **próximas de zero mas não exatamente zero** na
+ * configuração final desta tarefa (ver Spec 09 §2.4.1: `striker` e `interceptor` pareciam
+ * "corrigidos" em 200 seeds e não estavam).
  */
 
-const SEEDS = Array.from({ length: 200 }, (_, i) => i + 1);
+// Same seed count as run.ts's default matrix run (see the comment there): 200 seeds isn't enough
+// statistical power to reliably tell a true win rate near 0% apart from one around 0.5-1% -- a
+// gate that's supposed to catch regressions down in that range needs the same statistical floor.
+const SEEDS = Array.from({ length: 2000 }, (_, i) => i + 1);
 
 describe('portão de balanceamento (Spec 09 §5.3)', () => {
   let matrix: SimMatrix;
