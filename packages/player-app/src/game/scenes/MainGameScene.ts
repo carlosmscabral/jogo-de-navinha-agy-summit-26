@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BALANCE, ShipSpecification, FALLBACK_PRESETS, MatchTelemetry, ScoreBreakdown } from '@jogo/shared';
+import { BALANCE, ShipSpecification, FALLBACK_PRESETS, MatchTelemetry, ScoreBreakdown, SeededRandom } from '@jogo/shared';
 import { PlayerShip } from '../objects/PlayerShip.js';
 import { BossOverlord } from '../objects/BossOverlord.js';
 import { ShipTextureFactory } from '../factories/ShipTextureFactory.js';
@@ -18,6 +18,8 @@ interface StarPoint {
 export class MainGameScene extends Phaser.Scene {
   shipSpec: ShipSpecification = FALLBACK_PRESETS.interceptor;
   isHardcore = false;
+  seed = 0;
+  rng!: SeededRandom;
   player!: PlayerShip;
   boss?: BossOverlord;
   scoreCalculator = new ScoreCalculator();
@@ -69,6 +71,7 @@ export class MainGameScene extends Phaser.Scene {
       this.shipSpec = data.shipSpec;
     }
     this.isHardcore = !!data?.isHardcore;
+    this.rng = new SeededRandom(this.seed);
     this.isGameOver = false;
     this.isVictory = false;
     this.hasNotifiedCompletion = false;
@@ -198,24 +201,24 @@ export class MainGameScene extends Phaser.Scene {
 
   private spawnWaveEnemies(): void {
     const isWave2 = this.elapsedSeconds >= BALANCE.match.wave2_starts_s;
-    const squadType = Phaser.Math.Between(1, 3);
+    const squadType = this.rng.between(1, 3);
 
     if (squadType === 1) {
       // V-Formation (3 Drones)
-      const centerX = Phaser.Math.Between(120, this.scale.width - 120);
+      const centerX = this.rng.between(120, this.scale.width - 120);
       this.createSingleDrone(centerX, -30, 0, BALANCE.enemies.drone.speed_y, BALANCE.enemies.drone.hp, 'drone');
       this.createSingleDrone(centerX - 45, -60, -20, BALANCE.enemies.drone.speed_y, BALANCE.enemies.drone.hp, 'drone');
       this.createSingleDrone(centerX + 45, -60, 20, BALANCE.enemies.drone.speed_y, BALANCE.enemies.drone.hp, 'drone');
     } else if (squadType === 2 && isWave2) {
       // Elite Cruiser + Escorts
-      const x = Phaser.Math.Between(100, this.scale.width - 100);
+      const x = this.rng.between(100, this.scale.width - 100);
       this.createSingleDrone(x, -40, 0, BALANCE.enemies.cruiser.speed_y, BALANCE.enemies.cruiser.hp, 'cruiser');
       this.createSingleDrone(x - 50, -20, -15, 200, BALANCE.enemies.drone.hp, 'drone');
       this.createSingleDrone(x + 50, -20, 15, 200, BALANCE.enemies.drone.hp, 'drone');
     } else {
       // Kamikaze Fast Dive Squadron (2 Drones)
-      const x1 = Phaser.Math.Between(80, this.scale.width / 2 - 20);
-      const x2 = Phaser.Math.Between(this.scale.width / 2 + 20, this.scale.width - 80);
+      const x1 = this.rng.between(80, this.scale.width / 2 - 20);
+      const x2 = this.rng.between(this.scale.width / 2 + 20, this.scale.width - 80);
       this.createSingleDrone(x1, -30, 15, BALANCE.enemies.kamikaze.speed_y, BALANCE.enemies.kamikaze.hp, 'kamikaze');
       this.createSingleDrone(x2, -30, -15, BALANCE.enemies.kamikaze.speed_y, BALANCE.enemies.kamikaze.hp, 'kamikaze');
     }
@@ -262,7 +265,7 @@ export class MainGameScene extends Phaser.Scene {
             const rad = angle + s;
             this.spawnEnemyBullet(e.x, e.y + 10, Math.cos(rad) * bulletSpeed, Math.sin(rad) * bulletSpeed);
           }
-        } else if (type !== 'kamikaze' && Math.random() < BALANCE.enemies.fire_chance) {
+        } else if (type !== 'kamikaze' && this.rng.chance(BALANCE.enemies.fire_chance)) {
           this.spawnEnemyBullet(e.x, e.y + 10, Math.cos(angle) * bulletSpeed, Math.sin(angle) * bulletSpeed);
         }
       }
@@ -618,7 +621,7 @@ export class MainGameScene extends Phaser.Scene {
           shots_fired: shotsFired,
           shots_hit: shotsHit,
           fallback_used: this.shipSpec.build_metadata?.fallback_used === true,
-          seed: 0,
+          seed: this.seed,
           boss_ttk_s: this.bossKilledAtSeconds !== null ? +(this.bossKilledAtSeconds - BALANCE.match.boss_spawn_s).toFixed(1) : null
         }
       });
@@ -640,14 +643,14 @@ export class MainGameScene extends Phaser.Scene {
     this.starfieldGraphics = this.add.graphics();
     this.stars = [];
     for (let i = 0; i < 80; i++) {
-      const isFast = Math.random() > 0.8;
+      const isFast = this.rng.chance(0.2);
       this.stars.push({
-        x: Phaser.Math.Between(0, this.scale.width),
-        y: Phaser.Math.Between(0, this.scale.height),
-        speed: isFast ? Phaser.Math.FloatBetween(2.5, 4.5) : Phaser.Math.FloatBetween(0.5, 1.8),
-        size: isFast ? 2 : Phaser.Math.FloatBetween(0.8, 1.5),
-        alpha: Phaser.Math.FloatBetween(0.4, 1.0),
-        color: Math.random() > 0.4 ? 0xffffff : 0x38bdf8
+        x: this.rng.between(0, this.scale.width),
+        y: this.rng.between(0, this.scale.height),
+        speed: isFast ? this.rng.floatBetween(2.5, 4.5) : this.rng.floatBetween(0.5, 1.8),
+        size: isFast ? 2 : this.rng.floatBetween(0.8, 1.5),
+        alpha: this.rng.floatBetween(0.4, 1.0),
+        color: this.rng.chance(0.6) ? 0xffffff : 0x38bdf8
       });
     }
   }
@@ -859,7 +862,7 @@ export class MainGameScene extends Phaser.Scene {
       star.y += star.speed;
       if (star.y > this.scale.height) {
         star.y = -5;
-        star.x = Phaser.Math.Between(0, this.scale.width);
+        star.x = this.rng.between(0, this.scale.width);
       }
       this.starfieldGraphics.fillStyle(star.color, star.alpha);
       this.starfieldGraphics.fillCircle(star.x, star.y, star.size);

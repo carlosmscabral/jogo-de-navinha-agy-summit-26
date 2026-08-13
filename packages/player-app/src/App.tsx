@@ -34,14 +34,13 @@ export function App() {
   // Initialize Game Instance when entering GAMEPLAY stage
   useEffect(() => {
     if (stage === 'GAMEPLAY' && gameContainerRef.current && !gameInstanceRef.current) {
-      gameInstanceRef.current = createGameInstance(
-        gameContainerRef.current,
+      gameInstanceRef.current = createGameInstance(gameContainerRef.current, {
         shipSpec,
-        false,
-        (result) => {
+        isHardcore: false,
+        onMatchComplete: (result) => {
           handleMatchComplete(result);
         }
-      );
+      });
     }
 
     return () => {

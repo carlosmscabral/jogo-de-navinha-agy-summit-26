@@ -3,6 +3,7 @@ export * from './constants/balance.js';
 export * from './constants/fallback-presets.js';
 export * from './constants/baseline-ship-stats.js';
 export * from './utils/fallback-selector.js';
+export * from './utils/rng.js';
 export * from './validator.js';
 export * from './utils/moderation.js';
 export * from './utils/company-normalizer.js';

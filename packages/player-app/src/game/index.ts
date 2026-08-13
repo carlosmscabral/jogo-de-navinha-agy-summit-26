@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { MainGameScene } from './scenes/MainGameScene.js';
-import { ShipSpecification, MatchTelemetry, ScoreBreakdown } from '@jogo/shared';
+import { ShipSpecification, MatchTelemetry, ScoreBreakdown, randomSeed } from '@jogo/shared';
 
 export interface MatchCompleteData {
   finalScore: number;
@@ -9,20 +9,26 @@ export interface MatchCompleteData {
   telemetry: MatchTelemetry;
 }
 
-export function createGameInstance(
-  container: HTMLElement | string,
-  shipSpec?: ShipSpecification,
-  isHardcore = false,
-  onMatchComplete?: (data: MatchCompleteData) => void
-): Phaser.Game {
+export interface GameOptions {
+  shipSpec?: ShipSpecification;
+  isHardcore?: boolean;
+  /** PRNG seed. Omitted in production → randomly drawn and recorded in telemetry. */
+  seed?: number;
+  onMatchComplete?: (data: MatchCompleteData) => void;
+}
+
+export function createGameInstance(container: HTMLElement | string, options: GameOptions = {}): Phaser.Game {
+  const seed = options.seed ?? randomSeed();
+
   class CustomGameScene extends MainGameScene {
     constructor() {
       super();
-      if (shipSpec) {
-        this.shipSpec = shipSpec;
+      if (options.shipSpec) {
+        this.shipSpec = options.shipSpec;
       }
-      this.isHardcore = isHardcore;
-      this.onMatchComplete = onMatchComplete;
+      this.isHardcore = !!options.isHardcore;
+      this.seed = seed;
+      this.onMatchComplete = options.onMatchComplete;
     }
   }
 
