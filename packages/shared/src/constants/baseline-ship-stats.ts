@@ -92,16 +92,13 @@ const WEAPON_FOCUS_TO_TYPES: Record<FastGrillMeWeaponFocus, { primary: PrimaryWe
 /**
  * Computes the deterministic baseline `weapons` block from the energy sliders
  * and the visitor's Fast-Grill-Me weapon focus choice, all driven by `offense`:
- *  - primary.damage:            number, [15, 45]  -- practical range, NOT the schema's full [10,60].
- *  - primary.fire_rate:         number, [5, 12]   -- practical range, NOT the schema's full [2,60].
- *    Both are intentionally narrowed to the range the real `weapons-arsenal` MCP is guided to
- *    produce (see GEMINI.md's contract table in workspace-generator.ts) and the range
- *    `WeaponSystem.firePrimary` clamps to at render time
- *    (packages/player-app/src/game/weapons/WeaponSystem.ts). Targeting the full schema envelope
- *    here let an unselected-weapons-arsenal baseline out-DPS a real, selected, AI-calibrated
- *    ship, inverting the "fewer MCPs = weaker but higher score multiplier" tradeoff. The schema's
- *    full [10,60]/[2,60] bounds remain the hard outer limit the validator enforces; this module
- *    deliberately targets a narrower practical sub-range within them.
+ *  - primary.damage:            number, [15, 45]  (full schema range, see BALANCE.ranges -- D14)
+ *  - primary.fire_rate:         number, [5, 12]   (full schema range, see BALANCE.ranges -- D14)
+ *    Since Task B2 regenerated `ship_spec.schema.json` from `BALANCE.ranges`, the schema's own
+ *    bounds for these two fields ARE [15,45]/[5,12] -- there is no narrower "practical" sub-range
+ *    to target anymore, and no render-time clamp left to match either (`WeaponSystem.firePrimary`
+ *    no longer re-clamps; it consumes the validated value as-is). This module still computes them
+ *    from `offense` the same way it always did; only the framing in this comment changes.
  *  - primary.bullet_speed:      number, [400, 800] (full schema range -- doesn't affect DPS balance)
  *  - primary.spread_angle:      number, [0, 30]    (full schema range)
  *  - secondary.damage:          number, [60, 150]  (full schema range)

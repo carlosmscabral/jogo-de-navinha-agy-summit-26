@@ -345,7 +345,7 @@ export class FileWatcherService {
       weapons: {
         primary: {
           type: primaryType,
-          damage: Number(raw.weapons?.primary?.damage || raw.damage) || (primaryType === 'laser' ? 45 : primaryType === 'plasma' ? 60 : 35),
+          damage: Number(raw.weapons?.primary?.damage || raw.damage) || (primaryType === 'laser' ? 45 : primaryType === 'plasma' ? 45 : 35),
           fire_rate: Number(raw.weapons?.primary?.fire_rate || raw.fire_rate),
           bullet_speed: Number(raw.weapons?.primary?.bullet_speed || raw.bullet_speed),
           spread_angle: primaryType === 'vulcan_spread' ? 0.25 : 0

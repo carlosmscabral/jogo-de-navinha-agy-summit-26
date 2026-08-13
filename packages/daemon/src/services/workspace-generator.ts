@@ -219,7 +219,7 @@ OMITA-os do arquivo final.** O jogo preenche esses campos automaticamente a part
 energia do piloto. Isso NÃO é uma violação da REGRA ZERO: você só é proibido de inventar valores
 para os MCPs que ESTÃO ativos.
 
-### PROTOCOLO RÍGIDO DE 4 PASSOS:
+### PROTOCOLO RÍGIDO DE 5 PASSOS:
 1. **PASSO 1 - FAST GRILL-ME:** Pergunte ao piloto em 1 turno (ou leia seu prompt inicial):
    - [1] Foco de Armas: 1-Laser Perfurante, 2-Chuva de Mísseis, 3-Vulcan Espalhado
    - [2] Estilo Estético: 1-Synthwave 80s, 2-Dark Void Stealth, 3-Cyberpunk Gold
