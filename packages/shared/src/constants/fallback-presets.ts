@@ -49,8 +49,8 @@ export const FALLBACK_PRESETS: Record<'interceptor' | 'vanguard' | 'striker', Sh
     weapons: {
       primary: {
         type: 'laser',
-        damage: 12,
-        fire_rate: 60,
+        damage: 20,
+        fire_rate: 12,
         bullet_speed: 750,
         spread_angle: 0
       },
@@ -100,7 +100,7 @@ export const FALLBACK_PRESETS: Record<'interceptor' | 'vanguard' | 'striker', Sh
       primary: {
         type: 'plasma',
         damage: 40,
-        fire_rate: 3.5,
+        fire_rate: 5,
         bullet_speed: 550,
         spread_angle: 0
       },
@@ -155,8 +155,8 @@ export const FALLBACK_PRESETS: Record<'interceptor' | 'vanguard' | 'striker', Sh
         spread_angle: 15
       },
       secondary: {
-        type: 'drone_escort',
-        damage: 12,
+        type: 'emp_burst',
+        damage: 80,
         cooldown_seconds: 12
       }
     },
