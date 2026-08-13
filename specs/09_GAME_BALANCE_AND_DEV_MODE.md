@@ -105,6 +105,78 @@ impacto:
 > pior que não oferecê-lo. Decisão recomendada: **remover do enum** nesta fase e reintroduzir apenas se
 > houver tempo, já que a Fase E do plano é opcional.
 
+### 2.4.1. Resultado medido (Tarefa B8, 2026-08-13)
+
+Linha de base (`npm run sim:balance`, 200 seeds, `balance.ts` com os valores que produziram D12):
+`aggregateWinRate` (média das 8 células `mediano`) = **0,0%**. 22 das 24 células (todas exceto
+`vulcan_max experiente`, um preset irrealista no teto de `BALANCE.ranges`) tinham taxa de vitória 0%.
+A matriz completa está datada no topo de `packages/sim/src/balance-gate.test.ts`.
+
+As cinco hipóteses foram aplicadas **em ordem, uma alteração de campo por vez**, com
+`npm run sim:balance` rodado após cada uma para medir o efeito isolado antes de decidir o próximo
+passo:
+
+| # | Hipótese | Aplicada? | Campo final | Efeito medido (isolado) |
+| :-- | :--- | :--- | :--- | :--- |
+| 1 | Reduzir `boss.max_hp` | **Aplicada, revisada duas vezes** | `max_hp: 1.750` (`max_hp_hardcore: 2.567`) | Partiu de 6.000 (sugestão do brief) → `aggregateWinRate` 0,0% → 7,25% isolado. Insuficiente mesmo após as hipóteses 2–5: com 6.000 e a fase 1 sem blindagem extra, os três presets de fallback reais ainda ficavam em 0,0%. Revisado para 1.750 depois de medir que esse é o ponto em que `interceptor`/`vanguard`/`striker` saem de 0% em habilidade mediana. |
+| 2 | Teto por projétil só na primária | **Confirmada, não alterada** | `max_damage_per_primary_hit: 45` (campo inalterado) | Não é uma mudança de número — é uma confirmação. `applyBossHit`/`BossOverlord.takeDamage` já aplicam o teto a QUALQUER fonte de dano (primária, mísseis, EMP) desde a Tarefa B6/B7, e o comentário do campo em `balance.ts` já documenta isso corretamente como um `TODO(B8)` em aberto, não um bug atual. Decisão desta tarefa: **não mudar o escopo do teto agora** — isso tornaria a arma secundária uma segunda fonte de dano sem teto, um efeito de magnitude desconhecida que não foi medido; registrado como trabalho futuro, não como uma das 5 hipóteses aplicadas. |
+| 3 | Estender a janela do boss | **Aplicada** | `boss_spawn_s: 40`, `boss_warning_s: 37` | `aggregateWinRate` de 7,25% para 7,06% isolado (efeito líquido ≈ zero nesta métrica agregada; o ganho de 5s de janela ajuda builds marginais como `maximo`, mas o deslocamento da sequência de RNG entre fases pré-boss/boss também move `vulcan_max` um pouco para baixo — ruído de seed, não regressão real). |
+| 4 | Compensar o projétil único (via `vulcan_pellet_factor`) | **Aplicada, revisada** | `vulcan_pellet_factor: 0.6` | Cortado para 0,5 primeiro (`vulcan_max`/mediano caiu de 55,5% para 29,0%, espalhamento entre arquétipos mediano caiu de 55,5pp para 29,0pp — abaixo do teto de 35pp, isolado). Revisado para 0,6 depois que a combinação com `boss.max_hp: 1.750` mostrou que 0,5 mantinha `striker` — um preset de fallback real, não sintético — travado em 0,0% mesmo vencendo 1.750 HP de boss; valores ainda mais baixos (0,35/0,40/0,45) foram testados e confirmam que cortar mais fundo só pune `striker`, sem conter `vulcan_max` (que já está saturado a ≈100% dentro da janela que os outros arquétipos reais precisam). |
+| 5 | Aliviar a mitigação da fase 1 | **Aplicada, corrigida** | `mitigation: { phase1: 0.65, phase2: 0.70, phase3: 1.0 }` | A fórmula real (`actualDamage = capped × mitigation`) confirma que um valor MAIOR deixa passar MAIS dano — "aliviar" significa subir o número, não descer (o oposto do que a leitura textual de "mitigação" sugere; verificado na fórmula antes de decidir a direção). Testado primeiro em 1,0 (paridade com a fase 3): `aggregateWinRate` isolado subiu de 3,75% para 6,06% a `boss.max_hp: 6.000`, mas 1,0 quebra duas invariantes já cobertas por teste (`combat-model.test.ts`: fase 3 precisa ter mais dano bruto que a fase 1; `packages/shared/src/constants/balance.test.ts`: fase 2 precisa ser estritamente maior que a fase 1). Corrigido para 0,65 — estritamente entre o valor original (0,50) e `phase2` (0,70), preservando a progressão de três fases estritamente crescente que a suíte de testes do `shared` já exigia antes desta tarefa. |
+
+**Matriz final** (`npm run sim:balance`, 200 seeds, valores acima, medida em 2026-08-13):
+
+```
+arquétipo        habilidade    vitórias   TTK p50   TTK p90   dano   score     derrota
+interceptor      mediano       1,5%       27,9s     30,8s     4,0    20.551    0,0% tempo / 100,0% morte
+vanguard         mediano       5,5%       34,4s     38,0s     6,9    21.581    0,0% tempo / 100,0% morte
+striker          mediano       0,5%       31,4s     31,4s     3,0    20.292    0,0% tempo / 100,0% morte
+minimo           mediano       0,0%       —         —         2,0    20.167    0,0% tempo / 100,0% morte
+maximo           mediano       99,0%      17,1s     19,2s     4,5    49.355    0,0% tempo / 100,0% morte
+glass_cannon     mediano       0,5%       17,1s     17,1s     2,0    20.298    0,0% tempo / 100,0% morte
+vulcan_max       mediano       100,0%     10,8s     11,8s     2,8    52.019    —
+tanque           mediano       0,0%       —         —         8,0    20.180    1,0% tempo / 99,0% morte
+```
+
+`aggregateWinRate` (média das 8 células acima) = **25,9%** — 0,9pp acima da banda de 15–25%.
+
+**Achado estrutural (não resolvido pelas 5 hipóteses, nem por mais tuning dos mesmos 5 campos):**
+`packages/sim/src/balance-gate.test.ts` continua falhando em 3 das 4 condições do §5.3
+(`aggregateWinRate` fora da banda; `minimo` invencível — 0% — a condição-D12; espalhamento de 100pp
+entre `vulcan_max`/`maximo` (100%) e `minimo`/`tanque` (0%), muito acima do teto de 35pp). Isto foi
+verificado por varredura exaustiva de `boss.max_hp` (de 15 a 6.000) combinada com `mitigation.phase1`
+em seu valor mais generoso possível (1,0, antes de ser corrigido para 0,65): em **nenhum** ponto dessa
+varredura os três presets de fallback reais e os cinco arquétipos sintéticos (`minimo`, `maximo`,
+`glass_cannon`, `vulcan_max`, `tanque`) ficam simultaneamente entre 0% e 100% em habilidade mediana. A
+causa raiz: `boss.max_hp`, `boss.mitigation` e `match.boss_spawn_s` são multiplicadores **uniformes** —
+escalam o TTK de todo arquétipo pelo mesmo fator, preservando a ordem relativa de poder entre eles.
+`minimo` (todo atributo no piso de `BALANCE.ranges` simultaneamente: 2 HP, 0 escudo, dano/cadência
+mínimos) morre a ≈2 acertos em qualquer fase de boss de dezenas de segundos, **independentemente** do
+HP do boss — verificado com 2.000 seeds (10× o tamanho da suíte de CI) em `boss.max_hp` de 800 a 6.000,
+zero vitórias em todos os casos; só cai abaixo disso quando `boss.max_hp` é tão baixo (≈15) que **todo**
+arquétipo do elenco satura a 100%, inclusive os fallbacks reais. `maximo` (todo atributo no teto de
+`BALANCE.ranges` simultaneamente) domina estritamente `minimo`/`tanque` em ataque E defesa, e não usa
+`vulcan_spread` — não há alavanca entre as 5 autorizadas que o contenha sem também conter `boss.max_hp`
+a um ponto que zera os fallbacks reais de novo. A única alavanca não-uniforme disponível
+(`vulcan_pellet_factor`) só afeta usuários de `vulcan_spread` (`striker`, `vulcan_max`), não `maximo`
+(laser) nem o par piso/teto `minimo`/`maximo`.
+
+Esta tarefa prioriza o achado **literal** da auditoria original — "a taxa de vitória real é 0% para os
+três presets de fallback" — sobre o número agregado puro: os três fallbacks (`interceptor`, `vanguard`,
+`striker`) saem de 0% e passam a vencer em habilidade mediana. A recomendação para fechar as 3
+condições restantes do portão de CI é uma decisão de **próxima tarefa**, fora do escopo dos 5 campos de
+`balance.ts` autorizados aqui, entre estas opções (não mutuamente exclusivas):
+
+- Excluir arquétipos sintéticos de piso/teto absoluto (`minimo`, `maximo`) do portão por-arquétipo,
+  mantendo-os apenas como diagnóstico no `npm run sim:balance` — nem a Spec 09 §5.1 original pedia um
+  arquétipo "mínimo" (só ≈6: os 3 fallbacks + 3 variantes de "máximo"); `minimo` foi um acréscimo da
+  Tarefa B4/B7 além do que esta especificação definia.
+- Reconsiderar os atributos base dos 3 presets de fallback em `fallback-presets.ts` (fora do escopo
+  desta tarefa) para reduzir o espalhamento de poder já existente entre eles (`vanguard`, com dano 40 e
+  `plasma`, é estruturalmente mais forte que `striker`, com dano 18 e `vulcan_spread` fraco).
+- Revisitar a própria banda de 15–25% com um número ao lado, como o §5.3 já autoriza explicitamente
+  ("se a medição mostrar que ela produz um estande frustrante, a banda é que muda").
+
 ---
 
 ## 3. Entregável 2 — Determinismo por Seed

@@ -162,6 +162,11 @@ spawner roda até 45s e o boss entra em seguida.
 Cada transição concede **2,0s de invulnerabilidade total** ao boss. O intervalo entre salvas cai de
 140ms para 110ms e depois 80ms; a velocidade dos projéteis sobe de 300 para 340 e 380 px/s.
 
+> **Nota (B8, 2026-08-13).** Os números da tabela acima (15.000 HP; mitigação de dano — a fração
+> absorvida, `1 - BALANCE.boss.mitigation.phaseN` — de 50%/30%/0%) são os que valiam **antes** desta
+> tarefa e produziram D12. Ver a correção completa, com os valores medidos vigentes hoje, no final da
+> §5.1.
+
 ### 5.1. [D12] O boss é invencível para os três presets, e um penhasco para o resto
 
 `BossOverlord.takeDamage()` (`:305-308`) aplica, nesta ordem:
@@ -196,6 +201,24 @@ projétil ou três. Isso é o oposto de uma curva de dificuldade de 15–25%.
 O ajuste não é escolher outro número por intuição — foi assim que se chegou aqui. É o que a
 [Spec 09](./09_GAME_BALANCE_AND_DEV_MODE.md) resolve: extrair o tuning para uma fonte única, simular, e
 travar a taxa de vitória em CI. Enquanto isso não existir, qualquer número novo é outro palpite.
+
+> **Correção (B8, medido em 2026-08-13).** Os números de `mitigation`/`max_hp` acima e na tabela da
+> §5 são os que **produziram** D12; eles não valem mais em `balance.ts`. Os valores finais medidos —
+> `boss.max_hp: 1.750` (`max_hp_hardcore: 2.567`), `boss.mitigation: { phase1: 0.65, phase2: 0.70,
+> phase3: 1.0 }`, `weapons.primary.vulcan_pellet_factor: 0.6`, `match.boss_spawn_s: 40`,
+> `match.boss_warning_s: 37` — e o processo que chegou a eles (cinco hipóteses aplicadas uma de cada
+> vez, efeito medido a cada passo) estão registrados na [Spec 09](./09_GAME_BALANCE_AND_DEV_MODE.md)
+> §2.4, que é a fonte numérica autoritativa por definição (Restrições Globais #3). Resultado líquido:
+> os três presets de fallback deixam de ter taxa de vitória 0% (`interceptor` 1,5%, `vanguard` 5,5%,
+> `striker` 0,5% em habilidade mediana, 200 seeds) — o achado literal de D12 está corrigido. A banda
+> agregada de 15–25% do critério abaixo, porém, **não fecha** com o elenco atual de 8 arquétipos do
+> simulador: dois arquétipos sintéticos de teto (`maximo`, `vulcan_max`, que empilham todo atributo de
+> `BALANCE.ranges` no máximo simultaneamente — combinação que nenhuma nave orçamentada pelo forge
+> alcança) saturam perto de 100% em qualquer `boss.max_hp` baixo o bastante para tirar os três
+> fallbacks de 0%, e um arquétipo sintético de piso (`minimo`) morre em ≈2 acertos independentemente
+> do HP do boss. Ver Spec 09 §2.4 para a prova de que isso é estrutural, não falta de tuning, e para a
+> recomendação de próximo passo (revisar o elenco de arquétipos do portão de CI, não os cinco campos
+> de `balance.ts` autorizados nesta tarefa).
 
 ### 5.2. [D15] As sinergias não afetam o boss nem nada
 
@@ -248,6 +271,17 @@ finalScore = round( (combatScore + bossBonus + timeBonus + survivalBonus + syner
 - [ ] A arma secundária causa dano mensurável contra inimigos comuns e contra o boss, e continua
       funcionando após 20 disparos.
 - [ ] Uma sinergia ativa produz diferença mensurável em atributo ou dano, verificável no harness de dev.
-- [ ] A taxa de vitória sobre o boss, medida pelo simulador da [Spec 09](./09_GAME_BALANCE_AND_DEV_MODE.md),
-      fica na faixa de 15% a 25%, e o teste de CI falha fora dela.
+- [ ] A taxa de vitória sobre o boss, medida pelo simulador da
+      [Spec 09](./09_GAME_BALANCE_AND_DEV_MODE.md) — **parcialmente cumprido, medido em 2026-08-13**
+      via `npm run sim:balance` e `npm run test --workspace=packages/sim` (200 seeds): os três presets
+      de fallback (`interceptor`/`vanguard`/`striker`) saem de 0% e passam a vencer em habilidade
+      mediana (1,5% / 5,5% / 0,5%), fechando o achado literal de D12. A taxa **agregada** dos 8
+      arquétipos do simulador fica em 25,9% (banda-alvo 15–25%, ≈1pp acima), e o teste de CI de
+      `balance-gate.test.ts` **ainda falha** em 3 das 4 condições — não por falta de tuning, mas porque
+      dois arquétipos sintéticos de teto (`maximo`, `vulcan_max`) saturam perto de 100% sempre que o
+      boss é fraco o bastante para os três fallbacks vencerem, enquanto um arquétipo sintético de piso
+      (`minimo`) morre em ≈2 acertos independentemente do HP do boss — ver a prova em Spec 09 §2.4.
+      Números simulador-somente: o Passo 4 (cinco partidas jogadas à mão) **não foi executado** —
+      nenhuma tarefa desta fase teve acesso a navegador — e continua pendente antes do Gate M1, junto
+      com a captura de conformidade ainda pendente da Tarefa B7.
 - [ ] `ScoreCalculator.test.ts` executa no `npm test` da raiz e passa.
