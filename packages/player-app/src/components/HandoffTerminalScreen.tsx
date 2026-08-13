@@ -149,7 +149,7 @@ export function HandoffTerminalScreen({
       return `Tipo: ${result?.type || args?.type || 'Canhão'} • Dano: ${result?.damage || 35} • Cadência: ${result?.fire_rate || 8}/s • DPS: ${result?.dps_estimate || 280}`;
     }
     if (tool === 'attach_secondary_ordnance') {
-      return `Secundária: ${result?.type || args?.type || 'Mísseis'} • Dano: ${result?.damage || 100} • Recarga: ${result?.cooldown_seconds || 2}s`;
+      return `Secundária: ${result?.type || args?.type || 'Mísseis'} • Dano: ${result?.damage ?? 100} • Recarga: ${result?.cooldown_seconds ?? 2}s`;
     }
     if (tool === 'tune_thrusters') {
       return `Velocidade: ${result?.speed_px_s || 320} px/s • Hitbox: ${result?.hitbox_radius || 12}px • Aceleração: ${result?.acceleration || 800}`;
@@ -268,7 +268,7 @@ export function HandoffTerminalScreen({
                     {detectedSpec.weapons?.secondary?.type || 'Mísseis Teleguiados'}
                   </div>
                   <div className="text-[10px] text-[#38bdf8]">
-                    Dano: {detectedSpec.weapons?.secondary?.damage || 100} | Recarga: {detectedSpec.weapons?.secondary?.cooldown_seconds || 2}s
+                    Dano: {detectedSpec.weapons?.secondary?.damage ?? 100} | Recarga: {detectedSpec.weapons?.secondary?.cooldown_seconds ?? 2}s
                   </div>
                 </div>
 
@@ -289,7 +289,7 @@ export function HandoffTerminalScreen({
                     <Shield className="w-3.5 h-3.5 text-[#10b981]" /> Blindagem & Escudo
                   </span>
                   <div className="font-bold text-white">
-                    {detectedSpec.attributes?.max_hp || 3} HP / {detectedSpec.attributes?.shield_capacity || 1} Escudo(s)
+                    {detectedSpec.attributes?.max_hp || 3} HP / {detectedSpec.attributes?.shield_capacity ?? 1} Escudo(s)
                   </div>
                   <div className="text-[10px] text-[#10b981]">
                     Hitbox: {detectedSpec.attributes?.hitbox_radius || 12}px
