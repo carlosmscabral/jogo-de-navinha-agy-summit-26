@@ -1,5 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
+import { BALANCE } from '@jogo/shared';
 import { ScoreCalculator } from './ScoreCalculator.js';
 
 describe('ScoreCalculator Unit Tests', () => {
@@ -35,10 +36,10 @@ describe('ScoreCalculator Unit Tests', () => {
       remainingHp: 3,
       synergyBonusUnlocked: true
     });
-    assert.equal(winResult.breakdown.bossBonus, 10000);
-    assert.equal(winResult.breakdown.timeBonus, 15 * 80);
-    assert.equal(winResult.breakdown.survivalBonus, 3 * 1200);
-    assert.equal(winResult.breakdown.synergyBonus, 2000);
+    assert.equal(winResult.breakdown.bossBonus, BALANCE.score.boss_bonus);
+    assert.equal(winResult.breakdown.timeBonus, 15 * BALANCE.score.time_bonus_per_second);
+    assert.equal(winResult.breakdown.survivalBonus, 3 * BALANCE.score.survival_bonus_per_hp);
+    assert.equal(winResult.breakdown.synergyBonus, BALANCE.score.synergy_bonus);
 
     // Case 2: Death (boss not defeated) -> zero time bonus and zero boss bonus
     const loseResult = calc.calculateFinalScore({
@@ -61,19 +62,19 @@ describe('ScoreCalculator Unit Tests', () => {
     };
 
     const base = new ScoreCalculator().calculateFinalScore(params);
-    assert.equal(base.mcpMultiplier, 1.0);
+    assert.equal(base.mcpMultiplier, BALANCE.score.mcp_multiplier_default);
     assert.equal(base.finalScore, 1200);
 
     const one = new ScoreCalculator().calculateFinalScore({ ...params, mcpCount: 1 });
-    assert.equal(one.mcpMultiplier, 1.25);
+    assert.equal(one.mcpMultiplier, BALANCE.score.mcp_multiplier_by_count[1]);
     assert.equal(one.finalScore, 1500);
 
     const two = new ScoreCalculator().calculateFinalScore({ ...params, mcpCount: 2 });
-    assert.equal(two.mcpMultiplier, 1.1);
+    assert.equal(two.mcpMultiplier, BALANCE.score.mcp_multiplier_by_count[2]);
     assert.equal(two.finalScore, 1320);
 
     const three = new ScoreCalculator().calculateFinalScore({ ...params, mcpCount: 3 });
-    assert.equal(three.mcpMultiplier, 1.0);
+    assert.equal(three.mcpMultiplier, BALANCE.score.mcp_multiplier_default);
     assert.equal(three.finalScore, 1200);
   });
 });

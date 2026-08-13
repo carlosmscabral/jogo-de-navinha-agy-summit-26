@@ -1,4 +1,4 @@
-import { ScoreBreakdown } from '@jogo/shared';
+import { BALANCE, ScoreBreakdown } from '@jogo/shared';
 
 export class ScoreCalculator {
   currentScore = 0;
@@ -9,16 +9,14 @@ export class ScoreCalculator {
   shotsHit = 0;
 
   registerKill(enemyType: 'drone' | 'cruiser' | 'boss'): number {
-    let basePoints = 100;
-    if (enemyType === 'cruiser') basePoints = 500;
-    if (enemyType === 'boss') basePoints = 10000;
-
+    const basePoints = BALANCE.score.points[enemyType];
     const earned = Math.round(basePoints * this.comboMultiplier);
     this.currentScore += earned;
     this.totalKills += 1;
-
-    // Increment combo up to 3.0x
-    this.comboMultiplier = Math.min(3.0, +(this.comboMultiplier + 0.1).toFixed(2));
+    this.comboMultiplier = Math.min(
+      BALANCE.score.combo_max,
+      +(this.comboMultiplier + BALANCE.score.combo_step).toFixed(2)
+    );
     return earned;
   }
 
@@ -39,17 +37,15 @@ export class ScoreCalculator {
     breakdown: ScoreBreakdown;
   } {
     const combatScore = this.currentScore;
-    const bossBonus = params.bossDefeated ? 10000 : 0;
-    const timeBonus = params.bossDefeated ? Math.max(0, Math.round(params.remainingTimeSeconds * 80)) : 0;
-    const survivalBonus = Math.max(0, params.remainingHp * 1200);
-    const synergyBonus = params.synergyBonusUnlocked ? 2000 : 0;
-
+    const bossBonus = params.bossDefeated ? BALANCE.score.boss_bonus : 0;
+    const timeBonus = params.bossDefeated
+      ? Math.max(0, Math.round(params.remainingTimeSeconds * BALANCE.score.time_bonus_per_second))
+      : 0;
+    const survivalBonus = Math.max(0, params.remainingHp * BALANCE.score.survival_bonus_per_hp);
+    const synergyBonus = params.synergyBonusUnlocked ? BALANCE.score.synergy_bonus : 0;
     const rawTotal = combatScore + bossBonus + timeBonus + survivalBonus + synergyBonus;
-
-    // Gamification Tradeoff: Specialization Multiplier
-    let mcpMultiplier = 1.0;
-    if (params.mcpCount === 1) mcpMultiplier = 1.25;
-    else if (params.mcpCount === 2) mcpMultiplier = 1.10;
+    const mcpMultiplier =
+      BALANCE.score.mcp_multiplier_by_count[params.mcpCount ?? 3] ?? BALANCE.score.mcp_multiplier_default;
 
     const finalScore = Math.round(rawTotal * mcpMultiplier);
 

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { ShipSpecification, FALLBACK_PRESETS, MatchTelemetry, ScoreBreakdown } from '@jogo/shared';
+import { BALANCE, ShipSpecification, FALLBACK_PRESETS, MatchTelemetry, ScoreBreakdown } from '@jogo/shared';
 import { PlayerShip } from '../objects/PlayerShip.js';
 import { BossOverlord } from '../objects/BossOverlord.js';
 import { ShipTextureFactory } from '../factories/ShipTextureFactory.js';
@@ -23,7 +23,7 @@ export class MainGameScene extends Phaser.Scene {
   scoreCalculator = new ScoreCalculator();
   onMatchComplete?: (data: { finalScore: number; victory: boolean; breakdown: ScoreBreakdown; telemetry: MatchTelemetry }) => void;
 
-  matchTimer = 90;
+  matchTimer: number = BALANCE.match.duration_s;
   elapsedSeconds = 0;
   isGameOver = false;
   isVictory = false;
@@ -73,7 +73,7 @@ export class MainGameScene extends Phaser.Scene {
     this.isVictory = false;
     this.hasNotifiedCompletion = false;
     this.elapsedSeconds = 0;
-    this.matchTimer = 90;
+    this.matchTimer = BALANCE.match.duration_s;
     this.bossKilledAtSeconds = null;
     this.scoreCalculator = new ScoreCalculator();
     this.boss = undefined;
@@ -106,7 +106,7 @@ export class MainGameScene extends Phaser.Scene {
     // 4. Enemy and Enemy Bullet Pools
     this.enemies = this.physics.add.group({
       defaultKey: 'drone_tex',
-      maxSize: 45
+      maxSize: BALANCE.pools.enemies
     });
 
     if (!this.textures.exists('bullet_enemy')) {
@@ -121,7 +121,7 @@ export class MainGameScene extends Phaser.Scene {
 
     this.enemyBullets = this.physics.add.group({
       defaultKey: 'bullet_enemy',
-      maxSize: 120
+      maxSize: BALANCE.pools.enemy_bullets
     });
 
     // 5. Collisions & Weapon Overlaps
@@ -138,11 +138,11 @@ export class MainGameScene extends Phaser.Scene {
       loop: true
     });
 
-    // 8. Dynamic Enemy Wave Spawner (until boss spawns at 45s)
+    // 8. Dynamic Enemy Wave Spawner (until boss spawns)
     this.time.addEvent({
-      delay: this.isHardcore ? 550 : 750,
+      delay: this.isHardcore ? BALANCE.match.wave_interval_hardcore_ms : BALANCE.match.wave_interval_ms,
       callback: () => {
-        if (!this.isGameOver && !this.isVictory && this.elapsedSeconds < 45) {
+        if (!this.isGameOver && !this.isVictory && this.elapsedSeconds < BALANCE.match.boss_spawn_s) {
           this.spawnWaveEnemies();
         }
       },
@@ -151,9 +151,9 @@ export class MainGameScene extends Phaser.Scene {
 
     // 9. Enemy Firing Event
     this.time.addEvent({
-      delay: this.isHardcore ? 800 : 1200,
+      delay: this.isHardcore ? BALANCE.match.enemy_fire_interval_hardcore_ms : BALANCE.match.enemy_fire_interval_ms,
       callback: () => {
-        if (!this.isGameOver && !this.isVictory && this.elapsedSeconds < 45) {
+        if (!this.isGameOver && !this.isVictory && this.elapsedSeconds < BALANCE.match.boss_spawn_s) {
           this.triggerEnemyShots();
         }
       },
@@ -182,12 +182,12 @@ export class MainGameScene extends Phaser.Scene {
     if (this.isGameOver || this.isVictory) return;
 
     this.elapsedSeconds += 1;
-    this.matchTimer = Math.max(0, 90 - this.elapsedSeconds);
+    this.matchTimer = Math.max(0, BALANCE.match.duration_s - this.elapsedSeconds);
 
-    // Boss appears at 45 seconds (42s warning)
-    if (this.elapsedSeconds === 42) {
+    // Boss appears at boss_spawn_s (with a boss_warning_s heads-up)
+    if (this.elapsedSeconds === BALANCE.match.boss_warning_s) {
       this.triggerBossWarning();
-    } else if (this.elapsedSeconds === 45) {
+    } else if (this.elapsedSeconds === BALANCE.match.boss_spawn_s) {
       this.spawnBoss();
     }
 
@@ -197,27 +197,27 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private spawnWaveEnemies(): void {
-    const isWave2 = this.elapsedSeconds >= 20;
+    const isWave2 = this.elapsedSeconds >= BALANCE.match.wave2_starts_s;
     const squadType = Phaser.Math.Between(1, 3);
 
     if (squadType === 1) {
       // V-Formation (3 Drones)
       const centerX = Phaser.Math.Between(120, this.scale.width - 120);
-      this.createSingleDrone(centerX, -30, 0, 190, 30, 'drone');
-      this.createSingleDrone(centerX - 45, -60, -20, 190, 30, 'drone');
-      this.createSingleDrone(centerX + 45, -60, 20, 190, 30, 'drone');
+      this.createSingleDrone(centerX, -30, 0, BALANCE.enemies.drone.speed_y, BALANCE.enemies.drone.hp, 'drone');
+      this.createSingleDrone(centerX - 45, -60, -20, BALANCE.enemies.drone.speed_y, BALANCE.enemies.drone.hp, 'drone');
+      this.createSingleDrone(centerX + 45, -60, 20, BALANCE.enemies.drone.speed_y, BALANCE.enemies.drone.hp, 'drone');
     } else if (squadType === 2 && isWave2) {
       // Elite Cruiser + Escorts
       const x = Phaser.Math.Between(100, this.scale.width - 100);
-      this.createSingleDrone(x, -40, 0, 130, 140, 'cruiser');
-      this.createSingleDrone(x - 50, -20, -15, 200, 30, 'drone');
-      this.createSingleDrone(x + 50, -20, 15, 200, 30, 'drone');
+      this.createSingleDrone(x, -40, 0, BALANCE.enemies.cruiser.speed_y, BALANCE.enemies.cruiser.hp, 'cruiser');
+      this.createSingleDrone(x - 50, -20, -15, 200, BALANCE.enemies.drone.hp, 'drone');
+      this.createSingleDrone(x + 50, -20, 15, 200, BALANCE.enemies.drone.hp, 'drone');
     } else {
       // Kamikaze Fast Dive Squadron (2 Drones)
       const x1 = Phaser.Math.Between(80, this.scale.width / 2 - 20);
       const x2 = Phaser.Math.Between(this.scale.width / 2 + 20, this.scale.width - 80);
-      this.createSingleDrone(x1, -30, 15, 320, 25, 'kamikaze');
-      this.createSingleDrone(x2, -30, -15, 320, 25, 'kamikaze');
+      this.createSingleDrone(x1, -30, 15, BALANCE.enemies.kamikaze.speed_y, BALANCE.enemies.kamikaze.hp, 'kamikaze');
+      this.createSingleDrone(x2, -30, -15, BALANCE.enemies.kamikaze.speed_y, BALANCE.enemies.kamikaze.hp, 'kamikaze');
     }
   }
 
@@ -227,7 +227,7 @@ export class MainGameScene extends Phaser.Scene {
       drone.setActive(true);
       drone.setVisible(true);
       drone.setPosition(x, y);
-      drone.setData('hp', this.isHardcore ? Math.round(hp * 1.3) : hp);
+      drone.setData('hp', this.isHardcore ? Math.round(hp * BALANCE.enemies.hardcore.hp_factor) : hp);
       drone.setData('type', type);
 
       if (type === 'cruiser') {
@@ -241,7 +241,7 @@ export class MainGameScene extends Phaser.Scene {
         drone.clearTint();
       }
 
-      drone.setVelocity(vx, this.isHardcore ? vy * 1.2 : vy);
+      drone.setVelocity(vx, this.isHardcore ? vy * BALANCE.enemies.hardcore.speed_factor : vy);
     }
   }
 
@@ -254,7 +254,7 @@ export class MainGameScene extends Phaser.Scene {
       if (e && e.active && e.y > 20 && e.y < this.scale.height - 180) {
         const type = e.getData('type') as string;
         const angle = Phaser.Math.Angle.Between(e.x, e.y, pX, pY);
-        const bulletSpeed = this.isHardcore ? 280 : 220;
+        const bulletSpeed = this.isHardcore ? BALANCE.enemies.bullet_speed_hardcore : BALANCE.enemies.bullet_speed;
 
         if (type === 'cruiser') {
           const spreads = [-0.25, 0, 0.25];
@@ -262,7 +262,7 @@ export class MainGameScene extends Phaser.Scene {
             const rad = angle + s;
             this.spawnEnemyBullet(e.x, e.y + 10, Math.cos(rad) * bulletSpeed, Math.sin(rad) * bulletSpeed);
           }
-        } else if (type !== 'kamikaze' && Math.random() > 0.4) {
+        } else if (type !== 'kamikaze' && Math.random() < BALANCE.enemies.fire_chance) {
           this.spawnEnemyBullet(e.x, e.y + 10, Math.cos(angle) * bulletSpeed, Math.sin(angle) * bulletSpeed);
         }
       }
@@ -383,7 +383,7 @@ export class MainGameScene extends Phaser.Scene {
       color: '#38bdf8'
     });
 
-    this.bossHpNumbersText = this.add.text(width / 2 + 190, 85, '15.000 / 15.000 HP', {
+    this.bossHpNumbersText = this.add.text(width / 2 + 190, 85, `${this.boss?.maxHp.toLocaleString()} / ${this.boss?.maxHp.toLocaleString()} HP`, {
       fontFamily: '"Google Sans Code", monospace',
       fontSize: '11px',
       color: '#ff9e0b'
@@ -463,7 +463,7 @@ export class MainGameScene extends Phaser.Scene {
     const breakdown = this.add.text(
       width / 2,
       height / 2 + 25,
-      `Combate: ${scoreResult.breakdown.combatScore.toLocaleString()} | Boss: +10.000\nTempo: +${scoreResult.breakdown.timeBonus} (${this.matchTimer}s) | HP: +${scoreResult.breakdown.survivalBonus}${multInfo}`,
+      `Combate: ${scoreResult.breakdown.combatScore.toLocaleString()} | Boss: +${scoreResult.breakdown.bossBonus.toLocaleString()}\nTempo: +${scoreResult.breakdown.timeBonus} (${this.matchTimer}s) | HP: +${scoreResult.breakdown.survivalBonus}${multInfo}`,
       {
         fontFamily: '"Google Sans Code", monospace',
         fontSize: '12px',
@@ -619,7 +619,7 @@ export class MainGameScene extends Phaser.Scene {
           shots_hit: shotsHit,
           fallback_used: this.shipSpec.build_metadata?.fallback_used === true,
           seed: 0,
-          boss_ttk_s: this.bossKilledAtSeconds !== null ? +(this.bossKilledAtSeconds - 45).toFixed(1) : null
+          boss_ttk_s: this.bossKilledAtSeconds !== null ? +(this.bossKilledAtSeconds - BALANCE.match.boss_spawn_s).toFixed(1) : null
         }
       });
     }
@@ -770,7 +770,7 @@ export class MainGameScene extends Phaser.Scene {
       color: '#38bdf8'
     });
 
-    this.hudTextTimer = this.add.text(this.scale.width / 2, 18, '90s', {
+    this.hudTextTimer = this.add.text(this.scale.width / 2, 18, `${BALANCE.match.duration_s}s`, {
       fontFamily: '"Google Sans Flex", sans-serif',
       fontSize: '22px',
       color: '#ff9e0b'

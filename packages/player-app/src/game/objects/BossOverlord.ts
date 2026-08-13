@@ -1,9 +1,10 @@
 import Phaser from 'phaser';
+import { BALANCE } from '@jogo/shared';
 import { audioManager } from '../audio/AudioManager.js';
 
 export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
-  maxHp = 15000;
-  currentHp = 15000;
+  maxHp: number = BALANCE.boss.max_hp;
+  currentHp: number = BALANCE.boss.max_hp;
   phase: 1 | 2 | 3 = 1;
   isDead = false;
   isInvulnerable = false;
@@ -18,8 +19,8 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
     BossOverlord.generateBossTextures(scene);
     super(scene, x, y, 'boss_overlord_dreadnought');
 
-    this.difficultyMultiplier = isHardcore ? 1.4 : 1.0;
-    this.maxHp = isHardcore ? 22000 : 15000;
+    this.difficultyMultiplier = isHardcore ? BALANCE.boss.hardcore_difficulty_factor : 1.0;
+    this.maxHp = isHardcore ? BALANCE.boss.max_hp_hardcore : BALANCE.boss.max_hp;
     this.currentHp = this.maxHp;
 
     scene.add.existing(this);
@@ -36,7 +37,7 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
     // Boss Bullets Pool
     this.bullets = scene.physics.add.group({
       defaultKey: 'bullet_boss_plasma',
-      maxSize: 300
+      maxSize: BALANCE.pools.boss_bullets
     });
 
     this.shieldGraphic = scene.add.graphics();
@@ -175,8 +176,8 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
     if (this.isDead || !this.active) return;
 
     // Tactical Maneuvering (Aggressive horizontal sweeping)
-    const hoverSpeed = this.phase === 3 ? 0.0035 : this.phase === 2 ? 0.0025 : 0.0018;
-    const hoverRange = this.phase === 3 ? 4.5 : this.phase === 2 ? 3.5 : 2.5;
+    const hoverSpeed = this.phase === 3 ? BALANCE.boss.hover_speed.phase3 : this.phase === 2 ? BALANCE.boss.hover_speed.phase2 : BALANCE.boss.hover_speed.phase1;
+    const hoverRange = this.phase === 3 ? BALANCE.boss.hover_range_px.phase3 : this.phase === 2 ? BALANCE.boss.hover_range_px.phase2 : BALANCE.boss.hover_range_px.phase1;
     this.x += Math.sin(time * hoverSpeed) * hoverRange;
 
     // Draw Hexagonal Shield Barrier in Phase 1 or during Invulnerability
@@ -189,7 +190,7 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
 
     // High-cadence Bullet Hell Pattern Execution
     const fireCooldown = Math.round(
-      (this.phase === 3 ? 80 : this.phase === 2 ? 110 : 140) / this.difficultyMultiplier
+      (this.phase === 3 ? BALANCE.boss.fire_cooldown_ms.phase3 : this.phase === 2 ? BALANCE.boss.fire_cooldown_ms.phase2 : BALANCE.boss.fire_cooldown_ms.phase1) / this.difficultyMultiplier
     );
 
     if (time - this.lastFireTime > fireCooldown && !this.isInvulnerable) {
@@ -232,7 +233,7 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
   }
 
   private fireAttackPattern(time: number, playerX: number, playerY: number): void {
-    const bulletSpeed = (this.phase === 3 ? 380 : this.phase === 2 ? 340 : 300) * this.difficultyMultiplier;
+    const bulletSpeed = (this.phase === 3 ? BALANCE.boss.bullet_speed.phase3 : this.phase === 2 ? BALANCE.boss.bullet_speed.phase2 : BALANCE.boss.bullet_speed.phase1) * this.difficultyMultiplier;
 
     if (this.phase === 1) {
       // Phase 1: Dual Muzzle Sniper Lasers + 5-Way Plasma Fan
@@ -299,22 +300,22 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
     if (this.isDead || this.isInvulnerable) return false;
 
     // Cap single-pellet raw damage to prevent instantaneous multi-bullet melting
-    const cappedPelletDamage = Math.min(45, amount);
+    const cappedPelletDamage = Math.min(BALANCE.boss.max_damage_per_primary_hit, amount);
 
     // Phase 1 Kinetic Hex Shield absorbs 50% damage
     // Phase 2 Titanium Armor absorbs 30% damage
-    const mitigation = this.phase === 1 ? 0.50 : this.phase === 2 ? 0.70 : 1.0;
-    const actualDamage = Math.max(5, Math.round(cappedPelletDamage * mitigation));
+    const mitigation = this.phase === 1 ? BALANCE.boss.mitigation.phase1 : this.phase === 2 ? BALANCE.boss.mitigation.phase2 : BALANCE.boss.mitigation.phase3;
+    const actualDamage = Math.max(BALANCE.boss.min_damage_per_hit, Math.round(cappedPelletDamage * mitigation));
     this.currentHp -= actualDamage;
 
     const hpRatio = this.currentHp / this.maxHp;
 
     // Phase 2 Transition (at 66% HP)
-    if (hpRatio <= 0.66 && this.phase === 1) {
+    if (hpRatio <= BALANCE.boss.phase2_hp_ratio && this.phase === 1) {
       this.triggerPhaseTransition(2);
     }
     // Phase 3 Transition (at 33% HP)
-    else if (hpRatio <= 0.33 && this.phase === 2) {
+    else if (hpRatio <= BALANCE.boss.phase3_hp_ratio && this.phase === 2) {
       this.triggerPhaseTransition(3);
     }
 
@@ -349,8 +350,8 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
       onComplete: () => shockwave.destroy()
     });
 
-    // 2.0s Invulnerability frame during phase transition
-    this.scene.time.delayedCall(2000, () => {
+    // Invulnerability frame during phase transition
+    this.scene.time.delayedCall(BALANCE.boss.phase_transition_invuln_ms, () => {
       this.isInvulnerable = false;
     });
   }

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { ShipAttributes, ShipWeapons, ShipVisuals } from '@jogo/shared';
+import { BALANCE, ShipAttributes, ShipWeapons, ShipVisuals } from '@jogo/shared';
 import { WeaponSystem } from '../weapons/WeaponSystem.js';
 
 export class PlayerShip extends Phaser.Physics.Arcade.Sprite {
@@ -41,7 +41,7 @@ export class PlayerShip extends Phaser.Physics.Arcade.Sprite {
     scene.add.existing(this);
     scene.physics.add.existing(this);
 
-    this.setScale(0.65); // Crisp 83px scale
+    this.setScale(BALANCE.player.sprite_scale); // Crisp 83px scale
     this.setCollideWorldBounds(true);
 
     // Circular graze body at cockpit center (8 to 16px radius)
@@ -108,11 +108,11 @@ export class PlayerShip extends Phaser.Physics.Arcade.Sprite {
 
     if (this.cursors.left.isDown || this.keyA.isDown) {
       vx -= speed;
-      targetAngle = -12; // Bank left
+      targetAngle = -BALANCE.player.bank_angle_deg; // Bank left
     }
     if (this.cursors.right.isDown || this.keyD.isDown) {
       vx += speed;
-      targetAngle = 12; // Bank right
+      targetAngle = BALANCE.player.bank_angle_deg; // Bank right
     }
     if (this.cursors.up.isDown || this.keyW.isDown) vy -= speed;
     if (this.cursors.down.isDown || this.keyS.isDown) vy += speed;
@@ -129,8 +129,8 @@ export class PlayerShip extends Phaser.Physics.Arcade.Sprite {
         const pulse = Math.sin(time * 0.008) * 3;
         this.shieldGraphics.lineStyle(2, 0x00f3ff, 0.75);
         this.shieldGraphics.fillStyle(0x00f3ff, 0.08);
-        this.shieldGraphics.strokeCircle(this.x, this.y, 45 + pulse);
-        this.shieldGraphics.fillCircle(this.x, this.y, 45 + pulse);
+        this.shieldGraphics.strokeCircle(this.x, this.y, BALANCE.player.shield_aura_radius_px + pulse);
+        this.shieldGraphics.fillCircle(this.x, this.y, BALANCE.player.shield_aura_radius_px + pulse);
       }
     }
 
@@ -155,14 +155,17 @@ export class PlayerShip extends Phaser.Physics.Arcade.Sprite {
       this.currentHp -= amount;
     }
 
-    // Trigger invulnerability frames (1.5s)
+    // Trigger invulnerability frames. The yoyo tween runs 5 up/down cycles
+    // (repeat: 4 -> 5 total passes), each pass covering the tween twice
+    // (there and back), so total runtime = duration * 2 * 5. To land on
+    // BALANCE.player.invulnerability_ms exactly, duration = invulnerability_ms / 10.
     this.isInvulnerable = true;
     this.scene.tweens.add({
       targets: this,
       alpha: 0.25,
       yoyo: true,
       repeat: 4,
-      duration: 120,
+      duration: BALANCE.player.invulnerability_ms / 10,
       onComplete: () => {
         this.setAlpha(1);
         this.isInvulnerable = false;

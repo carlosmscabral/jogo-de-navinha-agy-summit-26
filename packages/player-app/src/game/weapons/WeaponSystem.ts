@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { ShipWeapons } from '@jogo/shared';
+import { BALANCE, ShipWeapons } from '@jogo/shared';
 
 export class WeaponSystem {
   scene: Phaser.Scene;
@@ -20,13 +20,13 @@ export class WeaponSystem {
     // Primary bullets
     this.primaryBullets = this.scene.physics.add.group({
       defaultKey: 'bullet_primary',
-      maxSize: 100
+      maxSize: BALANCE.pools.primary_bullets
     });
 
     // Secondary missiles
     this.secondaryMissiles = this.scene.physics.add.group({
       defaultKey: 'missile_secondary',
-      maxSize: 20
+      maxSize: BALANCE.pools.secondary_missiles
     });
 
     // Create bullet textures if not present
@@ -71,17 +71,17 @@ export class WeaponSystem {
 
     const { type, damage, bullet_speed, spread_angle } = this.weaponsSpec.primary;
     const balancedDamage = Math.min(45, Math.max(15, damage || 30));
-    const speed = Math.max(550, bullet_speed || 650);
+    const speed = Math.max(BALANCE.weapons.primary.min_bullet_speed, bullet_speed || BALANCE.weapons.primary.default_bullet_speed);
 
     if (type === 'laser') {
       // Rapid focused laser pulse
       this.spawnBullet(x, y - 20, 0, -speed, 'bullet_plasma', balancedDamage);
     } else if (type === 'vulcan_spread') {
       // 3-way spread (slightly reduced per-pellet damage for balance)
-      const spreadDamage = Math.round(balancedDamage * 0.65);
+      const spreadDamage = Math.round(balancedDamage * BALANCE.weapons.primary.vulcan_pellet_factor);
       const angle = (spread_angle && spread_angle < 1.0 && spread_angle > 0)
         ? Phaser.Math.RadToDeg(spread_angle)
-        : (spread_angle || 15);
+        : (spread_angle || BALANCE.weapons.primary.default_spread_deg);
       const angles = [-angle, 0, angle];
       for (const a of angles) {
         const rad = Phaser.Math.DegToRad(a - 90);
@@ -109,8 +109,8 @@ export class WeaponSystem {
     const balancedDamage = Math.min(120, Math.max(60, damage || 90));
 
     if (type === 'homing_missiles') {
-      this.spawnMissile(x - 20, y, -100, -300, balancedDamage, targets);
-      this.spawnMissile(x + 20, y, 100, -300, balancedDamage, targets);
+      this.spawnMissile(x - 20, y, -BALANCE.weapons.secondary.missile_speed_x, BALANCE.weapons.secondary.missile_speed_y, balancedDamage, targets);
+      this.spawnMissile(x + 20, y, BALANCE.weapons.secondary.missile_speed_x, BALANCE.weapons.secondary.missile_speed_y, balancedDamage, targets);
     } else if (type === 'emp_burst') {
       this.triggerEmpBurst(x, y, balancedDamage);
     }
@@ -158,7 +158,7 @@ export class WeaponSystem {
     const ring = this.scene.add.circle(x, y, 10, 0x38bdf8, 0.4);
     this.scene.tweens.add({
       targets: ring,
-      radius: 300,
+      radius: BALANCE.weapons.secondary.emp_radius_px,
       alpha: 0,
       duration: 500,
       onComplete: () => ring.destroy()
