@@ -52,16 +52,20 @@ interface BossState {
 }
 
 /**
- * Applies one incoming hit to the boss, exactly mirroring `BossOverlord.takeDamage`: a per-pellet
- * cap (only for primary-weapon hits — D13/the `max_damage_per_primary_hit` comment in balance.ts),
- * then phase mitigation, then the damage floor. Phase-transition invulnerability blocks the
- * *damage*, not the attempt (fire cadence keeps running underneath it), matching the real engine.
- * Returns the damage actually applied (0 if the boss was invulnerable or already dead).
+ * Applies one incoming hit to the boss, exactly mirroring `BossOverlord.takeDamage` — the single
+ * damage entry point for the boss in the real engine, which applies `max_damage_per_primary_hit`
+ * **unconditionally** to every hit regardless of source (the field's name suggests primary-only,
+ * but `balance.ts`'s own comment on it confirms the cap currently captures secondary/EMP damage
+ * too; whether that should change is an explicit `TODO(B8)` — a future balance decision, not
+ * today's engine behavior, so the model must match today), then phase mitigation, then the damage
+ * floor. Phase-transition invulnerability blocks the *damage*, not the attempt (fire cadence keeps
+ * running underneath it), matching the real engine. Returns the damage actually applied (0 if the
+ * boss was invulnerable or already dead).
  */
-function applyBossHit(boss: BossState, rawDamage: number, capPerHit: boolean): number {
+function applyBossHit(boss: BossState, rawDamage: number): number {
   if (boss.hp <= 0 || boss.invulnMsRemaining > 0) return 0;
 
-  const capped = capPerHit ? Math.min(BALANCE.boss.max_damage_per_primary_hit, rawDamage) : rawDamage;
+  const capped = Math.min(BALANCE.boss.max_damage_per_primary_hit, rawDamage);
   const mitigation = mitigationForPhase(boss.phase);
   const actual = Math.max(BALANCE.boss.min_damage_per_hit, Math.round(capped * mitigation));
   boss.hp -= actual;
@@ -100,8 +104,9 @@ export function simulateMatch(input: SimInput): SimResult {
 
   const isVulcan = weapons.primary.type === 'vulcan_spread';
   const pelletCount = isVulcan ? BALANCE.weapons.primary.vulcan_pellet_count : 1;
+  // WeaponSystem.firePrimary: `Math.round(balancedDamage * vulcan_pellet_factor)` per pellet.
   const perPelletDamage = isVulcan
-    ? weapons.primary.damage * BALANCE.weapons.primary.vulcan_pellet_factor
+    ? Math.round(weapons.primary.damage * BALANCE.weapons.primary.vulcan_pellet_factor)
     : weapons.primary.damage;
   const primaryFireIntervalMs = 1000 / weapons.primary.fire_rate;
 
@@ -156,16 +161,35 @@ export function simulateMatch(input: SimInput): SimResult {
         for (let p = 0; p < pelletCount; p++) {
           if (boss.hp <= 0) break;
           if (rng.chance(skill.accuracy * skill.fireUptime)) {
-            applyBossHit(boss, perPelletDamage, true);
+            applyBossHit(boss, perPelletDamage);
           }
         }
       }
 
-      // Secondary cadence — no per-hit cap (D13), same phase mitigation.
+      // Secondary cadence. Mirrors WeaponSystem.fireSecondary: the cooldown resets whenever
+      // type !== 'none', even for types with no boss-damage effect -- `fireSecondary` has no
+      // `else` branch, so any type other than 'homing_missiles'/'emp_burst' (e.g. `drone_escort`,
+      // unreachable via the 8 sim archetypes today but reachable from a real forge spec) is a
+      // silent no-op that still consumes the cooldown.
       if (boss.hp > 0 && secondaryFiresAtAll && elapsedMs - lastSecondaryFireMs >= secondaryCooldownMs) {
         lastSecondaryFireMs = elapsedMs;
         if (rng.chance(skill.secondaryUptime)) {
-          applyBossHit(boss, weapons.secondary.damage, false);
+          if (weapons.secondary.type === 'homing_missiles') {
+            // WeaponSystem.fireSecondary spawns missile_count_per_volley independent missiles,
+            // each hitting the boss through its own BossOverlord.takeDamage call -- independently
+            // capped, mitigated and floored, not one combined hit.
+            for (let m = 0; m < BALANCE.weapons.secondary.missile_count_per_volley; m++) {
+              if (boss.hp <= 0) break;
+              applyBossHit(boss, weapons.secondary.damage);
+            }
+          }
+          // `emp_burst` (and any other type): zero boss damage. `computeEmpDamage` falls off to
+          // exactly zero beyond `emp_radius_px` (300px) from the blast center, and this model has
+          // no player-position simulation at all -- the player's realistic default distance from
+          // the boss is far outside that radius, so EMP-vs-boss is faithfully zero here. EMP is a
+          // real, working area weapon against nearby regular enemies, just not against a boss
+          // that stays far up-screen. Documented simplification ("no spatial simulation"), not an
+          // invented balance number.
         }
       }
 
@@ -208,7 +232,12 @@ export function simulateMatch(input: SimInput): SimResult {
   const scoreResult = scoreCalculator.calculateFinalScore({
     bossDefeated: victory,
     remainingTimeSeconds,
-    remainingHp: victory ? playerHp : 0,
+    // MainGameScene.finishMatchAndTransition passes `this.player?.currentHp || 0` unconditionally
+    // -- ScoreCalculator's survivalBonus has no bossDefeated guard, so a ship that survives to
+    // timeout with HP left genuinely earns it in the real game. `playerHp` already reads 0 on
+    // death (the loop breaks the instant it hits 0) and the real remaining value otherwise, so no
+    // `victory ?` conditional belongs here at all.
+    remainingHp: playerHp,
     synergyBonusUnlocked: synergy.applied.length > 0,
     mcpCount: spec.build_metadata?.selected_mcps?.length ?? 3
   });

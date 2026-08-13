@@ -10,6 +10,21 @@ teve acesso a um. O teste de conformidade detecta o array vazio e pula (`skip`) 
 mas o *mecanismo* já está pronto: assim que este arquivo ganhar entradas reais, o teste passa a
 valer e vira um gate de verdade.
 
+## Atenção: granularidade do relógio real é de 1s, não 0,1s
+
+`telemetry.boss_ttk_s` na engine real vem de `MainGameScene.elapsedSeconds`, um contador que só
+avança em números inteiros de segundo (`handleMatchTick` roda a cada 1000ms via
+`this.time.addEvent`). `boss_ttk_s = bossKilledAtSeconds - BALANCE.match.boss_spawn_s` é, portanto,
+sempre um inteiro de segundos na captura real, ainda que o `.toFixed(1)` no código o formate como
+`"20.0"` em vez de `"20"`. O simulador, por rodar em ticks de 60Hz, reporta `bossTtkSeconds` com
+resolução real de 0,1s (ex.: `20.3`).
+
+Isso importa porque a tolerância do teste de conformidade é 5%: para um TTK de ≈20s, só o
+arredondamento de ±1s do relógio real já consome a tolerância inteira (1s / 20s = 5%). Um desvio
+de até ≈1s entre simulador e engine, nessa faixa de TTK, pode ser *apenas* granularidade de
+relógio — não necessariamente um erro real de `combat-model.ts`. Quem revisar uma captura real que
+falhe por uma margem pequena deve checar isso antes de assumir que o modelo está errado.
+
 ## Como capturar os dados que faltam
 
 Alguém com acesso a um navegador e a este repositório precisa:
