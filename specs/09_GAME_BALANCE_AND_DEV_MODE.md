@@ -246,6 +246,74 @@ opções (não mutuamente exclusivas; nenhuma foi aplicada nesta tarefa):
 - Revisitar a própria banda de 15–25% ou o teto de 35pp com um número ao lado, como o §5.3 já autoriza
   explicitamente ("se a medição mostrar que ela produz um estande frustrante, a banda é que muda").
 
+### 2.4.2. Decisão do dono do projeto e resultado da exclusão (follow-up, 2026-08-14)
+
+**Decisão.** O dono do projeto aprovou a primeira opção listada em §2.4.1: excluir arquétipos
+sintéticos estruturalmente inatingíveis por qualquer nave real e orçamentada pelo forge das
+condições de aprovação/reprovação do portão de CI, mantendo-os no diagnóstico (`npm run
+sim:balance`, `packages/sim/src/archetypes.ts`, inalterado) como limites superior/inferior
+informativos. A pergunta original ao dono do projeto citou apenas `maximo`/`vulcan_max`; a análise
+já registrada acima (nota ②, §2.4.1) já havia provado que `minimo` sofre da mesma contradição de
+orçamento pelo lado oposto — o slider de energia do forge força os 4 sliders (`offense`/`speed`/
+`defense`/`tech`) a somar **exatamente 100** pontos; `maximo` (todo atributo no teto do schema)
+exige o equivalente a ≈200; `minimo` (todo atributo no piso do schema) exige apenas ≈40, o que é
+igualmente inatingível como alocação real — os 60 pontos restantes têm que ir para algum lugar, o
+que empurra pelo menos um atributo para cima do piso. Excluir `minimo` é, portanto, a conclusão do
+mesmo raciocínio já aprovado, não uma decisão nova — sem isso, a condição "nenhum arquétipo em 0%
+nem 100%" continuaria falhando por causa de `minimo` (≈0% em `boss.max_hp: 1.150`) mesmo depois de
+remover `maximo`/`vulcan_max`.
+
+**Implementação.** `packages/sim/src/balance-gate.test.ts` agora constrói `GATE_ARCHETYPES` a partir
+de `ARCHETYPES` (o `Object.entries` completo dos 8), filtrando `minimo`, `maximo` e `vulcan_max`, e
+passa `GATE_ARCHETYPES` — não `ARCHETYPES` — para `runMatrix(...)`. Nenhum outro arquivo mudou:
+`combat-model.ts` (`runMatrix`, `WIN_RATE_TARGET`, `MAX_ARCHETYPE_SPREAD_PP`), `archetypes.ts`
+(a lista completa de 8, ainda usada por `run.ts`/`npm run sim:balance`) e `balance.ts` continuam
+exatamente como a Tarefa B8 os deixou. Seed count (2.000), banda (15–25%) e teto de espalhamento
+(35pp) inalterados.
+
+**Resultado medido (`npm run test --workspace=packages/sim`, 2.000 seeds, `boss.max_hp: 1.150`,
+mesmo dia).** A matriz do portão passa a ter 5 arquétipos em vez de 8 (`interceptor`, `vanguard`,
+`striker`, `glass_cannon`, `tanque`), em habilidade mediana:
+
+| arquétipo | winRate |
+| :-- | :-- |
+| interceptor | 9,15% |
+| vanguard | 51,6% |
+| striker | 0,95% |
+| glass_cannon | 8,65% |
+| tanque | **0,0%** (0 vitórias em 2.000 seeds) |
+
+As 4 condições do §5.3, reavaliadas sobre este conjunto de 5:
+
+1. **Banda 15–25% do `aggregateWinRate`:** média dos 5 = 14,1% — **ainda fora da banda**, por 0,9pp
+   abaixo do piso. **Falha.**
+2. **Nenhum arquétipo em 0%/100% em habilidade mediana:** `tanque` está em exatamente 0,0%.
+   **Falha** — mas por uma causa nova: `tanque` não estava entre os três arquétipos que o dono do
+   projeto aprovou excluir, e não é excluído por esta mudança.
+3. **Espalhamento ≤35pp:** `vanguard` (51,6%) menos `tanque` (0,0%) = 51,6pp. **Falha.**
+4. **Dano da secundária > 0 contra o boss, exceto `emp_burst`:** inalterada por esta mudança
+   (não depende de quais arquétipos entram na matriz que a viola). **Passa.**
+
+**Resultado líquido: o portão continua falhando em 3 das 4 condições — o mesmo número de antes da
+exclusão — porque a exclusão aprovada resolveu exatamente o que foi pedido (`maximo`/`vulcan_max`
+saturados perto de 100%, e o espalhamento de ≈100pp que `vulcan_max` ancorava) mas expôs um quarto
+arquétipo sintético, `tanque`, que a presença de `minimo`/`maximo`/`vulcan_max` mascarava.**
+`tanque` (`packages/shared/src/game/dev-archetypes.ts:103`) empilha toda a ofensiva
+(`weapons.primary.damage`/`fire_rate`/`bullet_speed`) no piso de `BALANCE.ranges` — a mesma
+contradição de orçamento de energia de `minimo`, mas combinada com `attributes.max_hp` e
+`shield_capacity` no teto, um extremo distinto (piso de ofensiva + teto de defesa, não "tudo no
+piso") que a pergunta original ao dono do projeto e a aprovação registrada em 2.4.1 não cobriram.
+Excluí-lo também não está autorizado por esta tarefa — o brief que motivou esta mudança foi
+explícito: aplicar exatamente a exclusão aprovada, e não excluir arquétipos adicionais nem retunar
+`balance.ts` sem nova autorização, mesmo que o resultado final permaneça parcial.
+
+**Estado após esta mudança:** o portão de CI ainda não fecha (3 de 4 condições falham), mas por uma
+causa diferente e mais restrita da que motivou a exclusão aprovada. A recomendação de próximo passo
+— decisão de uma tarefa futura, não desta — é o dono do projeto avaliar se `tanque` deve seguir o
+mesmo tratamento de `minimo`/`maximo`/`vulcan_max` (ele também é uma sonda sintética de limite, não
+uma nave que um visitante do estande pode montar), revisar `fallback-presets.ts`, ou revisitar a
+própria banda/teto do §5.3.
+
 ---
 
 ## 3. Entregável 2 — Determinismo por Seed
@@ -364,6 +432,17 @@ Um teste (`balance.test.ts`) que falha quando:
 
 > A banda de 15–25% é herdada da Spec 04 e foi definida por intuição. Se a medição mostrar que ela
 > produz um estande frustrante, **a banda é que muda** — mas passa a mudar com um número ao lado.
+
+> **Escopo do portão (follow-up B8, 2026-08-14, aprovado pelo dono do projeto — ver §2.4.2).** As 4
+> condições acima são avaliadas sobre 5 dos 8 arquétipos de `archetypes.ts`: `minimo`, `maximo` e
+> `vulcan_max` são excluídos da matriz que `balance-gate.test.ts` usa para calcular
+> `aggregateWinRate` e o espalhamento, por serem provadamente inatingíveis por qualquer nave real
+> orçamentada pelo forge (o slider de energia soma exatamente 100 pontos; esses três exigem ≈200,
+> ≈200 e ≈40 respectivamente). `npm run sim:balance` continua reportando os 8 arquétipos, incluindo
+> esses três, como diagnóstico. **Estado atual: o portão ainda falha em 3 das 4 condições acima** —
+> não por causa dos três arquétipos excluídos, mas por `tanque`, um quarto arquétipo sintético
+> (ofensiva no piso do schema, defesa no teto) que ficava mascarado pela falha, ainda maior, de
+> `maximo`/`vulcan_max`. Ver §2.4.2 para os números e a recomendação de próximo passo.
 
 ---
 

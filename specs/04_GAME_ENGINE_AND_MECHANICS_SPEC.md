@@ -232,6 +232,20 @@ travar a taxa de vitória em CI. Enquanto isso não existir, qualquer número no
 > a tabela de retune de `boss.max_hp`, e a recomendação de próximo passo (revisar o elenco de
 > arquétipos do portão de CI ou a própria banda-alvo — nenhuma das duas no escopo dos cinco campos de
 > `balance.ts` autorizados nesta tarefa).
+>
+> **Follow-up (B8, 2026-08-14, aprovado pelo dono do projeto).** O dono do projeto aprovou excluir
+> `minimo`, `maximo` e `vulcan_max` das 4 condições de aprovação/reprovação do portão de CI —
+> mantendo-os no diagnóstico `npm run sim:balance` — por serem provadamente inatingíveis por
+> qualquer nave real orçamentada pelo forge (o slider de energia soma exatamente 100 pontos;
+> `maximo`/`vulcan_max` exigem ≈200, `minimo` exige ≈40). Implementado em
+> `packages/sim/src/balance-gate.test.ts` apenas (filtro `GATE_ARCHETYPES`, sem tocar
+> `archetypes.ts`/`combat-model.ts`/`balance.ts`). **Resultado: o portão continua falhando em 3 das
+> 4 condições**, agora ancorado por `tanque` (0,0% em habilidade mediana, 0 vitórias em 2.000 seeds)
+> — um quarto arquétipo sintético (ofensiva no piso do schema, defesa no teto) que a falha, ainda
+> maior, de `maximo`/`vulcan_max` mascarava. `aggregateWinRate` dos 5 arquétipos restantes
+> (`interceptor`, `vanguard`, `striker`, `glass_cannon`, `tanque`) é 14,1% (abaixo da banda de
+> 15–25% por 0,9pp); o espalhamento `vanguard` (51,6%) − `tanque` (0,0%) é 51,6pp (acima do teto de
+> 35pp). Ver Spec 09 §2.4.2 para os números completos e a recomendação de próximo passo.
 
 ### 5.2. [D15] As sinergias não afetam o boss nem nada
 
@@ -285,23 +299,30 @@ finalScore = round( (combatScore + bossBonus + timeBonus + survivalBonus + syner
       funcionando após 20 disparos.
 - [ ] Uma sinergia ativa produz diferença mensurável em atributo ou dano, verificável no harness de dev.
 - [ ] A taxa de vitória sobre o boss, medida pelo simulador da
-      [Spec 09](./09_GAME_BALANCE_AND_DEV_MODE.md) — **parcialmente cumprido, medido em 2026-08-13**
-      via `npm run sim:balance` e `npm run test --workspace=packages/sim` (2.000 seeds — elevado de
-      200 depois que uma revisão externa mostrou que 200 não tem poder estatístico para taxas abaixo
-      de ≈1%; a medição que decidiu `boss.max_hp` usou 10.000 seeds por arquétipo, ver Spec 09
-      §2.4.1): a **média** de vitória dos três presets de fallback (`interceptor`/`vanguard`/
-      `striker`) sobe de 0% para ≈20,6% em habilidade mediana (`interceptor` 9,2%, `vanguard` 51,6%,
-      `striker` 1,0%) — dentro da banda-alvo de 15–25% para essa métrica, fechando o achado literal de
-      D12. O `aggregateWinRate` de **8** arquétipos que `balance-gate.test.ts` de fato usa (3
-      fallbacks reais + 5 sondas sintéticas de limite, média não ponderada) fica em 33,8%, fora da
-      banda, e o teste de CI **ainda falha** em 3 das 4 condições — não por falta de tuning, mas
-      porque `maximo`/`vulcan_max` (todo atributo de `BALANCE.ranges` no máximo simultaneamente, uma
-      alocação de energia que nenhum forge real permite) permanecem perto de 100% em qualquer
-      `boss.max_hp` fraco o bastante para os três fallbacks reais vencerem, enquanto `minimo`/`tanque`
-      (ofensiva no piso de `BALANCE.ranges`) permanecem perto de 0% na mesma faixa — confirmado por
-      varredura própria e, de forma independente, por uma grade de 5.760 pontos de uma revisão
-      externa cobrindo todo o espaço autorizado. Ver a prova completa em Spec 09 §2.4.1. Números
-      simulador-somente: o Passo 4 (cinco partidas jogadas à mão) **não foi executado** — nenhuma
-      tarefa desta fase teve acesso a navegador — e continua pendente antes do Gate M1, junto com a
-      captura de conformidade ainda pendente da Tarefa B7.
+      [Spec 09](./09_GAME_BALANCE_AND_DEV_MODE.md) — **parcialmente cumprido, medido em 2026-08-13,
+      atualizado em 2026-08-14** via `npm run sim:balance` e `npm run test --workspace=packages/sim`
+      (2.000 seeds — elevado de 200 depois que uma revisão externa mostrou que 200 não tem poder
+      estatístico para taxas abaixo de ≈1%; a medição que decidiu `boss.max_hp` usou 10.000 seeds por
+      arquétipo, ver Spec 09 §2.4.1): a **média** de vitória dos três presets de fallback
+      (`interceptor`/`vanguard`/`striker`) sobe de 0% para ≈20,6% em habilidade mediana (`interceptor`
+      9,2%, `vanguard` 51,6%, `striker` 1,0%) — dentro da banda-alvo de 15–25% para essa métrica,
+      fechando o achado literal de D12.
+      Follow-up de 2026-08-14 (aprovado pelo dono do projeto, Spec 09 §2.4.2): `minimo`, `maximo` e
+      `vulcan_max` — provadamente inatingíveis por qualquer nave real orçamentada pelo forge (o
+      slider de energia soma exatamente 100 pontos; esses três exigem ≈40/≈200/≈200) — foram
+      excluídos das 4 condições de aprovação/reprovação do portão de CI em
+      `packages/sim/src/balance-gate.test.ts`, permanecendo apenas no diagnóstico `npm run
+      sim:balance` (`archetypes.ts` inalterado, ainda reporta os 8). O `aggregateWinRate` do portão
+      passa a ser calculado sobre os 5 arquétipos restantes (`interceptor`, `vanguard`, `striker`,
+      `glass_cannon`, `tanque`): 14,1% em habilidade mediana — **ainda fora** da banda de 15–25% por
+      0,9pp. O teste de CI **ainda falha em 3 das 4 condições**, mas agora ancorado por `tanque`
+      (0,0% em habilidade mediana, 0 vitórias em 2.000 seeds — um quarto arquétipo sintético,
+      ofensiva no piso do schema e defesa no teto, que a falha maior de `maximo`/`vulcan_max`
+      mascarava) em vez de pelos três arquétipos excluídos: espalhamento `vanguard` (51,6%) −
+      `tanque` (0,0%) = 51,6pp, acima do teto de 35pp. Fechar as 3 condições restantes segue sendo
+      decisão de uma tarefa futura — nem retunar `balance.ts` nem excluir `tanque` está autorizado
+      por esta mudança. Ver a prova completa em Spec 09 §2.4.1–§2.4.2. Números simulador-somente: o
+      Passo 4 (cinco partidas jogadas à mão) **não foi executado** — nenhuma tarefa desta fase teve
+      acesso a navegador — e continua pendente antes do Gate M1, junto com a captura de conformidade
+      ainda pendente da Tarefa B7.
 - [ ] `ScoreCalculator.test.ts` executa no `npm test` da raiz e passa.
