@@ -3,7 +3,7 @@
  */
 
 export type PrimaryWeaponType = 'plasma' | 'laser' | 'vulcan_spread';
-export type SecondaryWeaponType = 'homing_missiles' | 'emp_burst' | 'drone_escort' | 'none';
+export type SecondaryWeaponType = 'homing_missiles' | 'emp_burst' | 'none';
 
 export type McpServerName = 'weapons-arsenal' | 'hull-propulsion' | 'cybernetics-shields';
 export type SubagentName = 'aesthetic-designer' | 'combat-strategist' | 'systems-engineer';

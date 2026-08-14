@@ -296,10 +296,14 @@ export class FileWatcherService {
     else if (rawPType.includes('vulcan')) primaryType = 'vulcan_spread';
 
     // Handle secondary weapon type mapping
-    let secondaryType: 'homing_missiles' | 'emp_burst' | 'drone_escort' = 'homing_missiles';
+    let secondaryType: 'homing_missiles' | 'emp_burst' = 'homing_missiles';
     const rawSType = String(raw.weapons?.secondary?.type || raw.secondary_weapon || raw.secondary || '').toLowerCase();
     if (rawSType.includes('emp')) secondaryType = 'emp_burst';
-    else if (rawSType.includes('drone')) secondaryType = 'drone_escort';
+    // `drone_escort` foi removido do jogo (Spec 02 §5/Spec 03 §5, D13) e do enum do schema
+    // gerado -- um valor bruto que ainda o mencione (ex.: build antiga do agente, cache
+    // desatualizado) mapeia para o tipo real mais próximo em vez de produzir um valor que o
+    // schema estrito rejeita de cara com SCHEMA_INVALID.
+    else if (rawSType.includes('drone')) secondaryType = 'homing_missiles';
     else if (rawSType.includes('missile') || rawSType.includes('míssil')) secondaryType = 'homing_missiles';
 
     // [Fase A / revisão final — Importante 3] O schema estrito (additionalProperties:

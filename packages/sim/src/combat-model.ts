@@ -171,9 +171,10 @@ export function simulateMatch(input: SimInput): SimResult {
 
       // Secondary cadence. Mirrors WeaponSystem.fireSecondary: the cooldown resets whenever
       // type !== 'none', even for types with no boss-damage effect -- `fireSecondary` has no
-      // `else` branch, so any type other than 'homing_missiles'/'emp_burst' (e.g. `drone_escort`,
-      // unreachable via the 8 sim archetypes today but reachable from a real forge spec) is a
-      // silent no-op that still consumes the cooldown.
+      // `else` branch. `SecondaryWeaponType` is now just 'homing_missiles' | 'emp_burst' | 'none'
+      // (`drone_escort` was removed from the type entirely, not just from this model), and 'none'
+      // is already excluded by `secondaryFiresAtAll` above, so the two branches below are
+      // exhaustive for every type reachable here.
       if (boss.hp > 0 && secondaryFiresAtAll && elapsedMs - lastSecondaryFireMs >= secondaryCooldownMs) {
         lastSecondaryFireMs = elapsedMs;
         if (rng.chance(skill.secondaryUptime)) {
