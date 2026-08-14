@@ -314,6 +314,67 @@ mesmo tratamento de `minimo`/`maximo`/`vulcan_max` (ele também é uma sonda sin
 uma nave que um visitante do estande pode montar), revisar `fallback-presets.ts`, ou revisitar a
 própria banda/teto do §5.3.
 
+> Nota (mesmo dia): a recomendação acima foi levada ao dono do projeto e aprovada horas depois — ver
+> §2.4.3 para a exclusão de `tanque` e o resultado atualizado do portão.
+
+### 2.4.3. Terceiro follow-up: `tanque` também excluído (2026-08-14, aprovado pelo dono do projeto)
+
+**Decisão.** Perguntado especificamente sobre `tanque` — o quarto arquétipo sintético exposto pela
+exclusão de §2.4.2 —, o dono do projeto aprovou excluí-lo do portão de CI pelo mesmo princípio já
+aplicado a `minimo`/`maximo`/`vulcan_max`: `tanque`
+(`packages/shared/src/game/dev-archetypes.ts:103`) empilha `attributes.max_hp` e
+`shield_capacity` no teto do schema (exigindo `defense: 50` e `tech: 50`) e toda a ofensiva —
+`weapons.primary.damage`/`fire_rate`/`bullet_speed`/`spread_angle` — no piso (exigindo
+`offense: 10`), com `speed_px_s`/`hitbox_radius` implicitamente também no piso (`speed: 10`). Soma:
+50 + 50 + 10 + 10 = **120** pontos de energia — 20 acima do orçamento fixo de 100 que o slider do
+forge impõe. É a mesma contradição estrutural das outras três sondas, apenas descoberta depois que
+elas deixaram de mascará-la.
+
+**Implementação.** `packages/sim/src/balance-gate.test.ts`: o filtro de `GATE_ARCHETYPES` passa a
+excluir `['minimo', 'maximo', 'vulcan_max', 'tanque']`. Nenhum outro arquivo mudou — `archetypes.ts`
+continua com os 8 arquétipos para `npm run sim:balance`; `combat-model.ts` e `balance.ts`
+inalterados; seed count (2.000), banda (15–25%) e teto de espalhamento (35pp) inalterados.
+
+**Resultado medido (`npm run test --workspace=packages/sim`, 2.000 seeds).** A matriz do portão
+passa a ter apenas 4 arquétipos — os três fallbacks reais mais `glass_cannon` —, em habilidade
+mediana:
+
+| arquétipo | winRate |
+| :-- | :-- |
+| interceptor | 9,15% |
+| vanguard | 51,60% |
+| striker | 0,95% |
+| glass_cannon | 8,65% |
+
+As 4 condições do §5.3, reavaliadas sobre este conjunto de 4:
+
+1. **Banda 15–25% do `aggregateWinRate`:** média dos 4 = **17,59%** — dentro da banda. **Passa.**
+   (Antes, com `tanque` ainda na matriz: 14,1%, fora por 0,9pp.)
+2. **Nenhum arquétipo em 0%/100% em habilidade mediana:** mínimo `striker` (0,95%), máximo
+   `vanguard` (51,60%); nenhum dos dois é literalmente 0% ou 100%. **Passa.**
+3. **Espalhamento ≤35pp:** `vanguard` (51,60%) menos `striker` (0,95%) = **50,7pp**. **Falha** —
+   acima do teto por 15,7pp.
+4. **Dano da secundária > 0 contra o boss, exceto `emp_burst`:** inalterada por esta mudança.
+   **Passa.**
+
+**Resultado líquido: o portão passa a falhar em apenas 1 das 4 condições (antes da exclusão de
+`tanque`: 3 das 4).** A exclusão aprovada fechou a banda e a condição de 0%/100% — ambas dependiam
+de `tanque` estar travado em exatamente 0,0% — mas não fechou o espalhamento. Sem `tanque` ancorando
+o piso em 0,0%, o espalhamento passa a ser ancorado por dois dos três presets de fallback reais:
+`vanguard` (51,60%, já apontado em §2.4.1 como estruturalmente mais forte por atributos de
+`fallback-presets.ts`, não por ser sintético) contra `striker` (0,95%, o fallback de ataque). Nenhum
+dos dois é uma sonda sintética de limite — são naves que um visitante real recebe —, então excluir
+qualquer um deles do portão não seguiria o princípio usado para `minimo`/`maximo`/`vulcan_max`/
+`tanque`, e de qualquer forma está fora do escopo desta mudança.
+
+**Estado após esta mudança:** o portão de CI ainda não fecha (1 de 4 condições falha), mas o
+resultado é substancialmente melhor do que antes desta exclusão (3 de 4 falhavam) e a causa restante
+está isolada numa única condição: o espalhamento de poder entre `vanguard` e `striker`. Fechar essa
+condição não está autorizado por esta mudança — nem retunar `balance.ts` nem excluir arquétipos
+adicionais sem nova autorização explícita. A recomendação de próximo passo — decisão de uma tarefa
+futura — é revisitar os atributos base de `fallback-presets.ts` (apontado em §2.4.1) ou o próprio
+teto de 35pp do §5.3.
+
 ---
 
 ## 3. Entregável 2 — Determinismo por Seed
@@ -433,16 +494,17 @@ Um teste (`balance.test.ts`) que falha quando:
 > A banda de 15–25% é herdada da Spec 04 e foi definida por intuição. Se a medição mostrar que ela
 > produz um estande frustrante, **a banda é que muda** — mas passa a mudar com um número ao lado.
 
-> **Escopo do portão (follow-up B8, 2026-08-14, aprovado pelo dono do projeto — ver §2.4.2).** As 4
-> condições acima são avaliadas sobre 5 dos 8 arquétipos de `archetypes.ts`: `minimo`, `maximo` e
-> `vulcan_max` são excluídos da matriz que `balance-gate.test.ts` usa para calcular
+> **Escopo do portão (follow-up B8, 2026-08-14, aprovado pelo dono do projeto — ver §2.4.2–§2.4.3).**
+> As 4 condições acima são avaliadas sobre 4 dos 8 arquétipos de `archetypes.ts`: `minimo`, `maximo`,
+> `vulcan_max` e `tanque` são excluídos da matriz que `balance-gate.test.ts` usa para calcular
 > `aggregateWinRate` e o espalhamento, por serem provadamente inatingíveis por qualquer nave real
-> orçamentada pelo forge (o slider de energia soma exatamente 100 pontos; esses três exigem ≈200,
-> ≈200 e ≈40 respectivamente). `npm run sim:balance` continua reportando os 8 arquétipos, incluindo
-> esses três, como diagnóstico. **Estado atual: o portão ainda falha em 3 das 4 condições acima** —
-> não por causa dos três arquétipos excluídos, mas por `tanque`, um quarto arquétipo sintético
-> (ofensiva no piso do schema, defesa no teto) que ficava mascarado pela falha, ainda maior, de
-> `maximo`/`vulcan_max`. Ver §2.4.2 para os números e a recomendação de próximo passo.
+> orçamentada pelo forge (o slider de energia soma exatamente 100 pontos; `maximo`/`vulcan_max`
+> exigem ≈200, `minimo` exige ≈40, `tanque` exige 120). `npm run sim:balance` continua reportando os
+> 8 arquétipos, incluindo esses quatro, como diagnóstico. **Estado atual: o portão falha em 1 das 4
+> condições acima** — o espalhamento entre `vanguard` (51,60%) e `striker` (0,95%) é 50,7pp, acima do
+> teto de 35pp; a banda do `aggregateWinRate` (17,59%) e a ausência de arquétipos em 0%/100% em
+> habilidade mediana já passam. Ver §2.4.3 para os números completos e a recomendação de próximo
+> passo.
 
 ---
 

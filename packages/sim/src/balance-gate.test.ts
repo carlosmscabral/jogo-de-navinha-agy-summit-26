@@ -58,18 +58,21 @@ import { ARCHETYPES, SKILL_PROFILES } from './archetypes.js';
 // gate that's supposed to catch regressions down in that range needs the same statistical floor.
 const SEEDS = Array.from({ length: 2000 }, (_, i) => i + 1);
 
-// [D12 follow-up, dated 2026-08-14, project-owner-approved] minimo/maximo/vulcan_max are
+// [D12 follow-up, dated 2026-08-14, project-owner-approved] minimo/maximo/vulcan_max/tanque are
 // synthetic extremes proven structurally unbuildable by any real, budget-constrained visitor
 // ship: the energy-slider system forces the 4 sliders to sum to EXACTLY 100 points. `maximo`
 // (every attribute at the schema ceiling) demands ~200 points; `vulcan_max` is subject to the
 // same contradiction and is the archetype that actually anchors the gate's spread failure;
 // `minimo` (every attribute at the schema floor) demands only 40, so the remaining 60 points
 // must land somewhere, making "every stat simultaneously at the floor" equally unreachable.
+// `tanque` (max_hp+shield_capacity at ceiling, everything else at floor) demands
+// defense:50 + tech:50 + offense:10 + speed:10 = 120 -- the same contradiction, discovered
+// only after the first three were excluded and this one became the sole remaining anchor.
 // Excluded here from the CI pass/fail gate only -- `npm run sim:balance`'s diagnostic matrix
-// (run.ts, unchanged) still reports all 8 archetypes, including these three, as informational
+// (run.ts, unchanged) still reports all 8 archetypes, including these four, as informational
 // upper/lower bounds.
 const GATE_ARCHETYPES = Object.fromEntries(
-  Object.entries(ARCHETYPES).filter(([name]) => !['minimo', 'maximo', 'vulcan_max'].includes(name))
+  Object.entries(ARCHETYPES).filter(([name]) => !['minimo', 'maximo', 'vulcan_max', 'tanque'].includes(name))
 );
 
 describe('portão de balanceamento (Spec 09 §5.3)', () => {

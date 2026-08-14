@@ -246,6 +246,18 @@ travar a taxa de vitória em CI. Enquanto isso não existir, qualquer número no
 > (`interceptor`, `vanguard`, `striker`, `glass_cannon`, `tanque`) é 14,1% (abaixo da banda de
 > 15–25% por 0,9pp); o espalhamento `vanguard` (51,6%) − `tanque` (0,0%) é 51,6pp (acima do teto de
 > 35pp). Ver Spec 09 §2.4.2 para os números completos e a recomendação de próximo passo.
+>
+> **Segundo follow-up (B8, mesmo dia, 2026-08-14, aprovado pelo dono do projeto).** Perguntado
+> especificamente sobre `tanque`, o dono do projeto aprovou excluí-lo do portão pelo mesmo
+> princípio: `max_hp`/`shield_capacity` no teto do schema (`defense: 50` + `tech: 50`) e toda a
+> ofensiva no piso (`offense: 10`, com `speed: 10` implícito) somam 120 pontos de energia, 20 acima
+> do orçamento fixo de 100. Com os quatro arquétipos sintéticos fora do portão, a matriz de
+> `balance-gate.test.ts` passa a ter apenas `interceptor`/`vanguard`/`striker`/`glass_cannon`.
+> **Resultado: o portão passa a falhar em apenas 1 das 4 condições** (antes desta exclusão, 3 das
+> 4) — `aggregateWinRate` = 17,59% (dentro da banda de 15–25%) e nenhum arquétipo em 0%/100% em
+> habilidade mediana (mínimo `striker` 0,95%, máximo `vanguard` 51,60%) já passam; o espalhamento
+> entre esses dois — 50,7pp — continua acima do teto de 35pp. Ver Spec 09 §2.4.3 para os números
+> completos e a recomendação de próximo passo.
 
 ### 5.2. [D15] As sinergias não afetam o boss nem nada
 
@@ -319,10 +331,19 @@ finalScore = round( (combatScore + bossBonus + timeBonus + survivalBonus + syner
       (0,0% em habilidade mediana, 0 vitórias em 2.000 seeds — um quarto arquétipo sintético,
       ofensiva no piso do schema e defesa no teto, que a falha maior de `maximo`/`vulcan_max`
       mascarava) em vez de pelos três arquétipos excluídos: espalhamento `vanguard` (51,6%) −
-      `tanque` (0,0%) = 51,6pp, acima do teto de 35pp. Fechar as 3 condições restantes segue sendo
-      decisão de uma tarefa futura — nem retunar `balance.ts` nem excluir `tanque` está autorizado
-      por esta mudança. Ver a prova completa em Spec 09 §2.4.1–§2.4.2. Números simulador-somente: o
-      Passo 4 (cinco partidas jogadas à mão) **não foi executado** — nenhuma tarefa desta fase teve
-      acesso a navegador — e continua pendente antes do Gate M1, junto com a captura de conformidade
-      ainda pendente da Tarefa B7.
+      `tanque` (0,0%) = 51,6pp, acima do teto de 35pp.
+      **Segundo follow-up, mesmo dia (Spec 09 §2.4.3):** perguntado especificamente sobre `tanque`,
+      o dono do projeto aprovou excluí-lo também, pelo mesmo princípio (`defense: 50` + `tech: 50` +
+      `offense: 10` + `speed: 10` = 120 pontos de energia, 20 acima do orçamento fixo de 100). Com
+      os quatro sintéticos fora, a matriz do portão passa a ter apenas `interceptor`/`vanguard`/
+      `striker`/`glass_cannon`. **O portão passa a falhar em apenas 1 das 4 condições:**
+      `aggregateWinRate` = 17,59% (dentro da banda de 15–25%, **passa**) e nenhum arquétipo em
+      0%/100% em habilidade mediana (mínimo `striker` 0,95%, máximo `vanguard` 51,60%, **passa**),
+      mas o espalhamento entre `vanguard` e `striker` — 50,7pp — continua acima do teto de 35pp
+      (**falha**). Fechar essa última condição segue sendo decisão de uma tarefa futura — nem
+      retunar `balance.ts` nem excluir arquétipos adicionais está autorizado por esta mudança. Ver a
+      prova completa em Spec 09 §2.4.1–§2.4.3. Números simulador-somente: o Passo 4 (cinco partidas
+      jogadas à mão) **não foi executado** — nenhuma tarefa desta fase teve acesso a navegador — e
+      continua pendente antes do Gate M1, junto com a captura de conformidade ainda pendente da
+      Tarefa B7.
 - [ ] `ScoreCalculator.test.ts` executa no `npm test` da raiz e passa.
