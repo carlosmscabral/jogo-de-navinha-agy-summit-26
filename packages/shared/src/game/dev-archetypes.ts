@@ -9,9 +9,17 @@ const R = BALANCE.ranges;
  * balances against — every number for `attributes` and `weapons` comes from `BALANCE.ranges` via
  * `pick`, so if Task B8 changes a range these presets move with it automatically.
  *
- * `pilot`, `build_metadata` and `visuals` are cosmetic/bookkeeping fields not consumed by the
- * engine's balance-sensitive code paths, so they're inherited from `FALLBACK_PRESETS.interceptor`
- * verbatim (aside from a distinguishing name) rather than re-derived from ranges.
+ * `pilot` and `visuals` are cosmetic/bookkeeping fields not consumed by the engine's
+ * balance-sensitive code paths, so they're inherited from `FALLBACK_PRESETS.interceptor` verbatim
+ * (aside from a distinguishing name) rather than re-derived from ranges.
+ *
+ * `build_metadata` is different: since Task B6, `synergies_unlocked` IS balance-sensitive
+ * (`applySynergies` reads it and rewrites attributes/weapons before a match starts), so it can no
+ * longer be inherited wholesale from `FALLBACK_PRESETS.interceptor` — that preset's
+ * `synergies_unlocked: ['Ghost Interceptor']` would silently apply the Ghost Interceptor
+ * transform to every archetype built here, including ones with a completely different intended
+ * identity. It defaults to `[]` (no synergy) unless the caller explicitly opts in via
+ * `overrides.build_metadata`.
  */
 export function fromRanges(
   name: string,
@@ -19,6 +27,7 @@ export function fromRanges(
   overrides: {
     attributes?: Partial<ShipSpecification['attributes']>;
     weapons?: { primary?: PrimaryWeaponSpec; secondary?: SecondaryWeaponSpec };
+    build_metadata?: Partial<ShipSpecification['build_metadata']>;
   } = {}
 ): ShipSpecification {
   const base = FALLBACK_PRESETS.interceptor;
@@ -47,7 +56,7 @@ export function fromRanges(
 
   return {
     pilot: { ...base.pilot, callsign: name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').slice(0, 15) || 'DEV_PRESET' },
-    build_metadata: { ...base.build_metadata },
+    build_metadata: { ...base.build_metadata, synergies_unlocked: [], ...overrides.build_metadata },
     attributes,
     weapons: { primary, secondary },
     visuals: { ...base.visuals, style_name: name }
@@ -65,6 +74,7 @@ export const DEV_ARCHETYPES: Record<'minimo' | 'maximo' | 'glass_cannon' | 'vulc
   maximo: fromRanges('Máximo', (key) => R[key].max),
 
   glass_cannon: fromRanges('Canhão de Vidro', (key) => R[key].max, {
+    build_metadata: { synergies_unlocked: ['Glass Cannon'] },
     attributes: {
       max_hp: R['attributes.max_hp'].min,
       shield_capacity: R['attributes.shield_capacity'].min
