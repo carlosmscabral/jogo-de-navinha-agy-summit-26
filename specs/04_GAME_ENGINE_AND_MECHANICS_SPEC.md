@@ -100,13 +100,17 @@ Esses clamps são o coração de **D14**: o schema aceita `fire_rate` de 2 a 60 
 três em uma tabela gerada; **nenhum número de faixa deve permanecer escrito à mão aqui.**
 
 > **Correção (B2/B8).** Os clamps descritos acima e o fator `0,65` do `vulcan_spread` são os que
-> **motivaram** D14; eles não existem mais em `WeaponSystem.ts`. `fire_rate`, `damage` e
-> `spread_angle` chegam à engine já validados exclusivamente pelo `ship_spec.schema.json` (gerado
-> de `BALANCE.ranges`) via Ajv — `WeaponSystem` **não reclampa**, apenas consome os valores
-> intactos, exatamente como o parágrafo acima já pedia. O fator do `vulcan_spread` vigente é
-> `BALANCE.weapons.primary.vulcan_pellet_factor: 0,6`, não `0,65`. Ver a correção completa, com o
-> processo de medição, na nota da §5.1 abaixo e em [Spec 09](./09_GAME_BALANCE_AND_DEV_MODE.md) §2.4,
-> que é a fonte numérica autoritativa por definição (Restrições Globais #3).
+> **motivaram** D14; eles não existem mais em `WeaponSystem.ts`. `fire_rate` e `damage` chegam à
+> engine já validados exclusivamente pelo `ship_spec.schema.json` (gerado de `BALANCE.ranges`) via
+> Ajv — `WeaponSystem` **não reclampa** nenhum dos dois, apenas consome os valores intactos,
+> exatamente como o parágrafo acima já pedia. O fator do `vulcan_spread` vigente é
+> `BALANCE.weapons.primary.vulcan_pellet_factor: 0,6`, não `0,65`. `spread_angle` é uma exceção
+> conhecida e ainda não corrigida: `WeaponSystem.ts` mantém uma heurística legada que interpreta um
+> valor `< 1,0` como radianos (convertendo-o) e substitui um valor `0` explícito pelo
+> `default_spread_deg` — um achado Menor da revisão final da branch, registrado como trabalho
+> futuro, não corrigido aqui. Ver a correção completa, com o processo de medição, na nota da §5.1
+> abaixo e em [Spec 09](./09_GAME_BALANCE_AND_DEV_MODE.md) §2.4, que é a fonte numérica autoritativa
+> por definição (Restrições Globais #3).
 
 ### 3.2. [D13] Arma secundária
 

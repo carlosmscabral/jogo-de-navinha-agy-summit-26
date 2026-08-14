@@ -75,11 +75,14 @@ describe('applySynergies', () => {
     assert.notEqual(glass.weapons.primary.damage, titan.weapons.primary.damage);
   });
 
-  it('reconhece o valor padrão real do daemon ("Glass Cannon 🔥"), não apenas o nome canônico exato', () => {
-    // packages/daemon/src/services/file-watcher.ts's normalizeSpec falls back to this
-    // literal string whenever the agent omits synergies_unlocked -- a common path, not an
-    // edge case. Exact-string matching against KNOWN would silently drop this and every
-    // visitor would lose the synergy (and its score bonus) with zero indication.
+  it('reconhece o antigo valor padrão do daemon ("Glass Cannon 🔥"), não apenas o nome canônico exato', () => {
+    // packages/daemon/src/services/file-watcher.ts's normalizeSpec used to fall back to this
+    // literal string whenever the agent omitted synergies_unlocked; the final-review fix round
+    // changed that default to `[]` (an unearned synergy must never be granted by default), but
+    // any spec that legitimately carries this exact decorated string (e.g. a stale client, or a
+    // hand-crafted test fixture) must still match. Exact-string matching against KNOWN would
+    // silently drop this and the visitor would lose the synergy (and its score bonus) with zero
+    // indication.
     const spec = specWith(['Glass Cannon 🔥']);
     const r = applySynergies(spec);
     assert.deepEqual(r.applied, ['Glass Cannon']);

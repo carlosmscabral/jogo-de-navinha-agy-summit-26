@@ -57,12 +57,11 @@ interface BossState {
  * Applies one incoming hit to the boss, exactly mirroring `BossOverlord.takeDamage` — the single
  * damage entry point for the boss in the real engine, which applies `max_damage_per_primary_hit`
  * **unconditionally** to every hit regardless of source (the field's name suggests primary-only,
- * but `balance.ts`'s own comment on it confirms the cap currently captures secondary/EMP damage
- * too; whether that should change is an explicit `TODO(B8)` — a future balance decision, not
- * today's engine behavior, so the model must match today), then phase mitigation, then the damage
- * floor. Phase-transition invulnerability blocks the *damage*, not the attempt (fire cadence keeps
- * running underneath it), matching the real engine. Returns the damage actually applied (0 if the
- * boss was invulnerable or already dead).
+ * but `balance.ts`'s own comment on it confirms the cap captures secondary/EMP damage too — this
+ * is accepted, current engine behavior, measured and gated on throughout Tasks B7/B8, not an open
+ * question), then phase mitigation, then the damage floor. Phase-transition invulnerability blocks
+ * the *damage*, not the attempt (fire cadence keeps running underneath it), matching the real
+ * engine. Returns the damage actually applied (0 if the boss was invulnerable or already dead).
  */
 function applyBossHit(boss: BossState, rawDamage: number): number {
   if (boss.hp <= 0 || boss.invulnMsRemaining > 0) return 0;

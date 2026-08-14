@@ -24,13 +24,13 @@ export function applySynergies(spec: ShipSpecification): {
   const attributes = structuredClone(spec.attributes);
   const weapons = structuredClone(spec.weapons);
   const declared = spec.build_metadata?.synergies_unlocked || [];
-  // Exact string equality would miss every real-world value: the daemon's own default
-  // ('Glass Cannon 🔥'), the cybernetics-shields MCP's free-text echo of the agent's
-  // synergy_candidate argument, and the decorated strings the builder UI displays
-  // ('⚡ Glass Cannon (+30% DPS)') are never byte-identical to the canonical name. Match
-  // case-insensitively on whether the canonical name appears anywhere in the declared
-  // string instead, so emoji/casing/parenthetical decoration don't silently defeat the
-  // whole matrix.
+  // Exact string equality would miss every real-world value: the cybernetics-shields MCP's
+  // free-text echo of the agent's synergy_candidate argument, the decorated strings the builder
+  // UI displays ('⚡ Glass Cannon (+30% DPS)'), and any legacy spec still carrying the daemon's
+  // former default ('Glass Cannon 🔥', removed after the final-review fix round) are never
+  // byte-identical to the canonical name. Match case-insensitively on whether the canonical name
+  // appears anywhere in the declared string instead, so emoji/casing/parenthetical decoration
+  // don't silently defeat the whole matrix.
   const applied = KNOWN.filter((name) =>
     declared.some((d) => typeof d === 'string' && d.toLowerCase().includes(name.toLowerCase()))
   );
