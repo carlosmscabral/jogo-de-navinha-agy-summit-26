@@ -4,7 +4,9 @@
  * Toda constante que altera jogabilidade vive aqui. Três consumidores dependem
  * deste arquivo e precisam concordar entre si:
  *   1. `ship_spec.schema.json`, gerado de `ranges` por `npm run gen:schema`.
- *   2. `normalizeSpec` no daemon, que valida contra `ranges`.
+ *   2. O Ajv, validando `ship_spec.json` contra esse schema gerado -- a ÚNICA camada que
+ *      julga faixa numérica (D14/B2). `normalizeSpec` no daemon não reclampa mais: mapeia
+ *      nomes de campo frouxos e repassa os valores intactos para essa validação.
  *   3. A engine Phaser, que consome os valores já validados sem reclampar.
  *
  * Cosmético (cores, posições de HUD, durações de tween) NÃO entra aqui.
@@ -81,10 +83,10 @@ export const BALANCE = {
      * Teto por hit aplicado a QUALQUER dano recebido pelo boss. `BossOverlord.takeDamage`
      * é o único ponto de entrada de dano do boss e usa este teto incondicionalmente, então
      * ele também captura os mísseis secundários e o EMP (Tarefa B6) -- não só a arma
-     * primária, apesar do nome do campo.
-     * TODO(B8): decidir, com dados de balanceamento, se dano secundário/EMP deveria
-     * ignorar este teto (nome do campo sugere que sim); por ora nada muda o comportamento
-     * atual, só a precisão deste comentário.
+     * primária, apesar do nome do campo. Comportamento aceito e atual (medido e travado
+     * pelo portão de balanceamento em B7/B8, ver Spec 09 §2.4): o teto se aplica a toda
+     * fonte de dano do boss, sem exceção para secundária/EMP. Nome do campo mantido por
+     * compatibilidade histórica, não porque só a arma primária o respeite.
      */
     max_damage_per_primary_hit: 45,
     phase_transition_invuln_ms: 2000,
