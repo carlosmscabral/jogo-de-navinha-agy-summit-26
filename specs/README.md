@@ -55,6 +55,8 @@ permanece e ganhou um ID de defeito.
 | **[08 Topologia & Nuvem](./08_DEPLOYMENT_TOPOLOGY_AND_CLOUD_SPLIT.md)** | O que roda local e o que roda em GCP, e por quê | Nova |
 | **[09 Balanceamento & Dev Mode](./09_GAME_BALANCE_AND_DEV_MODE.md)** | Fonte única de tuning, harness isolado, simulador de dificuldade | Nova |
 | **[10 Plano de Implementação](./10_IMPLEMENTATION_PLAN.md)** | Sequenciamento por fases e gates de ensaio manual | Nova |
+| **[11 Lacunas Conhecidas](./11_KNOWN_GAPS_AND_OPEN_ITEMS.md)** | O que está quebrado, não verificado ou adiado — lista honesta | Fases A+B mergeadas |
+| **[12 Plano de Teste Manual (Mac)](./12_MANUAL_TEST_PLAN_MAC.md)** | Roteiro passo a passo que fecha os gates M1 e M2 | Pendente de execução |
 
 ---
 
@@ -111,3 +113,9 @@ projeto, em nenhum ambiente.
 - [x] Decisão de topologia local/nuvem ([Spec 08](./08_DEPLOYMENT_TOPOLOGY_AND_CLOUD_SPLIT.md))
 - [x] Estratégia de balanceamento e modo de desenvolvimento isolado ([Spec 09](./09_GAME_BALANCE_AND_DEV_MODE.md))
 - [ ] Execução do [plano de implementação](./10_IMPLEMENTATION_PLAN.md)
+  - [x] **Fase A** — correções de integração, harness, daemon, failover (Gate M0 fechado)
+  - [x] **Fase B** — balanceamento medido, simulador, modo dev, sinergias reais
+  - [ ] Gates **M1** e **M2** — exigem um humano num Mac: [Spec 12](./12_MANUAL_TEST_PLAN_MAC.md)
+  - [ ] **Fase C** — nuvem (Firestore, Cloud Run, Vertex AI)
+  - [ ] **Fase D** — ensaio operacional, soak (Gates M3-M5)
+- Lacunas, falhas conhecidas e itens adiados: [Spec 11](./11_KNOWN_GAPS_AND_OPEN_ITEMS.md)

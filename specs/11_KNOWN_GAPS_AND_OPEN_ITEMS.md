@@ -1,0 +1,229 @@
+# 11 — Lacunas Conhecidas e Itens em Aberto
+
+**Estado em 2026-08-14, após o merge das Fases A e B de
+[`10_IMPLEMENTATION_PLAN.md`](./10_IMPLEMENTATION_PLAN.md).**
+
+Este documento existe para que nada que está quebrado, não verificado ou deliberadamente adiado
+fique só na cabeça de quem implementou. Ele é a lista honesta do que **não** está pronto. Cada item
+diz: o que é, por que ficou assim, qual o risco real no dia do evento, e o que fecha o item.
+
+Um item só sai daqui quando estiver de fato resolvido — não quando alguém decidir que dá para
+conviver com ele.
+
+---
+
+## 1. O que está pronto e o que não está
+
+| Fase | Escopo | Estado |
+|------|--------|--------|
+| **A** | Correções de integração, harness `agy`, daemon, failover, segurança (D1-D6, D8-D10, P1, P8) | Implementada e revisada. Gate **M0** fechado. |
+| **B** | Balanceamento medido, `balance.ts`, simulador headless, modo de desenvolvimento isolado, sinergias reais (Spec 09 inteira) | Implementada e revisada. Gates **M1** e **M2** **em aberto** — ver §4. |
+| **C** | Nuvem: Firestore, Cloud Run, Vertex AI (D7, U1-U3) | **Não iniciada.** |
+| **D** | Ensaio operacional do estande, soak, cronometragem do ciclo | **Não iniciada.** Gates M3, M4 e M5 em aberto. |
+| **E** | Opcional, só depois de M0-M5 fechados | **Não iniciada.** |
+
+O jogo **funciona hoje de ponta a ponta em uma máquina local**: registro → builder → forja com `agy`
+real → voo → debriefing. O que falta na Fase C é a persistência em nuvem; hoje o placar é local.
+
+---
+
+## 2. Verificações automatizadas que não passam
+
+`npm test` na raiz roda 140 testes. **138 passam, 1 falha, 1 é pulado.** As duas exceções são
+conhecidas, rastreadas aqui, e nenhuma delas é intermitente — as duas falham/pulam de forma
+determinística, sempre pelo mesmo motivo.
+
+### 2.1 FALHA — `mantém o espalhamento entre arquétipos abaixo do penhasco`
+
+`packages/sim/src/balance-gate.test.ts`
+
+```
+AssertionError: espalhamento de 50.7 pontos percentuais entre o melhor e o pior arquétipo
+```
+
+O portão de balanceamento tem quatro condições. **Três passam.** A quarta é esta.
+
+Taxas de vitória na habilidade **mediano**, 2.000 seeds (`npm run sim:balance`, 2026-08-14):
+
+| Arquétipo | Vitórias (mediano) | No portão? |
+|-----------|--------------------|------------|
+| `vanguard` | **51,6%** | sim — âncora superior |
+| `interceptor` | 9,2% | sim |
+| `glass_cannon` | 8,6% | sim |
+| `striker` | **0,95%** | sim — âncora inferior |
+| `maximo` | 100,0% | não (sintético) |
+| `vulcan_max` | 100,0% | não (sintético) |
+| `minimo` | 0,0% | não (sintético) |
+| `tanque` | 0,0% | não (sintético) |
+
+- Taxa agregada (média das células `mediano` do portão): **17,6%** — dentro da banda de 15-25%. ✅
+- Nenhum arquétipo do portão em 0% ou 100% na habilidade mediana. ✅
+- Nenhum arquétipo com secundária de dano zero contra o boss (exceto `emp_burst`, esperado). ✅
+- Espalhamento `vanguard` − `striker` = **≈50,7 pp**, contra um teto de 35 pp. ❌
+
+**Por que isto é real e não um artefato.** `vanguard` e `striker` são dois presets reais,
+selecionáveis por um visitante ([`fallback-presets.ts`](../packages/shared/src/constants/fallback-presets.ts)).
+A diferença vem das estatísticas-base dos dois presets, não do modelo de combate. Quatro arquétipos
+**sintéticos** (`minimo`, `maximo`, `vulcan_max`, `tanque`) foram excluídos do portão com aprovação
+explícita do dono do projeto, porque são estruturalmente inconstruíveis: os 4 sliders de energia
+somam **exatamente** 100 pontos, e `maximo` exigiria ≈200, `tanque` 120, `minimo` apenas 40 (sobrando
+60 que precisam ir para algum lugar). Eles continuam aparecendo em `npm run sim:balance` como limites
+superior e inferior informativos. **A falha que resta não é esse tipo de artefato** — foi verificada
+como uma disparidade genuína entre dois presets reais.
+
+**Risco no evento:** um visitante que caia no preset `striker` tem ≈1% de chance de vencer com
+habilidade mediana; um que caia no `vanguard`, ≈52%. A experiência é inconsistente entre visitantes,
+embora nenhum dos dois casos seja injogável.
+
+**Decisão registrada:** o dono do projeto decidiu **aceitar 3/4 como o estado documentado deste
+merge** e **não** mexer em `fallback-presets.ts` nem afrouxar o teto de 35 pp agora. Isto está aqui
+como item aberto, não como "resolvido".
+
+**Fecha o item:** reequilibrar as estatísticas-base de `striker` (e possivelmente `vanguard`) em
+`fallback-presets.ts` e reexecutar o portão, ou — com justificativa escrita na Spec 09 §5.3 — rever
+o teto de 35 pp.
+
+### 2.2 PULADO — conformidade simulador × engine real
+
+`packages/sim/src/conformance.test.ts`
+
+```
+﹣ TTK do boss no simulador está a até 5% do TTK capturado na engine real
+  # harness-runs.json está vazio -- ver fixtures/README.md
+```
+
+Este teste compara o TTK do boss calculado pelo simulador com o TTK que a **engine Phaser real**
+produziu, para a mesma spec e o mesmo seed (Spec 09 §5.1). É o que prova que
+[`combat-model.ts`](../packages/sim/src/combat-model.ts) não é uma reimplementação que só *parece*
+certa.
+
+[`packages/sim/fixtures/harness-runs.json`](../packages/sim/fixtures/harness-runs.json) está vazio
+(`[]`) porque rodar a engine Phaser exige um navegador de verdade (canvas/WebGL), e nenhum agente
+que trabalhou nesta fase teve acesso a um. O mecanismo está pronto: assim que o arquivo ganhar
+entradas reais, o teste deixa de pular e vira um portão de verdade.
+
+**Risco no evento:** enquanto isto estiver pulado, **todo número de balanceamento produzido pelo
+simulador não está confirmado contra a realidade**. As decisões de tuning da Tarefa B8 foram tomadas
+em cima do simulador. Se o modelo divergir da engine, o balanceamento medido está errado na mesma
+proporção.
+
+**Este é o item de maior alavancagem da lista** — ele valida ou invalida todo o §2.1 acima.
+
+**Fecha o item:** o procedimento de captura está em
+[`packages/sim/fixtures/README.md`](../packages/sim/fixtures/README.md) e está roteirizado passo a
+passo no [Bloco 3 do plano de teste manual](./12_MANUAL_TEST_PLAN_MAC.md). São três capturas
+(`striker`, `interceptor`, `maximo`), ≈10 minutos no Mac.
+
+---
+
+## 3. Verificação que nenhuma máquina fez
+
+Tudo abaixo exige um humano com um Mac, um navegador real e o `agy` autenticado. Nada disso é
+verificável em CI, e nada disso foi feito ainda.
+
+| Gate | Depende de | O que prova | Estado |
+|------|-----------|-------------|--------|
+| **M0** | Fase A | Build limpo, testes executam e aparecem por nome | ✅ fechado |
+| **M1** | Fase B | Engine sobe offline; a dificuldade prevista pelo simulador é a que a partida transmite (5 partidas à mão) | ⬜ **aberto** |
+| **M2** | Fases A + B | Ciclo completo com `agy` real; failover; portão de auditoria; latência do handoff < 500ms; limpeza de processos | ⬜ **aberto** |
+| **M3** | Fase C | Score chega ao Firestore; nada se perde com o Wi-Fi caindo | ⬜ aberto (fase não iniciada) |
+| **M4** | Fase D | Ciclo de visitante em 2m00s-2m45s, 20 ciclos sem processo órfão | ⬜ aberto (fase não iniciada) |
+| **M5** | Fase D | 100 partidas consecutivas, memória e processos estáveis | ⬜ aberto (fase não iniciada) |
+
+M1 e M2 são executáveis **hoje** — o roteiro está em
+[`12_MANUAL_TEST_PLAN_MAC.md`](./12_MANUAL_TEST_PLAN_MAC.md).
+
+---
+
+## 4. Achados de código adiados de propósito
+
+Todos foram encontrados em revisão, avaliados e conscientemente adiados. Nenhum é bloqueador para o
+evento; todos são reais.
+
+### 4.1 `WeaponSystem` reescreve `spread_angle` (graus × radianos)
+
+[`packages/player-app/src/game/weapons/WeaponSystem.ts:85-87`](../packages/player-app/src/game/weapons/WeaponSystem.ts)
+
+O schema declara `spread_angle` em graus (0 a 30), mas o `WeaponSystem` trata o valor como radianos
+em um caminho legado e o reescreve, incluindo um colapso para zero em certos casos. A Spec 04
+§7 já registra a ressalva. O efeito prático hoje é pequeno (o leque de tiro do `vulcan_spread` fica
+mais fechado do que o número na spec sugere), mas é uma divergência entre contrato e engine.
+
+### 4.2 Sinergias: composição dependente de ordem e `Balanced Ace` quase inócuo
+
+[`packages/shared/src/game/synergies.ts`](../packages/shared/src/game/synergies.ts)
+
+- `Balanced Ace` aplica +15% sobre atributos inteiros: em quase todo valor legal isso arredonda de
+  volta para o mesmo número (só `max_hp` 4→5 se move de fato).
+- Quando duas sinergias se aplicam juntas, a ordem importa de um jeito que pode apagar a desvantagem
+  pretendida — `Glass Cannon` + `Titan Fortress` mantém o bônus de dano **sem** a penalidade de HP.
+
+Nenhum dos dois foi escopo de nenhuma tarefa da Fase B; ficam registrados para uma futura passada de
+tuning.
+
+### 4.3 HUD rotula a secundária como "MÍSSEIS" sempre
+
+[`packages/player-app/src/game/scenes/MainGameScene.ts`](../packages/player-app/src/game/scenes/MainGameScene.ts)
+
+Visivelmente errado para builds com `emp_burst`. Cosmético, mas o visitante vê.
+
+### 4.4 `aggregateWinRate` é média não ponderada
+
+[`packages/sim/src/combat-model.ts`](../packages/sim/src/combat-model.ts)
+
+A Spec 09 §5.3 define a taxa agregada como "ponderada pela distribuição esperada de visitantes". A
+implementação usa média simples, porque **não existe dado real de distribuição de visitantes ainda**.
+A simplificação é defensável; o que falta é ela estar declarada no texto da spec em vez de só no
+código.
+
+### 4.5 Cobertura de teste com lacunas conhecidas
+
+- O teste de clamp em `synergies.test.ts` afirma `<= max` em vez de `=== max` (mais fraco, mas
+  coberto de lado por um teste vizinho de fator exato).
+- O caminho de fallback de `spread_angle` ausente (`vulcan_spread` → 0.25) não tem teste de
+  regressão dedicado — só foi verificado por execução manual em revisão.
+- `damage: 0` e `spread_angle: null` em `normalizeSpec` caem em coerção de falsy que convive mal com
+  a afirmação "rejeitado, nunca coagido" da Spec 09 §2.2. A forma é pré-existente, não foi
+  introduzida nesta fase.
+- `renderSvgShipTexture` não tem teste automatizado de integração (jsdom/node-canvas ausentes do
+  ambiente); só traço manual.
+- `packages/player-app` roda vitest com `environment: 'node'` — **sem jsdom**. Nenhum componente
+  React é renderizado em teste em lugar nenhum deste repositório. Toda lógica de UI que precisa de
+  teste tem que ser extraída para um módulo puro primeiro (foi o que se fez com
+  [`synergy-preview.ts`](../packages/player-app/src/components/synergy-preview.ts)).
+
+### 4.6 Resíduos pequenos
+
+- `dev.html` ainda busca Google Fonts — inofensivo, mas desnecessário numa ferramenta de dev offline.
+- Duas constantes mortas em `balance.ts` (`min_bullet_speed`, `default_bullet_speed`).
+- A prévia do terminal em `HandoffTerminalScreen.tsx` desenha um polígono genérico fixo, não o
+  `svg_path_data` real do agente — mesmo problema do D17, um passo antes no fluxo.
+
+---
+
+## 5. O que **não** é lacuna (verificado, apesar da aparência)
+
+Registrado para que ninguém "conserte" de novo o que já foi investigado:
+
+- **`drone_escort` ainda aparece no `grep`.** A remoção está correta e completa. As ocorrências
+  restantes são: dois comentários explicativos no passado, um teste de regressão que afirma a
+  *ausência* do valor, e prosa histórica de decisão em arquivos de spec. O tipo
+  `SecondaryWeaponType` não o contém mais e `normalizeSpec` mapeia "drone" → `homing_missiles`.
+- **Caixas de seleção não marcadas nos specs.** Vários arquivos de spec têm centenas de `- [ ]` e
+  zero `- [x]`. É a convenção do próprio arquivo (roteiro de execução), não trabalho pendente.
+- **A exclusão dos 4 arquétipos sintéticos do portão** não alterou nenhum número de balanceamento:
+  foi provada bit-a-bit idêntica rodando o estado antigo e o novo lado a lado sobre os mesmos 2.000
+  seeds.
+- **Sinergias só existem com o MCP `cybernetics-shields`.** Não é bug: é a regra do jogo, agora
+  aplicada de forma consistente nas três camadas (prompt do agente, backfill do daemon, crachá do
+  builder). Um visitante que não seleciona esse MCP não recebe sinergia — e a UI diz isso na cara
+  dele em vez de prometer um bônus que não sai.
+
+---
+
+## 6. Referências
+
+- [`10_IMPLEMENTATION_PLAN.md`](./10_IMPLEMENTATION_PLAN.md) — plano por fases e definição dos gates
+- [`12_MANUAL_TEST_PLAN_MAC.md`](./12_MANUAL_TEST_PLAN_MAC.md) — roteiro que fecha M1 e M2
+- [`09_GAME_BALANCE_AND_DEV_MODE.md`](./09_GAME_BALANCE_AND_DEV_MODE.md) — banda de vitória, portão, modo dev
+- [`packages/sim/fixtures/README.md`](../packages/sim/fixtures/README.md) — procedimento de captura da conformidade
