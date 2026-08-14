@@ -1,7 +1,7 @@
 import chokidar, { FSWatcher } from 'chokidar';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { validateShipSpecification, ShipSpecification, computeBaselineAttributes, computeBaselineWeapons } from '@jogo/shared';
+import { validateShipSpecification, ShipSpecification, computeBaselineAttributes, computeBaselineWeapons, BALANCE } from '@jogo/shared';
 
 export interface McpActivityEvent {
   timestamp: string;
@@ -358,10 +358,21 @@ export class FileWatcherService {
       weapons: {
         primary: {
           type: primaryType,
-          damage: Number(raw.weapons?.primary?.damage || raw.damage) || (primaryType === 'laser' ? 45 : primaryType === 'plasma' ? 45 : 35),
+          // Este fallback só dispara quando o agente não forneceu literalmente nada
+          // aproveitável para damage -- não há razão para o tipo de arma influenciar o
+          // valor: usa sempre o teto de BALANCE.ranges['weapons.primary.damage'], em vez
+          // de três literais copiados à mão (dois deles coincidindo com o teto por
+          // acidente, um terceiro sem base nenhuma em balance.ts).
+          damage: Number(raw.weapons?.primary?.damage || raw.damage) || BALANCE.ranges['weapons.primary.damage'].max,
           fire_rate: Number(raw.weapons?.primary?.fire_rate || raw.fire_rate),
           bullet_speed: Number(raw.weapons?.primary?.bullet_speed || raw.bullet_speed),
-          spread_angle: primaryType === 'vulcan_spread' ? 0.25 : 0
+          // Só cai no default hardcoded quando o raw não trouxe nenhum valor real para
+          // spread_angle -- um valor legítimo vindo de weapons-arsenal ou de
+          // computeBaselineWeapons nunca pode ser descartado aqui (GEMINI.md anuncia
+          // spread_angle como campo real, faixa [0,30]).
+          spread_angle: raw.weapons?.primary?.spread_angle !== undefined
+            ? Number(raw.weapons.primary.spread_angle)
+            : (primaryType === 'vulcan_spread' ? 0.25 : 0)
         },
         secondary: {
           type: secondaryType,

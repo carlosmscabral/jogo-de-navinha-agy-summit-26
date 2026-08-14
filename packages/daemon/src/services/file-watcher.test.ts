@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { FALLBACK_PRESETS, computeBaselineAttributes, computeBaselineWeapons, applySynergies } from '@jogo/shared';
+import { FALLBACK_PRESETS, computeBaselineAttributes, computeBaselineWeapons, applySynergies, BALANCE } from '@jogo/shared';
 import { FileWatcherService } from './file-watcher.js';
 
 function tempSession(): string {
@@ -493,6 +493,102 @@ describe('FileWatcherService — backfill de baseline para MCPs não selecionado
     assert.equal(rejections.length, 0, JSON.stringify(rejections));
     assert.equal(readySpecs.length, 1);
     assert.deepEqual(readySpecs[0].build_metadata.synergies_unlocked, []);
+
+    w.stopWatching();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('FileWatcherService — normalizeSpec: literais de fallback (revisão final, Importante 3)', () => {
+  it('usa o teto de BALANCE.ranges para o damage-fallback do primário, independente do tipo de arma', async () => {
+    // Antes: vulcan_spread defaultava para 35 sem base em balance.ts, enquanto laser/plasma
+    // defaultavam para 45 (uma cópia manual do teto). Este fallback só dispara quando o agente
+    // não forneceu literalmente nada aproveitável para damage -- não há razão para o tipo
+    // influenciar esse valor.
+    const dir = tempSession();
+    const auditPath = path.join(dir, 'mcp_audit.log');
+    fs.writeFileSync(auditPath, '', 'utf8');
+
+    const readySpecs: any[] = [];
+    const rejections: any[] = [];
+    const w = new FileWatcherService();
+    w.startWatching(dir, {
+      requiredMcps: ['weapons-arsenal'],
+      onShipReady: (s) => readySpecs.push(s),
+      onSpecRejected: (r) => rejections.push(r)
+    });
+
+    const rawSpec: any = {
+      ...FALLBACK_PRESETS.interceptor,
+      weapons: {
+        ...FALLBACK_PRESETS.interceptor.weapons,
+        primary: {
+          type: 'vulcan_spread',
+          fire_rate: FALLBACK_PRESETS.interceptor.weapons.primary.fire_rate,
+          bullet_speed: FALLBACK_PRESETS.interceptor.weapons.primary.bullet_speed
+          // damage ausente de propósito -- o agente não forneceu nada aproveitável
+        }
+      }
+    };
+
+    fs.appendFileSync(auditPath, auditLine('weapons-arsenal', 'configure_primary_cannon'));
+    fs.writeFileSync(path.join(dir, 'ship_spec.json'), JSON.stringify(rawSpec), 'utf8');
+    await wait(900);
+
+    assert.equal(rejections.length, 0, JSON.stringify(rejections));
+    assert.equal(readySpecs.length, 1);
+    assert.equal(
+      readySpecs[0].weapons.primary.damage,
+      BALANCE.ranges['weapons.primary.damage'].max,
+      'vulcan_spread não deve mais defaultar para 35 -- mesmo teto usado por laser/plasma'
+    );
+
+    w.stopWatching();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('preserva um spread_angle real fornecido pelo raw em vez de sobrescrever com o default hardcoded', async () => {
+    // Antes: spread_angle sempre virava 0.25 (vulcan_spread) ou 0 (demais tipos), mesmo quando o
+    // raw trazia um valor real de weapons-arsenal ou de computeBaselineWeapons -- descartando um
+    // campo que o GEMINI.md anuncia como controlado pelo agente, faixa [0,30].
+    const dir = tempSession();
+    const auditPath = path.join(dir, 'mcp_audit.log');
+    fs.writeFileSync(auditPath, '', 'utf8');
+
+    const readySpecs: any[] = [];
+    const rejections: any[] = [];
+    const w = new FileWatcherService();
+    w.startWatching(dir, {
+      requiredMcps: ['weapons-arsenal'],
+      onShipReady: (s) => readySpecs.push(s),
+      onSpecRejected: (r) => rejections.push(r)
+    });
+
+    const rawSpec: any = {
+      ...FALLBACK_PRESETS.interceptor,
+      weapons: {
+        ...FALLBACK_PRESETS.interceptor.weapons,
+        primary: {
+          type: 'vulcan_spread',
+          damage: 30,
+          fire_rate: FALLBACK_PRESETS.interceptor.weapons.primary.fire_rate,
+          bullet_speed: FALLBACK_PRESETS.interceptor.weapons.primary.bullet_speed,
+          spread_angle: 12 // valor real e diferente do default hardcoded (0.25)
+        }
+      }
+    };
+
+    fs.appendFileSync(auditPath, auditLine('weapons-arsenal', 'configure_primary_cannon'));
+    fs.writeFileSync(path.join(dir, 'ship_spec.json'), JSON.stringify(rawSpec), 'utf8');
+    await wait(900);
+
+    assert.equal(rejections.length, 0, JSON.stringify(rejections));
+    assert.equal(readySpecs.length, 1);
+    assert.equal(
+      readySpecs[0].weapons.primary.spread_angle,
+      12,
+      'um spread_angle real não pode ser descartado pelo default hardcoded de vulcan_spread'
+    );
 
     w.stopWatching();
     fs.rmSync(dir, { recursive: true, force: true });
