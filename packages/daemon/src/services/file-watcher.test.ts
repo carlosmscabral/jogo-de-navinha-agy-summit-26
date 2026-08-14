@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { FALLBACK_PRESETS, computeBaselineAttributes, computeBaselineWeapons } from '@jogo/shared';
+import { FALLBACK_PRESETS, computeBaselineAttributes, computeBaselineWeapons, applySynergies } from '@jogo/shared';
 import { FileWatcherService } from './file-watcher.js';
 
 function tempSession(): string {
@@ -399,6 +399,100 @@ describe('FileWatcherService — backfill de baseline para MCPs não selecionado
     assert.equal(rejections.length, 0, JSON.stringify(rejections));
     assert.equal(readySpecs.length, 1);
     assert.equal(readySpecs[0].attributes.shield_capacity, 0, 'um shield_capacity real de 0 não pode virar NaN nem ser rejeitado');
+
+    w.stopWatching();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('não força Glass Cannon quando cybernetics-shields não é selecionado e o agente não declara synergies_unlocked', async () => {
+    // Regressão do bug crítico da revisão final: hull-propulsion-only build (cybernetics-shields
+    // e weapons-arsenal ambos não selecionados). O agente nunca recebe instrução de produzir
+    // `synergies_unlocked` (GEMINI.md só inclui essa linha quando cybernetics-shields é
+    // selecionado), então o raw input não traz o campo. Antes da correção, normalizeSpec
+    // defaultava para ['Glass Cannon 🔥'] e applyBaselineForUnselectedMcps nunca tocava o campo,
+    // então toda build sem cybernetics-shields decolava com Glass Cannon forçado (max_hp preso
+    // em 2) independentemente do que o visitante realmente construiu.
+    const dir = tempSession();
+    const auditPath = path.join(dir, 'mcp_audit.log');
+    fs.writeFileSync(auditPath, '', 'utf8');
+
+    const readySpecs: any[] = [];
+    const rejections: any[] = [];
+    const w = new FileWatcherService();
+    w.startWatching(dir, {
+      requiredMcps: ['hull-propulsion'],
+      onShipReady: (s) => readySpecs.push(s),
+      onSpecRejected: (r) => rejections.push(r)
+    });
+
+    const sliders = { offense: 15, speed: 15, defense: 50, tech: 15 };
+    const rawSpec = {
+      pilot: FALLBACK_PRESETS.interceptor.pilot,
+      build_metadata: {
+        selected_mcps: ['hull-propulsion'],
+        selected_subagents: ['aesthetic-designer', 'systems-engineer'],
+        energy_sliders: sliders,
+        fast_grill_me_choices: { weapon_focus: 'laser_piercing', visual_theme: 'synthwave_80s' }
+        // synergies_unlocked ausente de propósito -- cybernetics-shields nunca foi chamado
+      },
+      attributes: {
+        max_hp: 5,
+        speed_px_s: 200,
+        hitbox_radius: 15
+        // shield_capacity ausente de propósito -- cybernetics-shields não selecionado
+      },
+      weapons: FALLBACK_PRESETS.interceptor.weapons,
+      visuals: FALLBACK_PRESETS.interceptor.visuals
+    };
+
+    fs.appendFileSync(auditPath, auditLine('hull-propulsion', 'tune_thrusters'));
+    fs.writeFileSync(path.join(dir, 'ship_spec.json'), JSON.stringify(rawSpec), 'utf8');
+    await wait(900);
+
+    assert.equal(rejections.length, 0, JSON.stringify(rejections));
+    assert.equal(readySpecs.length, 1);
+    assert.deepEqual(readySpecs[0].build_metadata.synergies_unlocked, []);
+
+    const post = applySynergies(readySpecs[0]);
+    assert.deepEqual(post.applied, [], 'nenhuma sinergia deve ser aplicada quando o visitante não declarou nenhuma');
+    assert.equal(post.attributes.max_hp, 5, 'max_hp real do visitante (hull-propulsion) não pode virar 2 (Glass Cannon forçado)');
+
+    w.stopWatching();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('normalizeSpec sozinho (sem o ramo de backfill tocá-lo) usa [] como padrão para synergies_unlocked ausente, não mais "Glass Cannon 🔥"', async () => {
+    // cybernetics-shields FOI selecionado aqui, então applyBaselineForUnselectedMcps não entra
+    // no ramo que zera synergies_unlocked -- isso isola o default do próprio normalizeSpec.
+    const dir = tempSession();
+    const auditPath = path.join(dir, 'mcp_audit.log');
+    fs.writeFileSync(auditPath, '', 'utf8');
+
+    const readySpecs: any[] = [];
+    const rejections: any[] = [];
+    const w = new FileWatcherService();
+    w.startWatching(dir, {
+      requiredMcps: ['cybernetics-shields'],
+      onShipReady: (s) => readySpecs.push(s),
+      onSpecRejected: (r) => rejections.push(r)
+    });
+
+    const rawSpec: any = {
+      ...FALLBACK_PRESETS.interceptor,
+      build_metadata: {
+        ...FALLBACK_PRESETS.interceptor.build_metadata,
+        selected_mcps: ['cybernetics-shields']
+      }
+    };
+    delete rawSpec.build_metadata.synergies_unlocked;
+
+    fs.appendFileSync(auditPath, auditLine('cybernetics-shields', 'calibrate_energy_barrier'));
+    fs.writeFileSync(path.join(dir, 'ship_spec.json'), JSON.stringify(rawSpec), 'utf8');
+    await wait(900);
+
+    assert.equal(rejections.length, 0, JSON.stringify(rejections));
+    assert.equal(readySpecs.length, 1);
+    assert.deepEqual(readySpecs[0].build_metadata.synergies_unlocked, []);
 
     w.stopWatching();
     fs.rmSync(dir, { recursive: true, force: true });

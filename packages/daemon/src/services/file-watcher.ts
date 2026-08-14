@@ -250,6 +250,11 @@ export class FileWatcherService {
 
     if (!requiredMcps.includes('cybernetics-shields')) {
       spec.attributes.shield_capacity = baselineAttrs.shield_capacity;
+      // cybernetics-shields é o único MCP dono de `synergies_unlocked` (ver GEMINI.md); se não foi
+      // selecionado, o agente nunca teve instrução de produzir o campo e `normalizeSpec` o
+      // preenche com um default neutro. Sem esta linha, esse default sobreviveria intacto até
+      // `applySynergies`, aplicando uma sinergia que o visitante nunca desbloqueou.
+      spec.build_metadata.synergies_unlocked = [];
     }
 
     if (!requiredMcps.includes('weapons-arsenal')) {
@@ -332,9 +337,13 @@ export class FileWatcherService {
           weapon_focus: raw.build_metadata?.fast_grill_me_choices?.weapon_focus || primaryType,
           visual_theme: raw.build_metadata?.fast_grill_me_choices?.visual_theme || 'synthwave_80s'
         },
+        // Ausência aqui é um default NEUTRO ([]), não uma sinergia específica. Um agente que
+        // seleciona cybernetics-shields mas mesmo assim não produz o campo é uma falha de
+        // conformidade dele -- conceder "Glass Cannon" de graça contradiz a mesma REGRA ZERO
+        // que governa todo outro campo desta função (ver applyBaselineForUnselectedMcps).
         synergies_unlocked: Array.isArray(raw.build_metadata?.synergies_unlocked)
           ? raw.build_metadata.synergies_unlocked
-          : ['Glass Cannon 🔥']
+          : []
       },
       attributes: {
         speed_px_s: Number(raw.attributes?.speed_px_s || raw.speed_px_s || raw.speed),

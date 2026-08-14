@@ -38,7 +38,7 @@ export function applySynergies(spec: ShipSpecification): {
   for (const name of applied) {
     if (name === 'Glass Cannon') {
       const s = BALANCE.synergies.glass_cannon;
-      weapons.primary.damage = weapons.primary.damage * s.primary_damage_factor;
+      weapons.primary.damage = clampToRange(weapons.primary.damage * s.primary_damage_factor, 'weapons.primary.damage');
       attributes.max_hp = s.forced_max_hp;
     } else if (name === 'Titan Fortress') {
       const s = BALANCE.synergies.titan_fortress;

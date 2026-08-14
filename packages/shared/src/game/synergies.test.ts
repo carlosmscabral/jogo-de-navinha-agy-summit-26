@@ -29,6 +29,19 @@ describe('applySynergies', () => {
     assert.equal(r.attributes.max_hp, BALANCE.synergies.glass_cannon.forced_max_hp);
   });
 
+  it('Glass Cannon nunca ultrapassa o teto de dano do schema, mesmo partindo de um dano já perto do limite', () => {
+    // Uma build legítima de Glass Cannon (declarada de verdade, não o default do daemon) com
+    // primary.damage já no teto de BALANCE.ranges: 45 * 1.30 = 58.5, acima do próprio teto do
+    // schema. A sinergia real não pode produzir uma nave fora da faixa que o schema anuncia.
+    const spec = specWith(['Glass Cannon']);
+    spec.weapons.primary.damage = BALANCE.ranges['weapons.primary.damage'].max;
+    const r = applySynergies(spec);
+    assert.ok(
+      r.weapons.primary.damage <= BALANCE.ranges['weapons.primary.damage'].max,
+      `dano pós-sinergia (${r.weapons.primary.damage}) excedeu o teto do schema`
+    );
+  });
+
   it('Titan Fortress eleva HP e garante escudo mínimo', () => {
     const r = applySynergies(specWith(['Titan Fortress']));
     assert.equal(r.attributes.max_hp, BALANCE.synergies.titan_fortress.forced_max_hp);
