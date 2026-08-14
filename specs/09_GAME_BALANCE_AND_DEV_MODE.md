@@ -53,7 +53,10 @@ tween puramente cosméticas.
 
 - O `ship_spec.schema.json` é **gerado** a partir de `BALANCE.ranges` por um script
   (`npm run gen:schema`), com um teste que falha se o arquivo versionado divergir do gerado.
-- `normalizeSpec` no daemon clampa usando `BALANCE.ranges`, não literais próprios.
+- `normalizeSpec` no daemon **não clampa faixa numérica nenhuma** (D14/B2): apenas mapeia nomes
+  de campo frouxos e repassa os valores intactos; quem julga faixa é exclusivamente o
+  `ship_spec.schema.json` gerado, via Ajv, logo em seguida. Um valor fora da faixa chega como
+  fora da faixa e é **rejeitado** com `SCHEMA_INVALID`, nunca silenciosamente coagido.
 - `WeaponSystem` e `PlayerShip` consomem os valores já validados e **não reclampam**.
 
 O efeito prático é que a faixa anunciada ao AGY no `GEMINI.md` passa a ser a faixa que o jogo
