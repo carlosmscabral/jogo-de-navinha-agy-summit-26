@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { EnergySliders, McpServerName, SubagentName, PilotInfo, computeBaselineAttributes, computeBaselineWeapons } from '@jogo/shared';
 import { Zap, Shield, Sparkles, Crosshair, ChevronRight, CheckCircle2, Cpu, Flame, Gauge, Layers, Award, ArrowLeft } from 'lucide-react';
+import { detectSynergyPreview } from './synergy-preview';
 
 interface EnergySlidersBuilderProps {
   pilot: PilotInfo;
@@ -53,18 +54,10 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
   // A camada extra de overclock nunca pode ultrapassar o máximo real do schema (3).
   const projectedShields = Math.min(3, baselineAttributes.shield_capacity + (mcpCount === 1 && selectedMcps.includes('cybernetics-shields') ? 1 : 0));
 
-  // Detect active synergy
-  let detectedSynergy = 'Custom Build';
-  if (sliders.offense >= 40) detectedSynergy = '⚡ Glass Cannon (+30% DPS)';
-  else if (sliders.speed >= 40) detectedSynergy = '💨 Ghost Interceptor (+20% Esquiva)';
-  else if (sliders.defense >= 40) detectedSynergy = '🛡️ Titan Fortress (+25% Blindagem)';
-  else if (
-    sliders.offense >= 20 && sliders.offense <= 30 &&
-    sliders.speed >= 20 && sliders.speed <= 30 &&
-    sliders.defense >= 20 && sliders.defense <= 30
-  ) {
-    detectedSynergy = '🎯 Balanced Ace (+15% Geral)';
-  }
+  // Sinergia detectada -- e, crucialmente, se ela pode mesmo ser desbloqueada com os MCPs
+  // selecionados. Ver synergy-preview.ts: só `cybernetics-shields` desbloqueia sinergias, e sem
+  // ele a engine não aplica nenhuma. O crachá nunca deve prometer um bônus que não sai.
+  const synergyPreview = detectSynergyPreview(sliders, selectedMcps);
 
   const applyPreset = (preset: { offense: number; speed: number; defense: number; tech: number }) => {
     setSliders(preset);
@@ -155,9 +148,17 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
             </h2>
           </div>
 
-          <div className="px-3.5 py-1.5 rounded-xl bg-[#ff9e0b]/10 border border-[#ff9e0b]/30 text-[#ff9e0b] text-xs font-bold flex items-center gap-1.5 font-mono">
-            <Sparkles className="w-4 h-4 text-[#ff9e0b]" />
-            <span>{detectedSynergy}</span>
+          {/* Só o estado desbloqueado usa o âmbar "ativo": um bônus que a engine não vai
+              aplicar não pode se parecer com um bônus conquistado. */}
+          <div
+            className={`px-3.5 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 font-mono ${
+              synergyPreview.unlocked
+                ? 'bg-[#ff9e0b]/10 border-[#ff9e0b]/30 text-[#ff9e0b]'
+                : 'bg-slate-900/60 border-slate-700 text-slate-400'
+            }`}
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>{synergyPreview.label}</span>
           </div>
         </div>
 
@@ -392,7 +393,7 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
               </p>
               <p className="text-[10px] text-slate-500 font-mono leading-snug">
                 {selectedMcps.includes('weapons-arsenal')
-                  ? 'Selecionado: calibração real via IA, com sinergias possíveis.'
+                  ? 'Selecionado: dano e cadência calibrados de verdade pela IA.'
                   : 'Sem seleção: dano e cadência usam uma configuração padrão baseada no seu Ataque.'}
               </p>
               {mcpCount === 1 && selectedMcps.includes('weapons-arsenal') && (
@@ -419,7 +420,7 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
               </p>
               <p className="text-[10px] text-slate-500 font-mono leading-snug">
                 {selectedMcps.includes('hull-propulsion')
-                  ? 'Selecionado: calibração real via IA, com sinergias possíveis.'
+                  ? 'Selecionado: velocidade e casco calibrados de verdade pela IA.'
                   : 'Sem seleção: velocidade e resistência do casco (HP) usam uma configuração padrão baseada em Velocidade/Defesa.'}
               </p>
               {mcpCount === 1 && selectedMcps.includes('hull-propulsion') && (
@@ -446,8 +447,8 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
               </p>
               <p className="text-[10px] text-slate-500 font-mono leading-snug">
                 {selectedMcps.includes('cybernetics-shields')
-                  ? 'Selecionado: calibração real via IA, com sinergias possíveis.'
-                  : 'Sem seleção: escudo padrão baseado na sua Tecnologia.'}
+                  ? 'Selecionado: escudo calibrado pela IA — e o ÚNICO servidor que desbloqueia sinergias.'
+                  : 'Sem seleção: escudo padrão baseado na sua Tecnologia, e NENHUMA sinergia é desbloqueada.'}
               </p>
               {mcpCount === 1 && selectedMcps.includes('cybernetics-shields') && (
                 <span className="text-[10px] font-bold text-[#10b981] font-mono">⚡ Overclock: +1 Escudo Extra Ativo!</span>

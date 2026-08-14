@@ -5,6 +5,29 @@ export type SynergyName = 'Glass Cannon' | 'Titan Fortress' | 'Ghost Interceptor
 
 const KNOWN: SynergyName[] = ['Glass Cannon', 'Titan Fortress', 'Ghost Interceptor', 'Balanced Ace'];
 
+/**
+ * Sinergias são calculadas EXCLUSIVAMENTE pelo MCP `cybernetics-shields`
+ * (`install_overclock_module`). Três camadas dependem desta regra e precisam concordar:
+ *
+ *  1. `workspace-generator.ts` só pede `build_metadata.synergies_unlocked` ao agente quando
+ *     este MCP está selecionado — sem ele, o campo nunca é produzido.
+ *  2. `applyBaselineForUnselectedMcps` (daemon) zera o campo quando este MCP não está
+ *     selecionado, para que nenhum default sobreviva até `applySynergies`. Lá a checagem é
+ *     inline junto com as dos outros dois MCPs, porque o mesmo `if` também decide o
+ *     `shield_capacity` — que não é uma pergunta sobre sinergia.
+ *  3. `EnergySlidersBuilder.tsx` só pode PROMETER a sinergia ao visitante quando ela de fato
+ *     vai ser entregue — prometer um bônus que a engine não aplica é a mesma classe de bug
+ *     que o resto da Fase B eliminou.
+ *
+ * A constante existe para que essas três camadas nunca voltem a comparar a string à mão.
+ */
+export const SYNERGY_OWNER_MCP = 'cybernetics-shields';
+
+/** `true` se a seleção de MCPs do visitante permite que alguma sinergia seja desbloqueada. */
+export function canUnlockSynergies(selectedMcps: readonly string[] | undefined): boolean {
+  return !!selectedMcps?.includes(SYNERGY_OWNER_MCP);
+}
+
 function clampToRange(value: number, key: keyof typeof BALANCE.ranges): number {
   const r = BALANCE.ranges[key];
   const bounded = Math.min(r.max, Math.max(r.min, value));
