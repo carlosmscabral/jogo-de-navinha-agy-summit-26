@@ -347,13 +347,13 @@ export function DevHarness(): React.JSX.Element {
               Início
             </button>
             <button className="tactile-card rounded px-3 py-1 text-sm hover:bg-white/10" onClick={() => handlePhaseButton('boss')}>
-              Boss (45s)
+              Boss ({BALANCE.match.boss_spawn_s}s)
             </button>
             <button className="tactile-card rounded px-3 py-1 text-sm hover:bg-white/10" onClick={() => handlePhaseButton('phase2')}>
-              Fase 2
+              Boss fase 2 ({Math.round(BALANCE.boss.phase2_hp_ratio * 100)}% HP)
             </button>
             <button className="tactile-card rounded px-3 py-1 text-sm hover:bg-white/10" onClick={() => handlePhaseButton('phase3')}>
-              Fase 3
+              Boss fase 3 ({Math.round(BALANCE.boss.phase3_hp_ratio * 100)}% HP)
             </button>
           </div>
 

@@ -192,7 +192,7 @@ Clique no canvas e use `WASD` ou as setas para mover, `ESPAÇO` para o canhão p
 
 - [ ] **2.5 — Pular direto para o boss**
 
-Clique em **"Boss (45s)"**.
+Clique em **"Boss (40s)"**.
 
 **Critério:** o boss aparece em **menos de 5 segundos** a partir do clique. Cronometre.
 
@@ -251,7 +251,7 @@ Repita **3.1 a 3.6** para cada um dos três presets: **`striker`**, **`intercept
 - [ ] **3.1 — Preset** — no seletor **Preset**, escolha o preset da vez e clique em **"Aplicar"**.
 - [ ] **3.2 — Seed** — digite **`1`** no campo Seed. Sempre 1, para os três.
 - [ ] **3.3 — God mode** — marque a caixa **God mode**.
-- [ ] **3.4 — Pular para o boss** — clique em **"Boss (45s)"**.
+- [ ] **3.4 — Pular para o boss** — clique em **"Boss (40s)"**.
 - [ ] **3.5 — Segurar o disparo** — segure `ESPAÇO` **sem soltar** até o boss morrer. **Não** aperte
   `SHIFT` em momento nenhum: o perfil de habilidade que o teste usa tem `secondaryUptime: 0`, então
   qualquer disparo secundário invalida a captura.
