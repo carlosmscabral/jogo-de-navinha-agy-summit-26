@@ -271,6 +271,11 @@ travar a taxa de vitória em CI. Enquanto isso não existir, qualquer número no
 > habilidade mediana (mínimo `striker` 0,95%, máximo `vanguard` 51,60%) já passam; o espalhamento
 > entre esses dois — 50,7pp — continua acima do teto de 35pp. Ver Spec 09 §2.4.3 para os números
 > completos e a recomendação de próximo passo.
+>
+> **Atualização (2026-08-15).** Os números acima são os de 2026-08-14 e ficam como registro daquela
+> decisão. O aumento de dificuldade do boss (Spec 09 §5.4) mudou as medições sem mudar a conclusão:
+> ainda é 1 das 4 condições falhando, e ainda é o espalhamento — agora 41,9pp, com `vanguard` 45,4%
+> e `striker` 3,5%.
 
 ### 5.2. [D15] As sinergias não afetam o boss nem nada
 
@@ -353,7 +358,9 @@ finalScore = round( (combatScore + bossBonus + timeBonus + survivalBonus + syner
       `aggregateWinRate` = 17,59% (dentro da banda de 15–25%, **passa**) e nenhum arquétipo em
       0%/100% em habilidade mediana (mínimo `striker` 0,95%, máximo `vanguard` 51,60%, **passa**),
       mas o espalhamento entre `vanguard` e `striker` — 50,7pp — continua acima do teto de 35pp
-      (**falha**). Fechar essa última condição segue sendo decisão de uma tarefa futura — nem
+      (**falha**). Números de 2026-08-14; após o aumento de dificuldade do boss de 2026-08-15
+      (Spec 09 §5.4) o espalhamento caiu para 41,9pp, ainda acima do teto.
+      Fechar essa última condição segue sendo decisão de uma tarefa futura — nem
       retunar `balance.ts` nem excluir arquétipos adicionais está autorizado por esta mudança. Ver a
       prova completa em Spec 09 §2.4.1–§2.4.3. Números simulador-somente: o Passo 4 (cinco partidas
       jogadas à mão) **não foi executado** — nenhuma tarefa desta fase teve acesso a navegador — e

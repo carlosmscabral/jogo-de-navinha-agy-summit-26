@@ -150,11 +150,14 @@ export class PlayerShip extends Phaser.Physics.Arcade.Sprite {
   takeDamage(amount = 1): boolean {
     if (this.isInvulnerable || this.godMode) return false;
 
-    // Absorb with shield first
+    // Absorb with shield first. O escudo come o hit inteiro, independente de `amount`
+    // (ver BALANCE.boss.bullet_damage) -- 1 pip por acerto, não 1 pip por ponto de dano.
     if (this.currentShield > 0) {
       this.currentShield -= 1;
     } else {
-      this.currentHp -= amount;
+      // Trava em 0: com `amount > 1` o casco passaria do zero, e `currentHp` alimenta o
+      // `survival_bonus_per_hp` do placar (`buildMatchResult`) além das pips do HUD.
+      this.currentHp = Math.max(0, this.currentHp - amount);
     }
 
     // Trigger invulnerability frames. The yoyo tween runs 5 up/down cycles

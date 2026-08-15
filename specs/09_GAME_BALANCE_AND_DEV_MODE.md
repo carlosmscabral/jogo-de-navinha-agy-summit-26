@@ -504,10 +504,53 @@ Um teste (`balance.test.ts`) que falha quando:
 > orçamentada pelo forge (o slider de energia soma exatamente 100 pontos; `maximo`/`vulcan_max`
 > exigem ≈200, `minimo` exige ≈40, `tanque` exige 120). `npm run sim:balance` continua reportando os
 > 8 arquétipos, incluindo esses quatro, como diagnóstico. **Estado atual: o portão falha em 1 das 4
-> condições acima** — o espalhamento entre `vanguard` (51,60%) e `striker` (0,95%) é 50,7pp, acima do
-> teto de 35pp; a banda do `aggregateWinRate` (17,59%) e a ausência de arquétipos em 0%/100% em
-> habilidade mediana já passam. Ver §2.4.3 para os números completos e a recomendação de próximo
-> passo.
+> condições acima** — ver §5.4 para os números vigentes. A banda do `aggregateWinRate` e a ausência de
+> arquétipos em 0%/100% em habilidade mediana passam. Ver §2.4.3 para o histórico completo e a
+> recomendação de próximo passo.
+
+### 5.4. Aumento de dificuldade do boss (2026-08-15)
+
+Motivação: playtest manual do dono do projeto no Bloco 2 da Spec 12 — *"o boss é fácil; a
+invulnerabilidade pós-dano dura o bastante para continuar atirando e trocando dano"*. O simulador
+confirmou a percepção e localizou o problema: em habilidade **experiente** a vitória contra o boss
+era de **85,1%**. Em habilidade mediana ela já estava dentro da banda (17,6%) — ou seja, o boss não
+era fácil demais para o visitante mediano, só para quem joga bem.
+
+**Levantamento dos candidatos** (4 arquétipos do portão, 2.000 seeds, cada linha mede uma mudança
+isolada contra a base):
+
+| Cenário | iniciante | mediano | experiente | espalhamento | TTK p50 |
+|---|---|---|---|---|---|
+| base (`max_hp` 1150, dano de projétil 1) | 0,0% | 17,6% | 85,1% | 50,7pp | 23,8s |
+| i-frames do jogador 800ms | 0,0% | 10,6% | 81,9% | 29,0pp | — |
+| `max_hp` 1750 | 0,0% | 3,1% | 73,8% | 9,8pp | — |
+| dano de projétil 2 (fixo) | 0,0% | 4,1% | 62,6% | 12,4pp | 21,2s |
+| dano por fase 1/2/3, `max_hp` 1150 | 0,0% | 2,8% | 58,7% | 5,9pp | 23,8s |
+| **dano por fase 1/2/3, `max_hp` 600 (escolhido)** | **0,0%** | **17,9%** | **72,4%** | **41,9pp** | **14,3s** |
+
+**Por que encurtar a invulnerabilidade foi descartado**, apesar de ser a hipótese inicial: ela custa
+ao visitante mediano (−7,0pp) mais que o dobro do que custa ao experiente (−3,2pp). É o lever errado
+para um estande — pune exatamente quem já tem menos chance.
+
+**Por que o dano escala por fase e não é fixo.** A fase 1 continua em 1 de dano porque é onde o
+visitante fraco passa a luta inteira; a escalada só morde quem chega na fase 2/3. Isso também fecha
+uma lacuna de design real: um projétil do boss valia 1 ponto de casco, exatamente igual ao de um
+drone comum.
+
+**Por que o `max_hp` caiu junto.** Sozinho, o dano por fase derrubava a mediana para 2,8% — muito
+abaixo da banda. Cortar o HP reduz o *tempo de exposição*, que é o que domina o dano acumulado pelo
+mediano, e devolve a taxa da mediana a 17,9% — praticamente idêntica à base (17,6%). O resultado
+líquido é o pretendido: **a experiência do visitante mediano é preservada e a do experiente fica
+12,7pp mais difícil.** De quebra o TTK mediano cai de 23,8s para 14,3s numa janela de 50s, o que
+melhora a vazão do estande e torna a barra de HP do boss legível — a 1150 de HP com mitigação 0,65 na
+fase 1 ela mal se mexia.
+
+> **Limite conhecido desta medição.** O modelo abstrai o fogo recebido como
+> `SKILL_PROFILES.hitsTakenPerSecond`, uma constante por perfil de habilidade — ele **não** enxerga
+> densidade, velocidade nem padrão de projétil. Portanto não é capaz de avaliar mudanças em
+> `fire_cooldown_ms`, `bullet_speed` ou na quantidade de projéteis por salva. Se este ajuste não for
+> suficiente no playtest, esse é o próximo lever, e ele terá de ser avaliado à mão. Os próprios
+> `SKILL_PROFILES` continuam sendo estimativas não medidas (ver `archetypes.ts`).
 
 ---
 

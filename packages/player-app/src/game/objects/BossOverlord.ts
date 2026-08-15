@@ -281,12 +281,25 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
+  /** Dano dos projéteis desta fase. Congelado no projétil ao nascer, ver `spawnBullet`. */
+  get bulletDamage(): number {
+    return this.phase === 3
+      ? BALANCE.boss.bullet_damage.phase3
+      : this.phase === 2
+        ? BALANCE.boss.bullet_damage.phase2
+        : BALANCE.boss.bullet_damage.phase1;
+  }
+
   private spawnBullet(x: number, y: number, vx: number, vy: number, texture = 'bullet_boss_plasma'): void {
     const bullet = this.bullets.get(x, y, texture) as Phaser.Physics.Arcade.Sprite;
     if (bullet) {
       bullet.setActive(true);
       bullet.setVisible(true);
       bullet.setDepth(12);
+      // O dano é gravado no disparo, não lido na colisão: um projétil disparado na fase 2 que
+      // acerta depois da transição para a fase 3 deve custar o dano da fase 2, que é o que
+      // estava na tela quando o jogador decidiu se desviava ou não.
+      bullet.setData('damage', this.bulletDamage);
       if (bullet.body) {
         bullet.body.reset(x, y);
         bullet.body.enable = true;

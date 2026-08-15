@@ -424,7 +424,11 @@ export class MainGameScene extends Phaser.Scene {
       bullet.setActive(false);
       bullet.setVisible(false);
 
-      const isDead = this.player.takeDamage(1);
+      // `damage` é gravado por `BossOverlord.spawnBullet` em todo projétil, sem exceção. O `??`
+      // existe só para o caso de um projétil sobrevivente de um pool reciclado antes desta versão;
+      // se ele começar a disparar de verdade, é bug de spawn, não fase 1 legítima.
+      const damage = (bullet.getData('damage') as number | undefined) ?? BALANCE.boss.bullet_damage.phase1;
+      const isDead = this.player.takeDamage(damage);
       // Dev-harness god mode (Task B4): takeDamage() already no-ops the HP/shield change, but
       // this call is unconditional, so without this guard every "hit" still zeroes the combo and
       // counts as damage taken while god mode is on -- corrupting the very telemetry/score the

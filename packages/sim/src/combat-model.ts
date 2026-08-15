@@ -46,6 +46,20 @@ function mitigationForPhase(phase: 1 | 2 | 3): number {
   return phase === 1 ? BALANCE.boss.mitigation.phase1 : phase === 2 ? BALANCE.boss.mitigation.phase2 : BALANCE.boss.mitigation.phase3;
 }
 
+/**
+ * Espelha `BossOverlord.bulletDamage`. Simplificação assumida: o motor congela o dano no
+ * projétil ao disparar, então um tiro da fase 2 que acerta já na fase 3 custa 2, não 3. Este
+ * modelo não tem projéteis em voo -- ele cobra o dano da fase corrente no instante do acerto.
+ * A diferença só aparece na janela de trânsito de um projétil (< 1s) logo após a transição.
+ */
+function bossBulletDamageForPhase(phase: 1 | 2 | 3): number {
+  return phase === 1
+    ? BALANCE.boss.bullet_damage.phase1
+    : phase === 2
+      ? BALANCE.boss.bullet_damage.phase2
+      : BALANCE.boss.bullet_damage.phase3;
+}
+
 interface BossState {
   hp: number;
   maxHp: number;
@@ -211,9 +225,11 @@ export function simulateMatch(input: SimInput): SimResult {
         damageTaken += 1;
         scoreCalculator.registerDamageTaken();
         if (playerShield > 0) {
+          // Espelha PlayerShip.takeDamage: o escudo absorve o acerto inteiro, 1 pip, seja qual
+          // for o dano do projétil.
           playerShield -= 1;
         } else {
-          playerHp -= 1;
+          playerHp = Math.max(0, playerHp - bossBulletDamageForPhase(boss.phase));
         }
         playerInvulnMsRemaining = BALANCE.player.invulnerability_ms;
 
