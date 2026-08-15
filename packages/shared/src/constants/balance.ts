@@ -74,13 +74,16 @@ export const BALANCE = {
     /**
      * Pareado com `bullet_damage`: o boss deixou de ser esponja e virou ameaça. Com 1150 de HP
      * e mitigação de 0.65 na fase 1, a barra mal se mexia e a luta mediana levava 23.8s de uma
-     * janela de 50s -- longa, ilegível e barata de tankar. Cortar para 600 devolve à mediana
-     * (17.9% de vitória, medido) exatamente a taxa que ela tinha antes do aumento de dano,
-     * enquanto o jogador experiente cai de 85.1% para 72.4%. Ver Spec 09 §5.4.
+     * janela de 50s -- longa, ilegível e barata de tankar.
+     *
+     * 800 é o meio-termo escolhido depois de medir: um corte mais agressivo (600) encurtava a
+     * luta mediana para 14.3s e deixava uma build de dano máximo matar o boss em 5.8s, curto
+     * demais para um clímax de estande. Em 800 a luta mediana fica em 18.0s e a build rápida em
+     * 6.4s, preservando quase todo o ganho de dificuldade. Ver Spec 09 §5.4.
      */
-    max_hp: 600,
+    max_hp: 800,
     /** Mantém a proporção histórica com `max_hp` (1687/1150 ≈ 1.467). */
-    max_hp_hardcore: 880,
+    max_hp_hardcore: 1174,
     hardcore_difficulty_factor: 1.4,
     phase2_hp_ratio: 0.66,
     phase3_hp_ratio: 0.33,
@@ -104,13 +107,15 @@ export const BALANCE = {
      * comum, o que tornava barato demais trocar dano de perto -- levar um tiro custava o
      * mesmo que levar um tiro de lixo espacial. A fase 1 continua em 1 porque é onde o
      * visitante iniciante passa a luta inteira; a escalada só morde quem chega na fase 2/3.
+     * As fases 2 e 3 ficam iguais (2, não 2 e 3): com 3 na fase 3 a mediana caía para fora da
+     * banda de 15-25% sem deixar o experiente sensivelmente mais pressionado.
      *
      * ATENÇÃO: `PlayerShip.takeDamage` faz o escudo absorver o hit INTEIRO (1 pip,
      * independente de `amount`), então este número só se aplica quando o escudo já acabou.
      * Isso é intencional e valoriza `shield_capacity` (slider `tech`) justamente nas fases
      * em que o boss bate mais forte.
      */
-    bullet_damage: { phase1: 1, phase2: 2, phase3: 3 },
+    bullet_damage: { phase1: 1, phase2: 2, phase3: 2 },
     fire_cooldown_ms: { phase1: 140, phase2: 110, phase3: 80 },
     bullet_speed: { phase1: 300, phase2: 340, phase3: 380 },
     hover_speed: { phase1: 0.0018, phase2: 0.0025, phase3: 0.0035 },

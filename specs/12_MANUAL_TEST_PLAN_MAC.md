@@ -121,7 +121,7 @@ A falha esperada é exatamente esta, e **só** esta:
 
 ```
 ✖ mantém o espalhamento entre arquétipos abaixo do penhasco
-  espalhamento de 41.9 pontos percentuais entre o melhor e o pior arquétipo
+  espalhamento de 41.6 pontos percentuais entre o melhor e o pior arquétipo
 ```
 
 E o pulado esperado é:
@@ -142,14 +142,14 @@ npm run sim:balance 2>&1 | tee ~/Desktop/gate-m1-m2/sim-balance.txt
 
 Guarde este arquivo. O Bloco 4 compara as partidas jogadas à mão contra estes números. Os valores de
 referência (2026-08-15, habilidade **mediano**, após o aumento de dificuldade do boss —
-`bullet_damage` por fase + `max_hp` 600) são:
+`bullet_damage` por fase + `max_hp` 800) são:
 
 | Arquétipo | Vitórias | TTK p50 |
 |-----------|----------|---------|
-| `interceptor` | 14% | 12,0s |
-| `vanguard` | 45% | 14,3s |
-| `striker` | 4% | 14,3s |
-| `maximo` | 99% | 8,3s |
+| `interceptor` | 10,2% | 15,9s |
+| `vanguard` | 43,0% | 18,0s |
+| `striker` | 1,3% | 18,2s |
+| `maximo` | 99,9% | 9,6s |
 
 Se a sua execução divergir muito destes números **com o mesmo commit**, algo está errado no
 ambiente — o simulador é determinístico.

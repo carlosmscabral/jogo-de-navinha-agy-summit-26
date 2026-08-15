@@ -526,7 +526,9 @@ isolada contra a base):
 | `max_hp` 1750 | 0,0% | 3,1% | 73,8% | 9,8pp | — |
 | dano de projétil 2 (fixo) | 0,0% | 4,1% | 62,6% | 12,4pp | 21,2s |
 | dano por fase 1/2/3, `max_hp` 1150 | 0,0% | 2,8% | 58,7% | 5,9pp | 23,8s |
-| **dano por fase 1/2/3, `max_hp` 600 (escolhido)** | **0,0%** | **17,9%** | **72,4%** | **41,9pp** | **14,3s** |
+| dano por fase 1/2/3, `max_hp` 600 | 0,0% | 17,9% | 72,4% | 41,9pp | 14,3s |
+| dano por fase 1/1/2, `max_hp` 900 | 0,0% | 17,6% | 79,0% | 45,7pp | 19,3s |
+| **dano por fase 1/2/2, `max_hp` 800 (escolhido)** | **0,0%** | **15,3%** | **72,9%** | **41,6pp** | **18,0s** |
 
 **Por que encurtar a invulnerabilidade foi descartado**, apesar de ser a hipótese inicial: ela custa
 ao visitante mediano (−7,0pp) mais que o dobro do que custa ao experiente (−3,2pp). É o lever errado
@@ -535,15 +537,24 @@ para um estande — pune exatamente quem já tem menos chance.
 **Por que o dano escala por fase e não é fixo.** A fase 1 continua em 1 de dano porque é onde o
 visitante fraco passa a luta inteira; a escalada só morde quem chega na fase 2/3. Isso também fecha
 uma lacuna de design real: um projétil do boss valia 1 ponto de casco, exatamente igual ao de um
-drone comum.
+drone comum. As fases 2 e 3 ficam **iguais** (2, não 2 e 3): pôr 3 na fase 3 tirava a mediana da
+banda sem deixar o experiente sensivelmente mais pressionado.
 
 **Por que o `max_hp` caiu junto.** Sozinho, o dano por fase derrubava a mediana para 2,8% — muito
 abaixo da banda. Cortar o HP reduz o *tempo de exposição*, que é o que domina o dano acumulado pelo
-mediano, e devolve a taxa da mediana a 17,9% — praticamente idêntica à base (17,6%). O resultado
-líquido é o pretendido: **a experiência do visitante mediano é preservada e a do experiente fica
-12,7pp mais difícil.** De quebra o TTK mediano cai de 23,8s para 14,3s numa janela de 50s, o que
-melhora a vazão do estande e torna a barra de HP do boss legível — a 1150 de HP com mitigação 0,65 na
-fase 1 ela mal se mexia.
+mediano. O resultado líquido é o pretendido: **a mediana continua dentro da banda (15,3%) e o
+experiente fica 12,2pp mais difícil (85,1% → 72,9%).**
+
+**Por que 800 e não 600.** 600 dava uma mediana melhor (17,9%) mas encurtava demais: luta mediana de
+14,3s e — o que decidiu — uma build de dano máximo (`glass_cannon`, real e construível) matando o
+boss em **5,8s**, curto demais para o clímax de uma partida de 90s. Em 800 a luta mediana fica em
+18,0s e a build rápida em 6,4s, preservando quase todo o ganho de dificuldade (72,9% contra 72,4%).
+O TTK mediano ainda cai de 23,8s para 18,0s numa janela de 50s, o que melhora a vazão do estande e
+torna a barra de HP do boss legível — a 1150 de HP com mitigação 0,65 na fase 1 ela mal se mexia.
+
+> **Custo aceito:** a mediana em 15,3% fica perto do piso da banda de 15–25%. Se o playtest do
+> Bloco 4 indicar que está punitivo demais para o visitante comum, o primeiro passo de volta é
+> `bullet_damage.phase2` → 1 (mantendo a fase 3 em 2), medido em 17,6% de mediana com `max_hp` 900.
 
 > **Limite conhecido desta medição.** O modelo abstrai o fogo recebido como
 > `SKILL_PROFILES.hitsTakenPerSecond`, uma constante por perfil de habilidade — ele **não** enxerga

@@ -38,29 +38,29 @@ determinística, sempre pelo mesmo motivo.
 `packages/sim/src/balance-gate.test.ts`
 
 ```
-AssertionError: espalhamento de 41.9 pontos percentuais entre o melhor e o pior arquétipo
+AssertionError: espalhamento de 41.6 pontos percentuais entre o melhor e o pior arquétipo
 ```
 
 O portão de balanceamento tem quatro condições. **Três passam.** A quarta é esta.
 
 Taxas de vitória na habilidade **mediano**, 2.000 seeds (`npm run sim:balance`, 2026-08-15, após o
-aumento de dificuldade do boss — `BALANCE.boss.bullet_damage` por fase + `max_hp` 600):
+aumento de dificuldade do boss — `BALANCE.boss.bullet_damage` por fase + `max_hp` 800):
 
 | Arquétipo | Vitórias (mediano) | No portão? |
 |-----------|--------------------|------------|
-| `vanguard` | **45,4%** | sim — âncora superior |
-| `interceptor` | 13,7% | sim |
-| `glass_cannon` | 8,9% | sim |
-| `striker` | **3,5%** | sim — âncora inferior |
-| `maximo` | 99,5% | não (sintético) |
+| `vanguard` | **43,0%** | sim — âncora superior |
+| `interceptor` | 10,2% | sim |
+| `glass_cannon` | 6,7% | sim |
+| `striker` | **1,3%** | sim — âncora inferior |
+| `maximo` | 99,9% | não (sintético) |
 | `vulcan_max` | 100,0% | não (sintético) |
-| `minimo` | 0,1% | não (sintético) |
-| `tanque` | 3,5% | não (sintético) |
+| `minimo` | 0,0% | não (sintético) |
+| `tanque` | 0,5% | não (sintético) |
 
-- Taxa agregada (média das células `mediano` do portão): **17,9%** — dentro da banda de 15-25%. ✅
+- Taxa agregada (média das células `mediano` do portão): **15,3%** — dentro da banda de 15-25%. ✅
 - Nenhum arquétipo do portão em 0% ou 100% na habilidade mediana. ✅
 - Nenhum arquétipo com secundária de dano zero contra o boss (exceto `emp_burst`, esperado). ✅
-- Espalhamento `vanguard` − `striker` = **≈41,9 pp**, contra um teto de 35 pp. ❌
+- Espalhamento `vanguard` − `striker` = **≈41,6 pp**, contra um teto de 35 pp. ❌
 
 > O aumento de dificuldade **melhorou** este espalhamento (era ≈50,7 pp), mas não o fechou: a causa
 > raiz continua sendo a diferença de estatísticas-base entre os dois presets, não o boss.
@@ -75,8 +75,8 @@ somam **exatamente** 100 pontos, e `maximo` exigiria ≈200, `tanque` 120, `mini
 superior e inferior informativos. **A falha que resta não é esse tipo de artefato** — foi verificada
 como uma disparidade genuína entre dois presets reais.
 
-**Risco no evento:** um visitante que caia no preset `striker` tem ≈3,5% de chance de vencer com
-habilidade mediana; um que caia no `vanguard`, ≈45%. A experiência é inconsistente entre visitantes,
+**Risco no evento:** um visitante que caia no preset `striker` tem ≈1,3% de chance de vencer com
+habilidade mediana; um que caia no `vanguard`, ≈43%. A experiência é inconsistente entre visitantes,
 embora nenhum dos dois casos seja injogável.
 
 **Decisão registrada:** o dono do projeto decidiu **aceitar 3/4 como o estado documentado deste

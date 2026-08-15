@@ -65,9 +65,14 @@ renderizadas devem ser visivelmente diferentes. Hoje são idênticas.
   que a arte: asas e fuselagem externa não colidem. É a *graze box* pretendida, e funciona.
 - **Movimento.** Oito direções por teclado, WASD e setas, velocidade `attributes.speed_px_s` aplicada
   diretamente como velocidade do corpo, sem aceleração nem inércia (`PlayerShip.ts:104-118`).
-- **Dano ao jogador é sempre 1.** Bala inimiga, bala do boss e colisão por aríete removem exatamente um
-  ponto de casco (`MainGameScene.ts:670,687,357`). `shield_capacity` absorve os primeiros impactos antes
-  do casco. Não existe dano variável contra o jogador — só frequência de impacto.
+- **Dano ao jogador.** Bala inimiga e colisão por aríete removem exatamente um ponto de casco.
+  `shield_capacity` absorve os primeiros impactos antes do casco — e absorve o impacto **inteiro**,
+  1 pip por acerto, independentemente do dano do projétil.
+
+  > **Correção (2026-08-15).** A bala do boss deixou de valer 1. `BALANCE.boss.bullet_damage` escala
+  > por fase (1 na fase 1, 2 nas fases 2 e 3); o valor é congelado no projétil no disparo, não lido na
+  > colisão. Passa a existir, portanto, dano variável contra o jogador — só que exclusivo do boss.
+  > Motivação e medições em [Spec 09](./09_GAME_BALANCE_AND_DEV_MODE.md) §5.4.
 - **Invulnerabilidade de 1,5s** após cada impacto (`PlayerShip.ts:158`).
 
 ```mermaid
@@ -274,8 +279,8 @@ travar a taxa de vitória em CI. Enquanto isso não existir, qualquer número no
 >
 > **Atualização (2026-08-15).** Os números acima são os de 2026-08-14 e ficam como registro daquela
 > decisão. O aumento de dificuldade do boss (Spec 09 §5.4) mudou as medições sem mudar a conclusão:
-> ainda é 1 das 4 condições falhando, e ainda é o espalhamento — agora 41,9pp, com `vanguard` 45,4%
-> e `striker` 3,5%.
+> ainda é 1 das 4 condições falhando, e ainda é o espalhamento — agora 41,6pp, com `vanguard` 43,0%
+> e `striker` 1,3%.
 
 ### 5.2. [D15] As sinergias não afetam o boss nem nada
 
@@ -359,7 +364,7 @@ finalScore = round( (combatScore + bossBonus + timeBonus + survivalBonus + syner
       0%/100% em habilidade mediana (mínimo `striker` 0,95%, máximo `vanguard` 51,60%, **passa**),
       mas o espalhamento entre `vanguard` e `striker` — 50,7pp — continua acima do teto de 35pp
       (**falha**). Números de 2026-08-14; após o aumento de dificuldade do boss de 2026-08-15
-      (Spec 09 §5.4) o espalhamento caiu para 41,9pp, ainda acima do teto.
+      (Spec 09 §5.4) o espalhamento caiu para 41,6pp, ainda acima do teto.
       Fechar essa última condição segue sendo decisão de uma tarefa futura — nem
       retunar `balance.ts` nem excluir arquétipos adicionais está autorizado por esta mudança. Ver a
       prova completa em Spec 09 §2.4.1–§2.4.3. Números simulador-somente: o Passo 4 (cinco partidas
