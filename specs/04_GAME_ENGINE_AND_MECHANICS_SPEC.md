@@ -134,6 +134,21 @@ resumo, e como requisitos:
 E uma quinta, que só aparece quando somada ao boss: o dano do míssil é grampeado em 60–120 aqui, e o
 `takeDamage` do boss corta qualquer impacto em 45. Um míssil de 120 entrega 45 antes da mitigação. Ver §5.
 
+### 3.3. Ciclo de vida dos objetos de pool (corrigido em 2026-08-15)
+
+Todo projétil, míssil e inimigo é reciclado por um `Phaser.Physics.Arcade.Group`. **Consumir um
+desses objetos exige desabilitar o corpo físico, não apenas desativar o game object.** O Arcade
+Physics ignora `gameObject.active` por completo: `World.step` integra todo corpo com `body.enable`, e
+`World.collideSpriteVsGroup` filtra por `body.enable`/`checkCollision.none`. Nenhum dos dois olha
+para `active`.
+
+Até 2026-08-15 os treze pontos de consumo faziam só `setActive(false)` + `setVisible(false)`, então o
+projétil sumia da tela e continuava voando e colidindo — contra o corpo de 300x140 px do boss, isso
+significava um acerto por frame durante ≈10 a 15 frames, dezenas de acertos por tiro. `pooled-body.ts`
+(`despawnPooled`/`respawnPooled`) passou a ser o único caminho de entrada e saída do pool. A história
+completa, com os números da captura que expôs o bug, está na
+[Spec 09](./09_GAME_BALANCE_AND_DEV_MODE.md) §5.5.
+
 ---
 
 ## 4. Pacing da partida

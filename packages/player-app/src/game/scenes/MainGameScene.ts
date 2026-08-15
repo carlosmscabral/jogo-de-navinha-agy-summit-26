@@ -13,6 +13,7 @@ import {
 } from '@jogo/shared';
 import { PlayerShip } from '../objects/PlayerShip.js';
 import { BossOverlord } from '../objects/BossOverlord.js';
+import { despawnPooled, respawnPooled } from '../objects/pooled-body.js';
 import { ShipTextureFactory } from '../factories/ShipTextureFactory.js';
 import { renderSvgShipTexture } from '../factories/SvgShipRenderer.js';
 import { audioManager } from '../audio/AudioManager.js';
@@ -280,9 +281,6 @@ export class MainGameScene extends Phaser.Scene {
   private createSingleDrone(x: number, y: number, vx: number, vy: number, hp: number, type: string): void {
     const drone = this.enemies.get(x, y, 'drone_tex') as Phaser.Physics.Arcade.Sprite;
     if (drone) {
-      drone.setActive(true);
-      drone.setVisible(true);
-      drone.setPosition(x, y);
       drone.setData('hp', this.isHardcore ? Math.round(hp * BALANCE.enemies.hardcore.hp_factor) : hp);
       drone.setData('type', type);
 
@@ -297,7 +295,9 @@ export class MainGameScene extends Phaser.Scene {
         drone.clearTint();
       }
 
-      drone.setVelocity(vx, this.isHardcore ? vy * BALANCE.enemies.hardcore.speed_factor : vy);
+      // respawnPooled por último: `Body.reset` recalcula os bounds a partir do display size,
+      // então escala e tint precisam já estar aplicados.
+      respawnPooled(drone, x, y, vx, this.isHardcore ? vy * BALANCE.enemies.hardcore.speed_factor : vy);
     }
   }
 
@@ -329,11 +329,7 @@ export class MainGameScene extends Phaser.Scene {
   private spawnEnemyBullet(x: number, y: number, vx: number, vy: number): void {
     const bullet = this.enemyBullets.get(x, y, 'bullet_enemy') as Phaser.Physics.Arcade.Sprite;
     if (bullet) {
-      bullet.setActive(true);
-      bullet.setVisible(true);
-      bullet.setPosition(x, y);
-      bullet.setVelocity(vx, vy);
-      if (bullet.body) bullet.body.checkCollision.none = false;
+      respawnPooled(bullet, x, y, vx, vy);
     }
   }
 
@@ -377,8 +373,7 @@ export class MainGameScene extends Phaser.Scene {
         const bullet = bulletObj as Phaser.Physics.Arcade.Sprite;
         const damage = (bullet.getData('damage') as number) || 30;
 
-        bullet.setActive(false);
-        bullet.setVisible(false);
+        despawnPooled(bullet);
 
         const hpBefore = this.boss.currentHp;
         const isKilled = this.boss.takeDamage(damage);
@@ -402,8 +397,7 @@ export class MainGameScene extends Phaser.Scene {
         const missile = missileObj as Phaser.Physics.Arcade.Sprite;
         const damage = (missile.getData('damage') as number) || 120;
 
-        missile.setActive(false);
-        missile.setVisible(false);
+        despawnPooled(missile);
 
         this.createExplosionFX(missile.x, missile.y, true);
         const hpBefore = this.boss.currentHp;
@@ -421,8 +415,7 @@ export class MainGameScene extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.boss.bullets, (_, bulletObj) => {
       if (this.isGameOver || this.isVictory) return;
       const bullet = bulletObj as Phaser.Physics.Arcade.Sprite;
-      bullet.setActive(false);
-      bullet.setVisible(false);
+      despawnPooled(bullet);
 
       // `damage` é gravado por `BossOverlord.spawnBullet` em todo projétil, sem exceção. O `??`
       // existe só para o caso de um projétil sobrevivente de um pool reciclado antes desta versão;
@@ -838,8 +831,7 @@ export class MainGameScene extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.enemyBullets, (_, bulletObj) => {
       if (this.isGameOver || this.isVictory) return;
       const bullet = bulletObj as Phaser.Physics.Arcade.Sprite;
-      bullet.setActive(false);
-      bullet.setVisible(false);
+      despawnPooled(bullet);
 
       const isDead = this.player.takeDamage(1);
       // See the identical guard on the boss-bullets overlap above: god mode must not corrupt the
@@ -857,8 +849,7 @@ export class MainGameScene extends Phaser.Scene {
       if (this.isGameOver || this.isVictory) return;
       const enemy = enemyObj as Phaser.Physics.Arcade.Sprite;
       this.createExplosionFX(enemy.x, enemy.y);
-      enemy.setActive(false);
-      enemy.setVisible(false);
+      despawnPooled(enemy);
 
       const isDead = this.player.takeDamage(1);
       // Same god-mode guard as the two overlap handlers above.
@@ -877,16 +868,14 @@ export class MainGameScene extends Phaser.Scene {
     const enemy = enemyObj as Phaser.Physics.Arcade.Sprite;
     const damage = (bullet.getData('damage') as number) || 30;
 
-    bullet.setActive(false);
-    bullet.setVisible(false);
+    despawnPooled(bullet);
 
     let hp = (enemy.getData('hp') as number) || 30;
     hp -= damage;
 
     if (hp <= 0) {
       this.createExplosionFX(enemy.x, enemy.y);
-      enemy.setActive(false);
-      enemy.setVisible(false);
+      despawnPooled(enemy);
       const type = (enemy.getData('type') as 'drone' | 'cruiser') || 'drone';
       this.scoreCalculator.registerKill(type);
       audioManager.playExplosion();
@@ -909,8 +898,7 @@ export class MainGameScene extends Phaser.Scene {
       hp -= dmg;
       if (hp <= 0) {
         this.createExplosionFX(enemy.x, enemy.y);
-        enemy.setActive(false);
-        enemy.setVisible(false);
+        despawnPooled(enemy);
         const type = (enemy.getData('type') as 'drone' | 'cruiser') || 'drone';
         this.scoreCalculator.registerKill(type);
         audioManager.playExplosion();
@@ -1114,8 +1102,7 @@ export class MainGameScene extends Phaser.Scene {
     this.enemyBullets.children.iterate((child) => {
       const b = child as Phaser.Physics.Arcade.Sprite;
       if (b && b.active && (b.y > this.scale.height + 30 || b.y < -30 || b.x < -30 || b.x > this.scale.width + 30)) {
-        b.setActive(false);
-        b.setVisible(false);
+        despawnPooled(b);
       }
       return true;
     });
@@ -1124,8 +1111,7 @@ export class MainGameScene extends Phaser.Scene {
     this.enemies.children.iterate((child) => {
       const e = child as Phaser.Physics.Arcade.Sprite;
       if (e && e.active && e.y > this.scale.height + 60) {
-        e.setActive(false);
-        e.setVisible(false);
+        despawnPooled(e);
       }
       return true;
     });

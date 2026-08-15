@@ -563,6 +563,57 @@ torna a barra de HP do boss legível — a 1150 de HP com mitigação 0,65 na fa
 > suficiente no playtest, esse é o próximo lever, e ele terá de ser avaliado à mão. Os próprios
 > `SKILL_PROFILES` continuam sendo estimativas não medidas (ver `archetypes.ts`).
 
+### 5.5. Multi-acerto por projétil: o bug que invalidava toda medição na engine (2026-08-15)
+
+A primeira captura real do Bloco 3 (God mode, seed 1, disparo primário segurado) devolveu TTKs de
+boss absurdamente baixos e, pior, praticamente insensíveis à build:
+
+| preset | TTK capturado na engine | TTK do simulador | desvio |
+|---|---|---|---|
+| `striker` | 5 s | 9,5 s | 90,0% |
+| `interceptor` | 5 s | 9,1 s | 82,0% |
+| `maximo` | 4 s | 6,1 s | 52,5% |
+
+O sinal decisivo não é o desvio, é a **falta de escala**: `maximo` tem 540 de DPS nominal contra 162
+do `striker` — 3,3x mais — e mesmo assim matou o boss em 4 s contra 5 s. Quando triplicar o dano quase
+não muda o TTK, o gargalo não é dano; é outra coisa.
+
+**Causa raiz.** O Arcade Physics do Phaser ignora `gameObject.active` por completo. Conferido no
+fonte da versão instalada (`node_modules/phaser/src/physics/arcade/World.js`):
+
+- `World.step` integra todo corpo cujo `body.enable` seja `true` — sem checar `active`.
+- `World.collideSpriteVsGroup` descarta candidatos por `!bodyB.enable || bodyB.checkCollision.none`
+  — também sem checar `active`.
+
+Todos os pontos de consumo de projétil deste projeto faziam apenas `setActive(false)` +
+`setVisible(false)`, e um `grep` por `body.enable = false` / `disableBody` / `killAndHide` em
+`packages/player-app/src` não retornava **nenhuma** ocorrência. Ou seja: o projétil sumia da tela e
+continuava voando e colidindo. Como o corpo do boss tem 300x140 px e os projéteis andam a 600–800
+px/s, cada tiro permanecia dentro do boss por ≈10 a 15 frames a 60 fps e reentrava no callback do
+overlap em cada um deles, chamando `BossOverlord.takeDamage` de novo a cada frame. **Um tiro virava
+dezenas de acertos.**
+
+Isso explica a insensibilidade à build: com o dano inflado nessa ordem de grandeza, o TTK real passa
+a ser dominado pelos 2 x 2000 ms de `phase_transition_invuln_ms`, que nenhuma build consegue encurtar.
+
+**Correção.** `packages/player-app/src/game/objects/pooled-body.ts` centraliza o ciclo de vida dos
+objetos reciclados por pool em `despawnPooled`/`respawnPooled`: ao consumir, o corpo é parado e
+`body.enable` vai a `false`; ao renascer, `body.enable` volta a `true` antes de `Body.reset` (que
+não reabilita — ele só para, reposiciona e limpa flags). Aplicado nos treze pontos de spawn e
+consumo de `MainGameScene`, `WeaponSystem` e `BossOverlord`.
+
+O mesmo bug atingia projétil-vs-inimigo (um tiro varria um cruiser de 140 HP inteiro) e
+inimigo-vs-jogador; nesses dois últimos o efeito era mascarado pelos 1500 ms de invulnerabilidade do
+jogador.
+
+> **Consequência para tudo que foi medido antes.** O simulador nunca esteve errado — a engine é que
+> não estava aplicando as próprias regras. Toda impressão de dificuldade colhida à mão antes desta
+> correção foi colhida contra um boss que derretia, **inclusive o playtest que motivou o §5.4**. O
+> aumento de dificuldade do §5.4 continua válido enquanto número (foi derivado do simulador, que
+> agora é o que a engine de fato executa), mas ele nunca foi sentido de verdade: o boss vai ficar
+> sensivelmente mais duro do que qualquer partida jogada até aqui. **Refazer o playtest antes de
+> mexer de novo nas constantes**, e refazer a captura do Bloco 3 — a de 2026-08-15 está descartada.
+
 ---
 
 ## 6. Entregável 5 — Captura de Playtest

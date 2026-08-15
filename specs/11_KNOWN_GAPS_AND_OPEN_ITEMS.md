@@ -102,16 +102,25 @@ produziu, para a mesma spec e o mesmo seed (Spec 09 §5.1). É o que prova que
 certa.
 
 [`packages/sim/fixtures/harness-runs.json`](../packages/sim/fixtures/harness-runs.json) está vazio
-(`[]`) porque rodar a engine Phaser exige um navegador de verdade (canvas/WebGL), e nenhum agente
-que trabalhou nesta fase teve acesso a um. O mecanismo está pronto: assim que o arquivo ganhar
-entradas reais, o teste deixa de pular e vira um portão de verdade.
+(`[]`). O mecanismo está pronto: assim que o arquivo ganhar entradas reais, o teste deixa de pular e
+vira um portão de verdade.
+
+> **A primeira captura real já aconteceu (2026-08-15) e pagou o próprio custo na hora.** Ela reprovou
+> com desvios de 90% / 82% / 52% e, mais revelador, com TTKs quase idênticos para builds de DPS
+> nominal 3,3x diferentes. A investigação achou um bug na **engine**, não no modelo: projéteis
+> "consumidos" só faziam `setActive(false)`, e o Arcade Physics do Phaser filtra colisão por
+> `body.enable`, nunca por `active` — cada tiro atravessava o corpo de 300x140 px do boss batendo
+> uma vez por frame. Corrigido em `pooled-body.ts`; história completa na
+> [Spec 09 §5.5](./09_GAME_BALANCE_AND_DEV_MODE.md). A captura foi descartada e precisa ser refeita
+> contra a engine corrigida.
 
 **Risco no evento:** enquanto isto estiver pulado, **todo número de balanceamento produzido pelo
 simulador não está confirmado contra a realidade**. As decisões de tuning da Tarefa B8 foram tomadas
 em cima do simulador. Se o modelo divergir da engine, o balanceamento medido está errado na mesma
 proporção.
 
-**Este é o item de maior alavancagem da lista** — ele valida ou invalida todo o §2.1 acima.
+**Este é o item de maior alavancagem da lista** — ele valida ou invalida todo o §2.1 acima, e a
+primeira tentativa de fechá-lo já provou o porquê.
 
 **Fecha o item:** o procedimento de captura está em
 [`packages/sim/fixtures/README.md`](../packages/sim/fixtures/README.md) e está roteirizado passo a
@@ -202,6 +211,12 @@ código.
 - Duas constantes mortas em `balance.ts` (`min_bullet_speed`, `default_bullet_speed`).
 - A prévia do terminal em `HandoffTerminalScreen.tsx` desenha um polígono genérico fixo, não o
   `svg_path_data` real do agente — mesmo problema do D17, um passo antes no fluxo.
+- **`shots_fired` / `shots_hit` / `accuracy_pct` são sempre zero.** `ScoreCalculator.shotsFired` e
+  `.shotsHit` são declarados e lidos por `MainGameScene.finishMatchAndTransition`, mas **nada no
+  repositório os incrementa** — não existe `registerShot`/`registerHit`. Como `accuracy_pct` é
+  derivada dos dois, os três campos vão zerados para a telemetria, o SQLite do daemon e o placar.
+  Descoberto ao conferir a primeira captura do Bloco 3, que veio com `shots_fired: 0` num combate
+  em que o disparo ficou segurado o tempo todo. Não afeta `boss_ttk_s` nem o score.
 
 ---
 

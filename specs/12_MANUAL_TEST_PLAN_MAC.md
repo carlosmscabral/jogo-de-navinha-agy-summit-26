@@ -243,6 +243,13 @@ Este bloco produz os dados que faltam para
 maior alavancagem da lista de lacunas: sem ele, **nenhum número de balanceamento está confirmado
 contra a engine real**.
 
+> **Já rodado uma vez, em 2026-08-15, e já pagou o próprio custo.** A captura reprovou com desvios de
+> 90% / 82% / 52% e expôs um bug de multi-acerto por projétil na engine (um tiro consumido continuava
+> com o corpo físico habilitado e batia no boss uma vez por frame). O bug foi corrigido; **aquela
+> captura foi descartada e este bloco precisa ser refeito do zero contra a engine corrigida.** Ver
+> [Spec 09 §5.5](./09_GAME_BALANCE_AND_DEV_MODE.md). Os TTKs agora devem escalar com a build: se
+> `maximo` e `striker` voltarem a dar quase o mesmo número, o problema não foi embora.
+
 Procedimento canônico e completo:
 [`packages/sim/fixtures/README.md`](../packages/sim/fixtures/README.md). O roteiro abaixo é o mesmo,
 em forma de checklist.

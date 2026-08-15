@@ -4,11 +4,15 @@
 engine Phaser real produziu, para a mesma spec e o mesmo seed, com tolerância de 5% (Spec 09 §5.1).
 Isso é o que garante que `combat-model.ts` não é uma reimplementação que só parece certa.
 
-**Estado atual: `harness-runs.json` está vazio (`[]`).** Nenhuma captura real foi feita ainda —
-rodar a engine Phaser exige um navegador de verdade (canvas/WebGL), e nenhuma tarefa desta fase
-teve acesso a um. O teste de conformidade detecta o array vazio e pula (`skip`) em vez de falhar,
-mas o *mecanismo* já está pronto: assim que este arquivo ganhar entradas reais, o teste passa a
-valer e vira um gate de verdade.
+**Estado atual: `harness-runs.json` está vazio (`[]`).** O teste de conformidade detecta o array
+vazio e pula (`skip`) em vez de falhar, mas o *mecanismo* já está pronto: assim que este arquivo
+ganhar entradas reais, o teste passa a valer e vira um gate de verdade.
+
+> **A captura de 2026-08-15 foi descartada.** Ela rodou contra a engine antes da correção do
+> multi-acerto por projétil (Spec 09 §5.5): um tiro "consumido" continuava com o corpo físico
+> habilitado e reentrava no overlap do boss a cada frame, então o boss recebia dezenas de acertos
+> por tiro e morria em 4-5s independentemente da build. Qualquer captura anterior a essa correção
+> mede a engine bugada, não o jogo. **Só capture com a correção aplicada.**
 
 ## Atenção: granularidade do relógio real é de 1s, não 0,1s
 
@@ -33,7 +37,8 @@ Alguém com acesso a um navegador e a este repositório precisa:
    - Ligar **God mode**.
    - Definir **seed = 1**.
    - Selecionar o preset **striker**.
-   - Clicar em **"Boss (45s)"** para pular direto para a luta.
+   - Clicar em **"Boss (40s)"** — o rótulo do botão vem de `BALANCE.match.boss_spawn_s`, então
+     ele acompanha a constante se ela mudar.
    - Segurar o disparo primário (barra de espaço) sem soltar até o boss ser derrotado.
    - Clicar em **"Baixar resumo"** — isso baixa `match-summary-seed-1.json`, um `MatchCompleteData`
      completo (`{ finalScore, victory, breakdown, telemetry }`).

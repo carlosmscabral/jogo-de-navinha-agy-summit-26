@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { BALANCE } from '@jogo/shared';
 import { audioManager } from '../audio/AudioManager.js';
+import { despawnPooled, respawnPooled } from './pooled-body.js';
 
 export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
   maxHp: number = BALANCE.boss.max_hp;
@@ -202,8 +203,7 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
     this.bullets.children.iterate((child) => {
       const b = child as Phaser.Physics.Arcade.Sprite;
       if (b && b.active && (b.y > 900 || b.y < -60 || b.x < -60 || b.x > 800)) {
-        b.setActive(false);
-        b.setVisible(false);
+        despawnPooled(b);
       }
       return true;
     });
@@ -293,19 +293,12 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
   private spawnBullet(x: number, y: number, vx: number, vy: number, texture = 'bullet_boss_plasma'): void {
     const bullet = this.bullets.get(x, y, texture) as Phaser.Physics.Arcade.Sprite;
     if (bullet) {
-      bullet.setActive(true);
-      bullet.setVisible(true);
       bullet.setDepth(12);
       // O dano é gravado no disparo, não lido na colisão: um projétil disparado na fase 2 que
       // acerta depois da transição para a fase 3 deve custar o dano da fase 2, que é o que
       // estava na tela quando o jogador decidiu se desviava ou não.
       bullet.setData('damage', this.bulletDamage);
-      if (bullet.body) {
-        bullet.body.reset(x, y);
-        bullet.body.enable = true;
-        bullet.body.checkCollision.none = false;
-      }
-      bullet.setVelocity(vx, vy);
+      respawnPooled(bullet, x, y, vx, vy);
     }
   }
 

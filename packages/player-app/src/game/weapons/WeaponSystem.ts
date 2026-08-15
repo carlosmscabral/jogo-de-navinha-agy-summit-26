@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { BALANCE, ShipWeapons } from '@jogo/shared';
+import { despawnPooled, respawnPooled } from '../objects/pooled-body.js';
 
 export class WeaponSystem {
   scene: Phaser.Scene;
@@ -136,25 +137,16 @@ export class WeaponSystem {
   private spawnBullet(x: number, y: number, vx: number, vy: number, texture: string, damage: number): void {
     const bullet = this.primaryBullets.get(x, y, texture) as Phaser.Physics.Arcade.Sprite;
     if (bullet) {
-      bullet.setActive(true);
-      bullet.setVisible(true);
-      bullet.setPosition(x, y);
-      bullet.setVelocity(vx, vy);
       bullet.setData('damage', damage);
-      if (bullet.body) {
-        bullet.body.checkCollision.none = false;
-      }
+      respawnPooled(bullet, x, y, vx, vy);
     }
   }
 
   private spawnMissile(x: number, y: number, vx: number, vy: number, damage: number, targets?: Phaser.GameObjects.Sprite[]): void {
     const missile = this.secondaryMissiles.get(x, y, 'missile_tex') as Phaser.Physics.Arcade.Sprite;
     if (missile) {
-      missile.setActive(true);
-      missile.setVisible(true);
-      missile.setPosition(x, y);
-      missile.setVelocity(vx, vy);
       missile.setData('damage', damage);
+      respawnPooled(missile, x, y, vx, vy);
     }
   }
 
@@ -175,8 +167,7 @@ export class WeaponSystem {
     this.primaryBullets.children.iterate((child) => {
       const b = child as Phaser.Physics.Arcade.Sprite;
       if (b && b.active && (b.y < -50 || b.y > 900 || b.x < -50 || b.x > 850)) {
-        b.setActive(false);
-        b.setVisible(false);
+        despawnPooled(b);
       }
       return true;
     });
@@ -187,8 +178,7 @@ export class WeaponSystem {
     this.secondaryMissiles.children.iterate((child) => {
       const m = child as Phaser.Physics.Arcade.Sprite;
       if (m && m.active && (m.y < -50 || m.y > 900 || m.x < -50 || m.x > 850)) {
-        m.setActive(false);
-        m.setVisible(false);
+        despawnPooled(m);
       }
       return true;
     });
