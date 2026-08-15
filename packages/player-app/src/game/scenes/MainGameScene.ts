@@ -363,11 +363,16 @@ export class MainGameScene extends Phaser.Scene {
     this.bossFightStartMs = this.time.now;
     this.setupBossHud();
 
-    // Primary Bullets vs Boss
+    // Primary Bullets vs Boss.
+    // A ordem dos argumentos do callback NÃO segue a ordem de registro: o Phaser resolve
+    // `overlap(grupo, sprite)` internamente como `collideSpriteVsGroup(sprite, grupo)` e sempre
+    // chama o callback como (sprite, filhoDoGrupo) -- ver `World.collideHandler`. Registrar o
+    // boss primeiro deixa a ordem real visível aqui e alinha com todos os outros overlaps
+    // sprite-vs-grupo deste arquivo (`setupCollisions`).
     this.physics.add.overlap(
-      this.player.weaponSystem.primaryBullets,
       this.boss,
-      (bulletObj) => {
+      this.player.weaponSystem.primaryBullets,
+      (_, bulletObj) => {
         if (!this.boss || this.boss.isDead) return;
         const bullet = bulletObj as Phaser.Physics.Arcade.Sprite;
         const damage = (bullet.getData('damage') as number) || 30;
@@ -388,10 +393,11 @@ export class MainGameScene extends Phaser.Scene {
     );
 
     // Secondary Missiles vs Boss
+    // Boss primeiro, pelo mesmo motivo do overlap acima.
     this.physics.add.overlap(
-      this.player.weaponSystem.secondaryMissiles,
       this.boss,
-      (missileObj) => {
+      this.player.weaponSystem.secondaryMissiles,
+      (_, missileObj) => {
         if (!this.boss || this.boss.isDead) return;
         const missile = missileObj as Phaser.Physics.Arcade.Sprite;
         const damage = (missile.getData('damage') as number) || 120;
