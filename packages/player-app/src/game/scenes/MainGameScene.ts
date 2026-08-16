@@ -162,6 +162,7 @@ export class MainGameScene extends Phaser.Scene {
       this.shipSpec.visuals
     );
     this.player.godMode = !!this.devOptions?.godMode;
+    this.player.autoFirePrimary = !!this.devOptions?.autoFirePrimary;
     this.player.weaponSystem.onPrimaryShotsFired = (projectiles) =>
       this.scoreCalculator.registerShotsFired(projectiles);
 

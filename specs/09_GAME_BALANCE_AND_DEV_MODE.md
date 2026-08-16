@@ -713,6 +713,53 @@ que põe **≈2,2 das 3 pelotas** conectando por acionamento.
 > `vulcan_spread` porque assume 3 de 3, e a engine entrega ≈2,2 de 3. Falta uma captura com o
 > `boss_ttk_s` corrigido para calibrar contra um TTK real em vez de contra uma estimativa.
 
+### 5.8. O tempo de reação do operador estava dentro da medição (2026-08-16)
+
+Com `bossFightElapsedMs` no lugar, a quarta captura passou na conferência de sanidade
+(`boss_ttk_s ≈ duration_s - 40`) e o portão de conformidade **executou pela primeira vez**. Falhou
+nos três presets, e todos na mesma direção — o simulador otimista:
+
+| preset        | simulador | engine | desvio |
+| ------------- | --------- | ------ | ------ |
+| `striker`     | 9.5 s     | 11.3 s | 15.9%  |
+| `interceptor` | 9.1 s     | 9.7 s  | 6.2%   |
+| `maximo`      | 6.1 s     | 7.0 s  | 12.9%  |
+
+Três desvios do mesmo sinal são termo sistemático, não três erros de modelo. E os contadores de
+tiro, de novo, dizem qual: **`shots_fired` reconstrói a linha do tempo da luta sem relógio nenhum.**
+Basta dividir pelo número de pelotas por acionamento e multiplicar pelo intervalo de cadência:
+
+| preset        | acionamentos | intervalo | janela de tiro | 1º tiro em | simulador × janela |
+| ------------- | ------------ | --------- | -------------- | ---------- | ------------------ |
+| `striker`     | 168 / 3 = 56 | 200 ms    | 11.00 s        | **0.30 s** | −13.6%             |
+| `interceptor` | 104          | 83.3 ms   | 8.58 s         | **1.12 s** | +6.0%              |
+| `maximo`      | 74           | 83.3 ms   | 6.08 s         | **0.92 s** | +0.3%              |
+
+O operador clica **"Boss (40s)"** e só então leva a mão até o `ESPAÇO`. Esse intervalo — 0.30 s,
+1.12 s e 0.92 s nas três capturas — é tempo em que o boss já existe, o cronômetro já corre e nenhum
+tiro saiu. Ele entra inteiro no `boss_ttk_s` e **varia 0.8 s de captura para captura**: numa luta de
+7 s, sozinho, mais que a tolerância de 5% do portão. É a mesma classe de erro da quantização de
+§5.6 — a régua com incerteza maior que o efeito que ela deveria resolver.
+
+Descontado o atraso, o `maximo` fecha em **0.3%** e o `interceptor` em **6.0%**, este último na
+direção oposta (simulador *pessimista*). Sobra o `striker` em **13.6%** — o mesmo número da primeira
+captura de §5.6, por dois caminhos independentes.
+
+`DevGameOptions.autoFirePrimary` (caixa **"Disparo automático"** no harness) trava o gatilho primário
+desde o primeiro quadro, sem teclado. É o que `fireUptime: 1.0` do perfil de habilidade do teste
+sempre quis dizer literalmente, e torna a captura repetível em vez de dependente do reflexo de quem
+está capturando. **A captura de conformidade passa a exigir essa caixa marcada.**
+
+> **Por que `combat-model.ts` continua intocado.** O defeito do `vulcan_spread` está localizado e é
+> real: a cadência primária rola `rng.chance(skill.accuracy * skill.fireUptime)` por pelota, então
+> com `accuracy: 1.0` as três sempre acertam, enquanto a engine mede 69.0% e 70.2% em duas capturas
+> independentes. Mas as três linhas da tabela acima são números *reconstruídos*, e ainda carregam um
+> termo que ninguém mediu: o tempo de voo do projétil, que o simulador trata como zero (o dano cai no
+> instante do disparo) e que na engine atrasa o início do dano em `distância / bullet_speed`. Ajustar
+> o modelo agora seria calibrá-lo contra aritmética em vez de contra medição — exatamente o erro que
+> §5.6 e §5.7 já custaram duas capturas. Com `autoFirePrimary`, `boss_ttk_s − janela de tiro` entrega
+> o tempo de voo de graça, e aí os dois termos se separam sem reconstrução nenhuma.
+
 ---
 
 ## 6. Entregável 5 — Captura de Playtest

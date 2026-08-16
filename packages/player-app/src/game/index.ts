@@ -29,6 +29,12 @@ export interface DevGameOptions extends GameOptions {
   /** Boss enters already in this phase. Requires startAtSeconds >= BALANCE.match.boss_spawn_s. */
   startAtBossPhase?: 1 | 2 | 3;
   godMode?: boolean;
+  /**
+   * Segura o disparo primário desde o primeiro quadro, sem ninguém no teclado. Existe para a
+   * captura de conformidade, onde o tempo de reação humano entre pular para o boss e apertar
+   * `ESPAÇO` entrava inteiro no `boss_ttk_s` medido. Ver Spec 09 §5.8.
+   */
+  autoFirePrimary?: boolean;
   timeScale?: number;
   physicsDebug?: boolean;
   /** Called every frame with observable state. Only the harness uses this. */

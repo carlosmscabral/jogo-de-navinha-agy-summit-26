@@ -262,10 +262,17 @@ contra a engine real**.
 > `create`, onde ele ainda vale 0, e reportava o relógio da aba do navegador. Corrigido acumulando
 > `delta` quadro a quadro. Ver [Spec 09 §5.7](./09_GAME_BALANCE_AND_DEV_MODE.md).
 >
-> **As três capturas estão descartadas; este bloco precisa ser refeito.** O que olhar desta vez:
-> **`boss_ttk_s` tem que bater com `duration_s - 40`** (a luta começa em `BALANCE.match.boss_spawn_s`)
-> e ter casa decimal. Se não bater, pare — a captura não presta e o problema é de medição, não de
-> modelo.
+> A quarta, ainda em 2026-08-16, passou na conferência de sanidade e **fez o portão executar pela
+> primeira vez**: reprovou em 15.9% / 6.2% / 12.9%, os três com o simulador otimista. Três desvios
+> do mesmo sinal denunciaram um termo sistemático, e `shots_fired` mostrou qual: o tempo de reação
+> entre clicar "Boss (40s)" e apertar `ESPAÇO` — 0.30 s, 1.12 s e 0.92 s — entrava inteiro no
+> `boss_ttk_s`. Daí a caixa **"Disparo automático"**. Ver
+> [Spec 09 §5.8](./09_GAME_BALANCE_AND_DEV_MODE.md).
+>
+> **As quatro capturas estão descartadas; este bloco precisa ser refeito.** As duas conferências
+> desta vez: **marcar "Disparo automático"** (sem ela a captura não vale, e some o passo de segurar
+> `ESPAÇO`) e **`boss_ttk_s` batendo com `duration_s - 40`**, com casa decimal. Se o TTK não bater,
+> pare — o problema é de medição, não de modelo.
 
 Procedimento canônico e completo:
 [`packages/sim/fixtures/README.md`](../packages/sim/fixtures/README.md). O roteiro abaixo é o mesmo,
@@ -275,11 +282,14 @@ Repita **3.1 a 3.6** para cada um dos três presets: **`striker`**, **`intercept
 
 - [ ] **3.1 — Preset** — no seletor **Preset**, escolha o preset da vez e clique em **"Aplicar"**.
 - [ ] **3.2 — Seed** — digite **`1`** no campo Seed. Sempre 1, para os três.
-- [ ] **3.3 — God mode** — marque a caixa **God mode**.
-- [ ] **3.4 — Pular para o boss** — clique em **"Boss (40s)"**.
-- [ ] **3.5 — Segurar o disparo** — segure `ESPAÇO` **sem soltar** até o boss morrer. **Não** aperte
+- [ ] **3.3 — God mode e Disparo automático** — marque **as duas** caixas. "Disparo automático"
+  trava o gatilho primário desde o primeiro quadro: é o que `fireUptime: 1.0` do perfil de
+  habilidade do teste quer dizer, e sem ela o seu tempo de reação entra no `boss_ttk_s` medido
+  (Spec 09 §5.8).
+- [ ] **3.4 — Pular para o boss** — clique em **"Boss (40s)"**. A nave já sai atirando sozinha.
+- [ ] **3.5 — Não encoste no teclado** — deixe a luta correr até o boss morrer. **Não** aperte
   `SHIFT` em momento nenhum: o perfil de habilidade que o teste usa tem `secondaryUptime: 0`, então
-  qualquer disparo secundário invalida a captura.
+  qualquer disparo secundário invalida a captura. Mover a nave também muda a geometria dos tiros.
 - [ ] **3.6 — Baixar** — clique em **"Baixar resumo"**. Salva `match-summary-seed-1.json`. Mova para
   `~/Desktop/gate-m1-m2/` renomeando para `match-summary-<preset>.json`.
 

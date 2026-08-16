@@ -41,21 +41,35 @@ harness a luta começa em `BALANCE.match.boss_spawn_s`, então `duration_s - 40`
 inteiro redondo significa build velha; um valor muito acima de `duration_s` significa relógio errado.
 Nos dois casos a captura não presta.
 
+## Disparo automático: obrigatório desde 2026-08-16
+
+A captura de 2026-08-16 passou na conferência acima, o portão executou pela primeira vez e reprovou
+nos três presets — os três com o simulador otimista. O termo comum não era o modelo: era **o tempo
+de reação entre clicar "Boss (40s)" e apertar `ESPAÇO`**. Reconstruído a partir de `shots_fired`
+(acionamentos × intervalo de cadência dá a janela de tiro; `boss_ttk_s` menos a janela dá o atraso),
+ele foi de **0.30 s, 1.12 s e 0.92 s** nas três. Varia 0.8 s de captura para captura, e entra
+inteiro no TTK: numa luta de 7 s isso é 13%, contra uma tolerância de 5%.
+
+O harness ganhou a caixa **"Disparo automático"** (`DevGameOptions.autoFirePrimary`), que trava o
+gatilho primário desde o primeiro quadro sem teclado. **Marque-a — a captura de conformidade agora
+depende dela**, e com ela o passo de segurar `ESPAÇO` deixa de existir. Ver
+[Spec 09 §5.8](../../../specs/09_GAME_BALANCE_AND_DEV_MODE.md).
+
 ## Como capturar os dados que faltam
 
 Alguém com acesso a um navegador e a este repositório precisa:
 
 1. Rodar `npm run dev:game` (o harness autônomo do dev, Tarefa B4) e, no painel:
    - Ligar **God mode**.
+   - Ligar **Disparo automático** (ver a seção abaixo — sem isso a captura não vale).
    - Definir **seed = 1**.
    - Selecionar o preset **striker**.
    - Clicar em **"Boss (40s)"** — o rótulo do botão vem de `BALANCE.match.boss_spawn_s`, então
-     ele acompanha a constante se ela mudar.
-   - Segurar o disparo primário (barra de espaço) sem soltar até o boss ser derrotado.
+     ele acompanha a constante se ela mudar. A nave já sai atirando; não encoste no teclado.
    - Clicar em **"Baixar resumo"** — isso baixa `match-summary-seed-1.json`, um `MatchCompleteData`
      completo (`{ finalScore, victory, breakdown, telemetry }`).
 2. Repetir o passo 1 para os presets **interceptor** e **maximo** (mesma seed, mesmo procedimento:
-   God mode ligado, pular para o boss, segurar o disparo primário até derrubá-lo, baixar o resumo).
+   God mode e Disparo automático ligados, pular para o boss, esperar o boss cair, baixar o resumo).
 3. De cada `match-summary-seed-*.json` baixado, extrair `telemetry.boss_ttk_s` e montar uma entrada
    neste arquivo com o formato abaixo — um objeto por preset capturado:
 
@@ -76,8 +90,9 @@ Campos:
 
 O teste roda o simulador com a mesma spec e o mesmo seed, e um perfil de habilidade
 `{ accuracy: 1.0, fireUptime: 1.0, hitsTakenPerSecond: 0, secondaryUptime: 0 }` — o que *God mode*
-com o disparo primário sempre segurado (e a secundária nunca acionada, já que o procedimento acima
-não manda apertar Shift) representa.
+mais *Disparo automático* representam literalmente: `fireUptime: 1.0` quer dizer disparando desde o
+primeiro quadro, e é justamente por isso que a caixa existe. A secundária fica em `0` porque o
+procedimento não encosta em `SHIFT`.
 
 **Se o desvio passar de 5%: o simulador está errado até prova em contrário — a engine é a
 realidade.** Ache a regra que `combat-model.ts` transcreveu mal e corrija o modelo, nunca a

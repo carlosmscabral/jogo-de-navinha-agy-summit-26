@@ -23,6 +23,7 @@ interface HarnessState {
   spec: ShipSpecification;
   seed: number;
   godMode: boolean;
+  autoFirePrimary: boolean;
   physicsDebug: boolean;
   timeScale: number;
   startAtSeconds: number | undefined;
@@ -48,6 +49,7 @@ export function DevHarness(): React.JSX.Element {
   const [appliedSpec, setAppliedSpec] = useState<ShipSpecification>(DEV_PRESETS.interceptor);
   const [seed, setSeed] = useState<number>(() => randomSeed());
   const [godMode, setGodMode] = useState(false);
+  const [autoFirePrimary, setAutoFirePrimary] = useState(false);
   const [physicsDebug, setPhysicsDebug] = useState(false);
   const [timeScale, setTimeScale] = useState(1);
   const [startAtSeconds, setStartAtSeconds] = useState<number | undefined>(undefined);
@@ -74,6 +76,7 @@ export function DevHarness(): React.JSX.Element {
       spec: overrides.spec ?? appliedSpec,
       seed: overrides.seed ?? seed,
       godMode: overrides.godMode ?? godMode,
+      autoFirePrimary: overrides.autoFirePrimary ?? autoFirePrimary,
       physicsDebug: overrides.physicsDebug ?? physicsDebug,
       timeScale: overrides.timeScale ?? timeScale,
       startAtSeconds: 'startAtSeconds' in overrides ? overrides.startAtSeconds : startAtSeconds,
@@ -83,6 +86,7 @@ export function DevHarness(): React.JSX.Element {
     setAppliedSpec(next.spec);
     setSeed(next.seed);
     setGodMode(next.godMode);
+    setAutoFirePrimary(next.autoFirePrimary);
     setPhysicsDebug(next.physicsDebug);
     setTimeScale(next.timeScale);
     setStartAtSeconds(next.startAtSeconds);
@@ -100,6 +104,7 @@ export function DevHarness(): React.JSX.Element {
       seed: next.seed,
       isHardcore: false,
       godMode: next.godMode,
+      autoFirePrimary: next.autoFirePrimary,
       physicsDebug: next.physicsDebug,
       timeScale: next.timeScale,
       startAtSeconds: next.startAtSeconds,
@@ -170,6 +175,10 @@ export function DevHarness(): React.JSX.Element {
 
   function handleGodModeToggle(): void {
     remount({ godMode: !godMode });
+  }
+
+  function handleAutoFireToggle(): void {
+    remount({ autoFirePrimary: !autoFirePrimary });
   }
 
   function handlePhysicsDebugToggle(): void {
@@ -357,16 +366,26 @@ export function DevHarness(): React.JSX.Element {
             </button>
           </div>
 
-          <div className="mt-3 flex gap-4">
+          <div className="mt-3 flex flex-wrap gap-4">
             <label className="flex items-center gap-2 text-xs text-slate-300">
               <input type="checkbox" checked={godMode} onChange={handleGodModeToggle} />
               God mode
+            </label>
+            <label className="flex items-center gap-2 text-xs text-slate-300">
+              <input type="checkbox" checked={autoFirePrimary} onChange={handleAutoFireToggle} />
+              Disparo automático
             </label>
             <label className="flex items-center gap-2 text-xs text-slate-300">
               <input type="checkbox" checked={physicsDebug} onChange={handlePhysicsDebugToggle} />
               Debug de física
             </label>
           </div>
+          {autoFirePrimary && (
+            <p className="mt-1 font-mono text-[11px] text-slate-500">
+              Gatilho primário travado desde o primeiro quadro. Obrigatório na captura de
+              conformidade: sem ele o tempo de reação até apertar ESPAÇO entra no boss_ttk_s.
+            </p>
+          )}
         </section>
 
         <section className="flight-panel rounded-xl p-4">

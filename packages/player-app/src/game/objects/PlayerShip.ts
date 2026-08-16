@@ -12,6 +12,17 @@ export class PlayerShip extends Phaser.Physics.Arcade.Sprite {
   isInvulnerable = false;
   /** Dev-harness-only (Task B4). Always false in production. */
   godMode = false;
+  /**
+   * Dev-harness-only (Task B4). Segura o gatilho primário desde o primeiro quadro, sem teclado.
+   *
+   * Existe para a captura de conformidade (Spec 09 §5.8): o operador clicava "Boss (40s)" e só
+   * então apertava `ESPAÇO`, e o tempo de reação entre uma coisa e outra entrava inteiro no
+   * `boss_ttk_s`. Medido pelos contadores de tiro, esse atraso variou de 0.30s a 1.12s entre as
+   * três capturas de 2026-08-16 — sozinho, mais que a tolerância de 5% do teste de conformidade
+   * numa luta de 7s. É também o que `fireUptime: 1.0` do perfil de habilidade do teste quer dizer
+   * literalmente. Sempre false em produção.
+   */
+  autoFirePrimary = false;
 
   shieldGraphics?: Phaser.GameObjects.Graphics;
   thrusterEmitter?: Phaser.GameObjects.Particles.ParticleEmitter;
@@ -136,8 +147,8 @@ export class PlayerShip extends Phaser.Physics.Arcade.Sprite {
       }
     }
 
-    // Primary fire (Spacebar)
-    if (this.keySpace.isDown || this.cursors.space.isDown) {
+    // Primary fire (Spacebar, ou o gatilho travado do harness)
+    if (this.autoFirePrimary || this.keySpace.isDown || this.cursors.space.isDown) {
       this.weaponSystem.firePrimary(this.x, this.y, time);
     }
 
