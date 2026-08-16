@@ -4,9 +4,18 @@
 engine Phaser real produziu, para a mesma spec e o mesmo seed, com tolerância de 5% (Spec 09 §5.1).
 Isso é o que garante que `combat-model.ts` não é uma reimplementação que só parece certa.
 
-**Estado atual: `harness-runs.json` está vazio (`[]`).** O teste de conformidade detecta o array
-vazio e pula (`skip`) em vez de falhar, mas o *mecanismo* já está pronto: assim que este arquivo
-ganhar entradas reais, o teste passa a valer e vira um gate de verdade.
+**Estado atual: o portão executa e passa, em 2 dos 3 presets.** A sétima captura (2026-08-16) fechou
+`interceptor` em 1.1% e `maximo` em 3.1%, contra números publicados antes da medição. Falta o
+`striker` — a corrida daquela rodada rotulada como tal era, na verdade, uma segunda corrida de
+`interceptor` (ver [Spec 09 §5.11](../../../specs/09_GAME_BALANCE_AND_DEV_MODE.md)). Com o array
+vazio os dois testes pulam (`skip`) em vez de falhar; um fixture vazio nunca pode ser lido como
+"conformidade confirmada".
+
+> **Confira o rótulo contra o conteúdo antes de gravar uma entrada.** O preset da cena nasce em
+> `FALLBACK_PRESETS.interceptor`: esquecer o botão **"Aplicar"** produz um arquivo com nome de um
+> preset e dados de outro. No `vulcan_spread` isso se denuncia sozinho — `shots_fired` tem que ser
+> divisível por 3, porque são 3 pelotas por acionamento. Nos lasers, compare a cadência
+> (`shots_fired / boss_ttk_s`) com o `fire_rate` esperado.
 
 > **A captura de 2026-08-15 foi descartada.** Ela rodou contra a engine antes da correção do
 > multi-acerto por projétil (Spec 09 §5.5): um tiro "consumido" continuava com o corpo físico
@@ -94,6 +103,19 @@ agora roda inteira em `worldTimeMs`, a soma dos `delta`. Ver
 > **As seis capturas estão descartadas.** A sétima é a primeira contra a engine coerente. Previsão
 > publicada, agora em pares que se conferem: **11.2 s / ≈168 tiros**, **8.9 s / ≈107**, **6.3 s /
 > ≈76**, para `striker` / `interceptor` / `maximo`.
+
+## O portão passou: `interceptor` e `maximo` (2026-08-16)
+
+A sétima captura mediu **9.0 s / 108 tiros** e **6.5 s / 78**, contra os **8.9 / ≈107** e
+**6.3 / ≈76** publicados antes. Desvios de 1.1% e 3.1%, dentro da tolerância de 5%.
+
+As três lutas rodaram a ≈29 fps de mínima — menos que a captura anterior, não mais — e mesmo assim
+os dois relógios da engine concordaram em todas. Contra os **+24** acionamentos excedentes que o
+`interceptor` a 29.9 fps produzia antes de §5.10, agora são **−1**. Mesma faixa de taxa de quadros,
+defeito ausente.
+
+Falta o `striker`, o preset do espalhamento excessivo de §5.3. Enquanto ele não vier, o portão está
+fechado em dois terços.
 
 ## Como capturar os dados que faltam
 

@@ -288,15 +288,21 @@ contra a engine real**.
 > lenta e a cadência, que §5.9 tinha posto no relógio de parede, não. A cena inteira passou a rodar
 > em `worldTimeMs`. Ver [Spec 09 §5.10](./09_GAME_BALANCE_AND_DEV_MODE.md).
 >
-> **As seis capturas estão descartadas; este bloco precisa ser refeito.** As conferências desta vez:
-> **marcar "Disparo automático"** (sem ela a captura não vale, e some o passo de segurar `ESPAÇO`),
-> **`boss_ttk_s` batendo com `duration_s - 40`** com casa decimal, e **anotar `shots_fired` e
-> `boss_fight_min_fps`** — o primeiro virou campo obrigatório do fixture e agora é verificado por
-> teste. Se o TTK não bater, pare: o problema é de medição, não de modelo.
+> A sétima **fechou o portão em dois dos três presets**: `interceptor` 9.0 s / 108 tiros contra
+> 8.9 / ≈107 previstos (1.1%), `maximo` 6.5 s / 78 contra 6.3 / ≈76 (3.1%). Os números tinham sido
+> publicados antes da medição. As três lutas rodaram a ≈29 fps de mínima — menos que a captura
+> anterior — e mesmo assim os dois relógios da engine concordaram: contra os **+24** acionamentos
+> excedentes que o `interceptor` produzia a 29.9 fps, agora são **−1**. Mesma faixa de taxa de
+> quadros, defeito ausente. Ver [Spec 09 §5.11](./09_GAME_BALANCE_AND_DEV_MODE.md).
 >
-> **O modelo prevê, em pares que se conferem:** `striker` 11.2 s / ≈168 tiros, `interceptor` 8.9 s /
-> ≈107, `maximo` 6.3 s / ≈76. A contagem carrega ±2 acionamentos de folga honesta. Se os três
-> caírem perto disso, o portão fecha.
+> **Falta só o `striker`.** A corrida rotulada assim na sétima rodada era uma segunda corrida de
+> `interceptor`: `shots_fired: 106` não é divisível por 3, e o `vulcan_spread` solta exatamente 3
+> pelotas por acionamento. O preset da cena nasce em `interceptor`, então o sintoma é o botão
+> **"Aplicar"** não ter sido clicado no passo 3.1.
+>
+> **O modelo prevê, para o `striker`: 11.2 s / ≈168 tiros** (56 acionamentos × 3 pelotas), com ±2
+> acionamentos de folga. É o preset do espalhamento excessivo de §5.3 — a captura dele é o que falta
+> para essa conversa deixar de ser hipótese.
 
 Procedimento canônico e completo:
 [`packages/sim/fixtures/README.md`](../packages/sim/fixtures/README.md). O roteiro abaixo é o mesmo,
@@ -304,7 +310,10 @@ em forma de checklist.
 
 Repita **3.1 a 3.6** para cada um dos três presets: **`striker`**, **`interceptor`**, **`maximo`**.
 
-- [ ] **3.1 — Preset** — no seletor **Preset**, escolha o preset da vez e clique em **"Aplicar"**.
+- [ ] **3.1 — Preset** — no seletor **Preset**, escolha o preset da vez e **clique em "Aplicar"**.
+  Escolher no seletor não muda nada sozinho; sem o clique a cena continua com o preset anterior — e
+  ela nasce em `interceptor`. Foi assim que a sétima captura produziu duas corridas de `interceptor`
+  com uma delas rotulada `striker`.
 - [ ] **3.2 — Seed** — digite **`1`** no campo Seed. Sempre 1, para os três.
 - [ ] **3.3 — God mode e Disparo automático** — marque **as duas** caixas. "Disparo automático"
   trava o gatilho primário desde o primeiro quadro: é o que `fireUptime: 1.0` do perfil de
@@ -319,6 +328,19 @@ Repita **3.1 a 3.6** para cada um dos três presets: **`striker`**, **`intercept
   `telemetry.shots_fired` e `telemetry.boss_fight_min_fps`: o primeiro entra no fixture, o segundo
   fica de registro. Nenhum dos dois invalida a captura sozinho — quem decide é o passo 3.8.
 
+- [ ] **3.6b — Conferir que o conteúdo bate com o rótulo**
+
+O nome do arquivo é seu; o conteúdo é da cena. Antes de seguir, confirme que os dois falam do mesmo
+preset — o resumo baixado não diz qual preset foi usado, então essa é a única conferência possível:
+
+| Preset | Arma | Confira |
+|--------|------|---------|
+| `striker` | `vulcan_spread`, 5 tiros/s | **`shots_fired` divisível por 3** (3 pelotas por acionamento) e cadência `shots_fired / 3 / boss_ttk_s` ≈ 5 |
+| `interceptor` | `laser`, 12 tiros/s | cadência `shots_fired / boss_ttk_s` ≈ 12 |
+| `maximo` | `laser`, 12 tiros/s | cadência ≈ 12, e TTK bem menor que o do `interceptor` (45 de dano contra 20) |
+
+`accuracy_pct` é o desempate barato: o `vulcan_spread` fica na casa dos 70%, os lasers acima de 90%.
+
 Feitos os três:
 
 - [ ] **3.7 — Montar o fixture**
@@ -329,14 +351,16 @@ De cada JSON, leia `telemetry.boss_ttk_s`, `telemetry.shots_fired` e
 ```json
 [
   { "preset": "striker", "seed": 1, "boss_ttk_s": 0.0, "shots_fired": 0, "boss_fight_min_fps": 0 },
-  { "preset": "interceptor", "seed": 1, "boss_ttk_s": 0.0, "shots_fired": 0, "boss_fight_min_fps": 0 },
-  { "preset": "maximo", "seed": 1, "boss_ttk_s": 0.0, "shots_fired": 0, "boss_fight_min_fps": 0 }
+  { "preset": "interceptor", "seed": 1, "boss_ttk_s": 9.0, "shots_fired": 108, "boss_fight_min_fps": 29.2 },
+  { "preset": "maximo", "seed": 1, "boss_ttk_s": 6.5, "shots_fired": 78, "boss_fight_min_fps": 29.8 }
 ]
 ```
 
-trocando cada zero pelo valor real medido. `shots_fired` é obrigatório: é o segundo relógio da
-engine, e é ele que o teste de integridade usa para reprovar uma captura corrompida antes de o
-portão de conformidade dar qualquer veredito sobre o modelo.
+As duas últimas linhas são a sétima captura, já no arquivo e já passando nos dois portões — só
+substitua se quiser recapturá-las. **A linha do `striker` é a que falta**; troque os zeros pelo valor
+medido. `shots_fired` é obrigatório: é o segundo relógio da engine, e é ele que o teste de
+integridade usa para reprovar uma captura corrompida antes de o portão de conformidade dar qualquer
+veredito sobre o modelo.
 
 - [ ] **3.8 — Rodar a conformidade**
 
@@ -344,8 +368,14 @@ portão de conformidade dar qualquer veredito sobre o modelo.
 npm run test --workspace=packages/sim
 ```
 
-**Critério:** os dois testes que antes pulavam agora **executam**. Se passarem, o simulador está
-validado contra a engine real e o item §2.2 das lacunas está fechado.
+**Critério:** os dois testes **executam** (deixaram de pular na sétima captura) e passam para os
+**três** presets. Com `interceptor` e `maximo` já verdes, o veredito desta rodada é sobre o
+`striker`. Se passar, o simulador está validado contra a engine real e o item §2.2 das lacunas está
+fechado.
+
+> Uma falha da engine em `packages/sim` continua saindo no meio de 14 testes, dos quais um —
+> a asserção de espalhamento por arquétipo — **já falha de propósito** e está fora de escopo aqui.
+> Confira o nome do teste que falhou antes de tratar como regressão.
 
 São dois, e a ordem importa:
 

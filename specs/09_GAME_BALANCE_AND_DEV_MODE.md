@@ -942,6 +942,52 @@ estar em voo quando o boss cai. O que **não** é folga é um excedente de 24, c
 
 ---
 
+### 5.11. O portão fechou — em dois dos três presets (2026-08-16)
+
+A sétima captura é a primeira em que o teste de conformidade **executa e passa**.
+
+| preset | previsto | medido | desvio | `shots_fired` | previsto | `min_fps` | integridade |
+|---|---|---|---|---|---|---|---|
+| interceptor | 8.9 s | **9.0 s** | 1.1% | 108 | ≈107 | 29.2 | −1 acionamento |
+| maximo | 6.3 s | **6.5 s** | 3.1% | 78 | ≈76 | 29.8 | +2 acionamentos |
+
+Os números foram publicados em §5.10 **antes** da medição, e os quatro caíram dentro da folga.
+
+#### A prova de que §5.10 era isso mesmo
+
+As três lutas rodaram a ≈29 fps de mínima — a máquina segurou menos que na captura anterior, não
+mais. É um experimento controlado melhor do que o que se poderia pedir: **mesma faixa de taxa de
+quadros, defeito ausente.**
+
+| | captura 6 | captura 7 |
+|---|---|---|
+| `min_fps` do `interceptor` | 29.9 | 29.2 |
+| excedente de acionamentos | **+24** | **−1** |
+
+Antes, 30 fps custavam 2.0 s de relógio perdido; agora não custam nada. E o TTK subiu de 8.1 s para
+9.0 s: é o valor honesto aparecendo, não uma piora.
+
+#### O `striker` continua sem captura válida
+
+O arquivo rotulado `striker` da sétima rodada é uma segunda corrida de `interceptor`.
+`shots_fired: 106` não é divisível por 3, e o `vulcan_spread` dispara exatamente 3 pelotas por
+acionamento (`WeaponSystem.firePrimary`); a cadência medida dá 11.9 tiros/s contra os 5 do `striker`;
+e `accuracy_pct` veio 94.3%, a faixa dos lasers, não os ≈69% históricos do vulcan. O preset da cena
+nasce em `FALLBACK_PRESETS.interceptor`, então o sintoma bate com o botão **"Aplicar"** não ter sido
+clicado. **Divergência entre o rótulo do arquivo e o preset que rodou é um modo de falha real deste
+procedimento** — e `shots_fired % 3` o detecta de graça no `vulcan_spread`.
+
+De brinde, aquela corrida virou uma réplica independente: dois `interceptor` no mesmo seed deram
+8.9 s / 106 tiros e 9.0 s / 108. **A dispersão real entre corridas é de 1.1%**, contra uma tolerância
+de 5% — a folga do portão é apertada o suficiente para significar alguma coisa e larga o suficiente
+para não acusar ruído.
+
+`harness-runs.json` passa a valer com `interceptor` e `maximo`. Falta o `striker`, que é justamente
+o preset do espalhamento excessivo do §5.3 — a captura dele é o que falta para essa conversa deixar
+de ser hipótese.
+
+---
+
 ## 6. Entregável 5 — Captura de Playtest
 
 Toda partida, no harness e no estande, emite um resumo JSON: seed, `ship_spec`, resultado, TTK do
