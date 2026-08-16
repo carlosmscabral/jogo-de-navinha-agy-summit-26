@@ -252,7 +252,14 @@ export function DevHarness(): React.JSX.Element {
         <div
           ref={containerRef}
           className="flight-panel overflow-hidden rounded-xl"
-          style={{ width: 480, height: 640 }}
+          // O canvas lógico do jogo é 600x800 (`game/index.ts`); um tamanho fixo menor que isso
+          // faz o `Phaser.Scale.FIT` encolher tudo por um fator constante -- 480x640 era 0.8x,
+          // sempre, independente da janela. Isso distorcia qualquer julgamento de dificuldade
+          // feito no harness: o jogo real (`App.tsx`) dimensiona o container por `94vh`, que em
+          // qualquer tela normal renderiza maior que o nativo, não menor. `min(800px, 85vh)` com
+          // a proporção travada em 3:4 dá escala 1:1 (nativa) em qualquer janela alta o
+          // suficiente, e só encolhe graciosamente se a tela for genuinamente pequena.
+          style={{ height: 'min(800px, 85vh)', aspectRatio: '3 / 4' }}
         />
         <div className="flex gap-2">
           <button
