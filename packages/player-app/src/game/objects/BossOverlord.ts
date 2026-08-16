@@ -284,7 +284,16 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
 
     } else {
       // Phase 3 BERSERK: 18-Way Starburst Storm + Double Forward Sweepers
-      this.fireAngle += 0.32;
+      //
+      // O incremento de rotação (0.32 rad) era 91.7% do espaçamento entre os 18 raios (20°, ou
+      // 0.349 rad) -- sobrava só 1.67° de folga real por salva. A cada nova salva, os raios quase
+      // caem exatamente nos vãos da anterior, e como o padrão nunca para de nascer (12.5 salvas/s),
+      // isso empilha num disco quase sólido em rotação, sem brecha perceptível pra acompanhar.
+      // "BERSERK" pode continuar sendo a fase mais intensa sem ser matematicamente sem vão: 0.45
+      // rad é 29% acima do espaçamento, então cada salva abre uma folga real (~5.8°) que gira
+      // junto com o padrão -- dá pra achar o vão e seguir ele, em vez de reagir a uma parede.
+      // Nenhuma bala a mais, nenhuma bala mais rápida, cadência intocada.
+      this.fireAngle += 0.45;
       for (let i = 0; i < 18; i++) {
         const rad = this.fireAngle + (i * Math.PI) / 9;
         const vx = Math.cos(rad) * (bulletSpeed + 50);

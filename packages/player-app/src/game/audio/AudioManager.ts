@@ -325,6 +325,29 @@ export class AudioManager {
 
       osc.connect(gain);
       gain.connect(this.ctx.destination);
+
+      // Confirmado por playtest (2026-08-16): o tom por si só se perde durante o boss, onde
+      // bumbo/hit/explosão já tocam a cada ~100ms. Aumentar o ganho do tom competiria com o
+      // resto na mesma faixa grave; um transiente curto de ruído agudo (mesma técnica do
+      // hi-hat/snare acima) corta pela textura por timbre, não por volume.
+      const clickBuffer = this.ctx.createBuffer(1, this.ctx.sampleRate * 0.03, this.ctx.sampleRate);
+      const clickData = clickBuffer.getChannelData(0);
+      for (let i = 0; i < clickData.length; i++) {
+        clickData[i] = Math.random() * 2 - 1;
+      }
+      const click = this.ctx.createBufferSource();
+      click.buffer = clickBuffer;
+      const clickFilter = this.ctx.createBiquadFilter();
+      clickFilter.type = 'highpass';
+      clickFilter.frequency.value = 4000;
+      const clickGain = this.ctx.createGain();
+      clickGain.gain.setValueAtTime(0.4, this.ctx.currentTime);
+      clickGain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.03);
+      click.connect(clickFilter);
+      clickFilter.connect(clickGain);
+      clickGain.connect(this.ctx.destination);
+      click.start();
+      click.stop(this.ctx.currentTime + 0.03);
     } catch {
       // Ignored
     }
