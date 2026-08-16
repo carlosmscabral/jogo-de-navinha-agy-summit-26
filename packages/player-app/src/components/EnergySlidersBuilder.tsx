@@ -3,6 +3,83 @@ import { EnergySliders, McpServerName, SubagentName, PilotInfo, computeBaselineA
 import { Zap, Shield, Sparkles, Crosshair, ChevronRight, CheckCircle2, Cpu, Flame, Gauge, Layers, Award, ArrowLeft } from 'lucide-react';
 import { detectSynergyPreview } from './synergy-preview';
 
+const SLIDER_MIN = 10;
+const SLIDER_MAX = 50;
+const ENERGY_BUDGET = 100;
+
+/**
+ * Redistribui `delta` (positivo ou negativo) entre `keys`, sem estourar `[SLIDER_MIN,
+ * SLIDER_MAX]` em nenhuma e sem perder resto quando uma ou mais já estão no limite. A versão
+ * anterior dividia `delta` em partes iguais, clampava cada uma isoladamente, e jogava a sobra
+ * inteira numa única chave fixa (`otherKeys[0]`) -- se essa chave TAMBÉM estivesse no limite, o
+ * erro sobrevivia, silencioso. Um playtest real do `agy` (2026-08-16) produziu offense=10,
+ * speed=10 (os dois no piso) e tech=50 (no teto) simultaneamente, e a soma final saiu 107, não
+ * 100 -- 7 PU de graça que nenhuma fórmula de atributo sabia que não deveriam existir.
+ *
+ * Aqui, cada rodada só empresta das chaves que ainda têm espaço, na proporção que sobrou; uma
+ * chave que já bateu no limite sai da rodada seguinte, e o que ela não conseguiu absorver volta
+ * pro `remaining` pra tentar de novo nas que restaram. Como a soma das quatro é sempre 100 e
+ * cada uma cabe em [10,50], sempre existe alguma combinação válida -- o problema nunca foi
+ * matemático, era o algoritmo desistir cedo demais.
+ */
+function distributeDelta(values: Record<string, number>, keys: string[], delta: number): Record<string, number> {
+  const next = { ...values };
+  let remaining = delta;
+  let pool = keys.filter((k) => (delta > 0 ? next[k] < SLIDER_MAX : next[k] > SLIDER_MIN));
+
+  while (Math.abs(remaining) > 1e-9 && pool.length > 0) {
+    const share = remaining / pool.length;
+    let appliedThisPass = 0;
+    const nextPool: string[] = [];
+
+    for (const k of pool) {
+      const desired = next[k] + share;
+      const clamped = Math.max(SLIDER_MIN, Math.min(SLIDER_MAX, desired));
+      appliedThisPass += clamped - next[k];
+      next[k] = clamped;
+      if (clamped > SLIDER_MIN && clamped < SLIDER_MAX) nextPool.push(k);
+    }
+
+    remaining -= appliedThisPass;
+    pool = nextPool;
+  }
+
+  return next;
+}
+
+/**
+ * Recalcula as quatro após o usuário arrastar `changedKey` até `value`: `value` fica fixo (o
+ * `<input>` já o clampou em [10,50]), e as outras três absorvem a diferença via
+ * `distributeDelta`. `Math.round` em cada uma pode deixar a soma a 1-2 PU de 100 (arredondamento
+ * independente por chave); o laço final fecha essa folga na primeira chave com espaço --
+ * exportada e testada isoladamente porque é aqui que o defeito anterior vivia.
+ */
+export function rebalanceEnergySliders(sliders: EnergySliders, changedKey: keyof EnergySliders, value: number): EnergySliders {
+  const clampedValue = Math.max(SLIDER_MIN, Math.min(SLIDER_MAX, value));
+  const otherKeys = (Object.keys(sliders) as (keyof EnergySliders)[]).filter((k) => k !== changedKey);
+  const diff = clampedValue - sliders[changedKey];
+
+  // `EnergySliders` não declara índice de string (é uma interface fechada nas quatro chaves de
+  // propósito, em `@jogo/shared`), mas `distributeDelta` é deliberadamente genérica -- o cast
+  // reflete que ela nunca vê nada além dessas quatro chaves.
+  const distributed = distributeDelta(sliders as unknown as Record<string, number>, otherKeys, -diff);
+  const next: EnergySliders = { ...sliders, [changedKey]: clampedValue };
+  for (const k of otherKeys) {
+    next[k] = Math.round(distributed[k]);
+  }
+
+  let roundingError = ENERGY_BUDGET - Object.values(next).reduce((a, b) => a + b, 0);
+  for (const k of otherKeys) {
+    if (roundingError === 0) break;
+    const room = roundingError > 0 ? SLIDER_MAX - next[k] : next[k] - SLIDER_MIN;
+    const applied = roundingError > 0 ? Math.min(room, roundingError) : Math.max(-room, roundingError);
+    next[k] += applied;
+    roundingError -= applied;
+  }
+
+  return next;
+}
+
 interface EnergySlidersBuilderProps {
   pilot: PilotInfo;
   onProceedToTerminal: (config: {
@@ -28,6 +105,12 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
   ]);
 
   const [selectedTacticalAgent, setSelectedTacticalAgent] = useState<'combat-strategist' | 'systems-engineer'>('combat-strategist');
+
+  // Antes era o texto fixo "100 / 100 PU", que não lia `sliders` -- mascarava exatamente o
+  // defeito de `rebalanceEnergySliders` que permitiu a soma derivar pra 107 num playtest real
+  // (2026-08-16): a régua sempre dizia "100/100" mesmo quando não era. Calculado ao vivo agora,
+  // pra qualquer regressão futura no rebalanceamento aparecer na tela em vez de ficar invisível.
+  const slidersSum = Object.values(sliders).reduce((a, b) => a + b, 0);
 
   const mcpCount = selectedMcps.length;
   const overclockMultiplier = mcpCount === 1 ? 1.2 : mcpCount === 2 ? 1.1 : 1.0;
@@ -64,21 +147,7 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
   };
 
   const handleSliderChange = (key: keyof EnergySliders, value: number) => {
-    const diff = value - sliders[key];
-    const otherKeys = (Object.keys(sliders) as (keyof EnergySliders)[]).filter((k) => k !== key);
-
-    const remainder = diff / otherKeys.length;
-    const newSliders = { ...sliders, [key]: value };
-
-    for (const k of otherKeys) {
-      newSliders[k] = Math.max(10, Math.min(50, Math.round(sliders[k] - remainder)));
-    }
-
-    const currentSum = Object.values(newSliders).reduce((a, b) => a + b, 0);
-    const correction = 100 - currentSum;
-    newSliders[otherKeys[0]] = Math.max(10, Math.min(50, newSliders[otherKeys[0]] + correction));
-
-    setSliders(newSliders);
+    setSliders(rebalanceEnergySliders(sliders, key, value));
   };
 
   const toggleMcp = (mcp: McpServerName) => {
@@ -228,7 +297,9 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
           <div className="md:col-span-7 space-y-3.5 bg-slate-900/60 p-5 rounded-2xl border border-slate-800">
             <div className="flex justify-between items-center mb-1 font-mono">
               <span className="text-xs font-bold text-slate-300 uppercase">Matriz de Energia</span>
-              <span className="text-xs text-[#10b981] font-bold">100 / 100 PU</span>
+              <span className={`text-xs font-bold ${slidersSum === 100 ? 'text-[#10b981]' : 'text-alert-red'}`}>
+                {slidersSum} / 100 PU
+              </span>
             </div>
 
             {/* Offense */}
