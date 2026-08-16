@@ -1,4 +1,4 @@
-import { BALANCE, ScoreCalculator, SeededRandom, applySynergies } from '@jogo/shared';
+import { BALANCE, ScoreCalculator, SeededRandom, applySynergies, resolveFireCadence } from '@jogo/shared';
 import type { ShipSpecification } from '@jogo/shared';
 
 /**
@@ -40,6 +40,70 @@ export interface SimResult {
 }
 
 const TICK_MS = 1000 / 60;
+
+/**
+ * Fração das pelotas *externas* do `vulcan_spread` que chega a acertar o boss. A pelota central
+ * sobe reta e sempre acerta; as outras duas saem a ±`spread_angle` e passam ao lado quando o boss
+ * derivou o suficiente na horizontal.
+ *
+ * Não é um botão de balanceamento e não é um número inventado: é geometria do motor, medida, com
+ * duas derivações independentes que concordam. **Medida** (captura de 2026-08-16, preset striker,
+ * god mode e disparo automático): 168 pelotas disparadas, 118 acertos. Descontando as ≈11.5 ainda
+ * em voo quando o boss morreu (460px a 600px/s são 0.77s, a 5 salvas/s de 3 pelotas), chegaram
+ * ≈156.5 e acertaram 75.4%; com a central sempre acertando, `(1 + 2q) / 3 = 0.754` dá `q ≈ 0.63`.
+ * **Geométrica**: a 15° e 460px de subida, a pelota externa desloca `460 × tan 15° = 123px`; contra
+ * a meia-largura de 150px do corpo do boss, ela erra assim que o boss deriva mais de 27px do eixo
+ * da nave, o que numa amplitude de deriva de ±80px dá `q ≈ 0.61`.
+ *
+ * Fica aqui e não em `BALANCE` de propósito: `BALANCE` é o contrato numérico que o *motor* lê, e o
+ * motor não lê isto -- ele produz esse comportamento a partir de `spread_angle`, da velocidade do
+ * projétil e da hitbox do boss. Mexer neste valor muda o que o modelo prevê, nunca o que o jogo faz.
+ */
+export const VULCAN_OUTER_PELLET_HIT_RATE = 0.63;
+
+/**
+ * Distância, em pixels, que um projétil primário sobe entre o cano e a borda do boss, na geometria
+ * de captura (nave parada no ponto de spawn, boss no ponto de spawn). Transcrição dos literais do
+ * motor, com procedência:
+ *
+ * - tela 600×800 (`main.ts`), nave nasce em `scale.height - 120` = y 680 (`MainGameScene.create`);
+ * - boss nasce em y 140 com `body.setSize(300, 140)` centrado, borda inferior em y 210
+ *   (`MainGameScene.spawnBoss`, construtor de `BossOverlord`);
+ * - o cano fica 20px acima da nave no laser/plasma e 10px no vulcan (`WeaponSystem.firePrimary`);
+ * - o overlap dispara na *borda* do projétil: meia-altura 8px na textura de 16px do plasma,
+ *   6px na de 12px do vulcan (`initBulletPools`).
+ *
+ * A oscilação vertical do boss (`BALANCE.boss.hover_range_px`, 2.5 a 4.5px) cabe no arredondamento.
+ */
+const BOSS_BOTTOM_EDGE_Y = 140 + 140 / 2;
+const PRIMARY_TRAVEL_PX = {
+  /** 680 - 20 - 8 - 210 */
+  laser: 680 - 20 - 8 - BOSS_BOTTOM_EDGE_Y,
+  /** 680 - 10 - 6 - 210 */
+  vulcan: 680 - 10 - 6 - BOSS_BOTTOM_EDGE_Y
+};
+
+/**
+ * Tempo de voo do projétil primário, em milissegundos.
+ *
+ * O modelo não tem projéteis em voo, e por muito tempo isso pareceu barato: o cano dispara na
+ * cadência certa e os acertos chegam na cadência certa. O que ele perde é o *primeiro* acerto --
+ * uma vez que o cano encheu, cada disparo seguinte chega um intervalo depois do anterior, então o
+ * voo custa exatamente uma travessia no TTK total, não uma por tiro.
+ *
+ * Por ser um atraso uniforme, aplicá-lo como um adiamento do início da cadência é exato, não uma
+ * aproximação: tudo o que acontece depois -- inclusive as duas janelas de invulnerabilidade, que
+ * começam quando um acerto entra -- desloca junto, e o conjunto de acertos desperdiçado dentro
+ * delas é o mesmo.
+ *
+ * Vale 0.55s a 0.76s conforme a arma. Antes da correção de cadência de 2026-08-16 (Spec 09 §5.9)
+ * esse termo estava escondido: os dois erros tinham sinais opostos e se cancelavam por acaso nos
+ * lasers. Com a cadência certa nos dois lados, ele virou o resíduo inteiro.
+ */
+function primaryFlightMs(type: string, bulletSpeed: number): number {
+  const travelPx = type === 'vulcan_spread' ? PRIMARY_TRAVEL_PX.vulcan : PRIMARY_TRAVEL_PX.laser;
+  return (travelPx / bulletSpeed) * 1000;
+}
 
 /** Mirrors the ternary chain `BossOverlord.takeDamage`/`update` use for phase-indexed constants. */
 function mitigationForPhase(phase: 1 | 2 | 3): number {
@@ -125,6 +189,7 @@ export function simulateMatch(input: SimInput): SimResult {
     ? Math.round(weapons.primary.damage * BALANCE.weapons.primary.vulcan_pellet_factor)
     : weapons.primary.damage;
   const primaryFireIntervalMs = 1000 / weapons.primary.fire_rate;
+  const primaryFlightDelayMs = primaryFlightMs(weapons.primary.type, weapons.primary.bullet_speed);
 
   const secondaryFiresAtAll = weapons.secondary.type !== 'none';
   const secondaryCooldownMs = weapons.secondary.cooldown_seconds * 1000;
@@ -171,14 +236,24 @@ export function simulateMatch(input: SimInput): SimResult {
         }
       }
     } else {
-      // Primary cadence.
-      if (elapsedMs - lastPrimaryFireMs >= primaryFireIntervalMs) {
-        lastPrimaryFireMs = elapsedMs;
+      // Primary cadence. `resolveFireCadence` é literalmente a mesma função que
+      // `WeaponSystem.firePrimary` chama -- não uma transcrição dela. O relógio aqui é o do
+      // *acerto*, não o do gatilho: o cano começa a cuspir no instante em que o boss aparece, mas
+      // a primeira pelota só chega uma travessia depois (ver `primaryFlightMs`).
+      const firstHitDueMs = bossSpawnMs + primaryFlightDelayMs;
+      const nextPrimaryAnchor =
+        elapsedMs >= firstHitDueMs
+          ? resolveFireCadence(lastPrimaryFireMs, elapsedMs, primaryFireIntervalMs)
+          : null;
+      if (nextPrimaryAnchor !== null) {
+        lastPrimaryFireMs = nextPrimaryAnchor;
         for (let p = 0; p < pelletCount; p++) {
           if (boss.hp <= 0) break;
-          if (rng.chance(skill.accuracy * skill.fireUptime)) {
-            applyBossHit(boss, perPelletDamage);
-          }
+          if (!rng.chance(skill.accuracy * skill.fireUptime)) continue;
+          // A central (p === 0) sobe reta; as externas ainda precisam pegar o boss onde ele está.
+          // Só o `vulcan_spread` tem mais de uma pelota, então isto não toca laser nem plasma.
+          if (p > 0 && !rng.chance(VULCAN_OUTER_PELLET_HIT_RATE)) continue;
+          applyBossHit(boss, perPelletDamage);
         }
       }
 
@@ -188,6 +263,8 @@ export function simulateMatch(input: SimInput): SimResult {
       // (`drone_escort` was removed from the type entirely, not just from this model), and 'none'
       // is already excluded by `secondaryFiresAtAll` above, so the two branches below are
       // exhaustive for every type reachable here.
+      // Carimba o instante do tique, espelhando `WeaponSystem.fireSecondary` -- que de propósito
+      // *não* usa `resolveFireCadence`, porque a recarga de uma habilidade conta a partir do uso.
       if (boss.hp > 0 && secondaryFiresAtAll && elapsedMs - lastSecondaryFireMs >= secondaryCooldownMs) {
         lastSecondaryFireMs = elapsedMs;
         if (rng.chance(skill.secondaryUptime)) {
