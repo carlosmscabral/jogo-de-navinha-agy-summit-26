@@ -246,14 +246,13 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
     const bulletSpeed = (this.phase === 3 ? BALANCE.boss.bullet_speed.phase3 : this.phase === 2 ? BALANCE.boss.bullet_speed.phase2 : BALANCE.boss.bullet_speed.phase1) * this.difficultyMultiplier;
 
     if (this.phase === 1) {
-      // Phase 1: Dual Muzzle Sniper Lasers + 5-Way Plasma Fan
-      const angleLeft = Phaser.Math.Angle.Between(this.x - 110, this.y + 50, playerX, playerY);
-      const angleRight = Phaser.Math.Angle.Between(this.x + 110, this.y + 50, playerX, playerY);
-
-      this.spawnBullet(this.x - 110, this.y + 50, Math.cos(angleLeft) * (bulletSpeed + 80), Math.sin(angleLeft) * (bulletSpeed + 80), 'bullet_boss_laser');
-      this.spawnBullet(this.x + 110, this.y + 50, Math.cos(angleRight) * (bulletSpeed + 80), Math.sin(angleRight) * (bulletSpeed + 80), 'bullet_boss_laser');
-
-      // 5-Way Spread from inner cannons
+      // Fase 1: só o leque de 5 vias -- os dois lasers sniper saíram depois do playtest de
+      // 2026-08-16. Eles miravam a posição exata do jogador a cada disparo, sem antecipação
+      // nenhuma: parar de se mover por um instante virava acerto garantido no próximo, o que
+      // forçava esquiva ativa constante mesmo na fase que o design já pretendia ser "onde o
+      // visitante iniciante passa a luta inteira" (ver o comentário de `bullet_damage` acima). O
+      // leque sozinho, com seus 5 ângulos fixos, tem corredores reais o bastante para achar um e
+      // ficar nele -- é a fase de leitura, não a de perseguição.
       const angles = [-0.5, -0.25, 0, 0.25, 0.5];
       for (const a of angles) {
         const rad = Math.PI / 2 + a;
