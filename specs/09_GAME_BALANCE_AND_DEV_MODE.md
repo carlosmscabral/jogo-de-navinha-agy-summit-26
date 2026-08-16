@@ -1026,6 +1026,138 @@ balanceamento antes de saber medi-lo foi exatamente o que produziu D12.
 
 ---
 
+### 5.13. Zero era um instante alcançável (2026-08-16)
+
+Primeiro relato vindo de partida jogada de verdade, não de captura em God mode:
+
+> "no momento zero do jogo, a barra de arma secundária (míssil, no caso), está cheia mas não consigo
+> atirar... só depois de um tempo."
+
+`WeaponSystem` guardava as duas âncoras de cadência em `0`. Num relógio que **começa em zero** — e o
+`worldTimeMs` do §5.10 começa —, `0` não é sentinela de "nunca disparou": é um instante alcançável.
+"Nunca disparou" e "disparou exatamente agora" viraram o mesmo estado, e `time - 0 < cooldownMs`
+calou a arma pela recarga inteira.
+
+O que denuncia o defeito é que **duas funções do mesmo arquivo respondiam a mesma pergunta de formas
+diferentes**. `getSecondaryStatus`, que desenha a barra, tinha um caso especial `=== 0`;
+`fireSecondary`, que decide o tiro, não tinha. A HUD dizia PRONTO! desde o primeiro quadro porque
+remendava o sintoma; o gatilho dizia não porque não remendava.
+
+| preset | secundária | silêncio inicial | a HUD dizia |
+|---|---|---|---|
+| interceptor | `homing_missiles` | 6 s | PRONTO! |
+| vanguard | `emp_burst` | 8 s | PRONTO! |
+| striker | `emp_burst` | 12 s | PRONTO! |
+
+A primária tinha o defeito idêntico, e ninguém o veria nunca: o silêncio dela é de um intervalo de
+cadência — 83 ms no `interceptor`, 200 ms no `vanguard`.
+
+#### Foi §5.10 que armou o gatilho
+
+O defeito é anterior, e era intermitente. Antes de `1a0c3a6` a cena passava o `time` do Phaser —
+relógio de parede em ms desde o boot, que na primeira partida de uma aba já vale alguns milhares.
+`time - 0` normalmente já passava da recarga, e a secundária funcionava por acidente. Ao trocar o
+relógio por `worldTimeMs`, §5.10 tornou `0` o valor real do primeiro quadro e transformou um defeito
+latente e não-determinístico em um reproduzível em 100% das partidas. **Consertar o relógio expôs
+quem dependia do relógio errado.**
+
+#### O que foi corrigido
+
+As duas âncoras nascem em `-Infinity`, e o caso especial `=== 0` saiu de `getSecondaryStatus`. Não é
+invenção: é o idioma que a doc de `resolveFireCadence` já descreve — "uma âncora não-finita, usada
+para 'pode disparar já no primeiro quadro'" — e que `combat-model.ts` já aplicava nas suas duas
+âncoras desde sempre. **O simulador estava certo e a engine é que divergia dele**, o inverso da
+regra do Bloco 3, o que só se descobre jogando.
+
+Remover o `=== 0` conserta de quebra um segundo erro, do outro lado: quem disparasse legitimamente no
+quadro zero via a barra mentir PRONTO! durante a recarga toda.
+
+Cinco testes novos em `WeaponSystem.test.ts` prendem o comportamento — as duas armas disparando no
+quadro zero, a recarga ainda valendo depois do primeiro uso, e o invariante que faltava: **HUD e
+gatilho concordam em todo instante da primeira recarga**.
+
+`BossOverlord.lastFireTime` tem a mesma forma e **não** foi mexido: o boss nasce por volta dos 40 s,
+`sinceAnchor` já passou de `2 × intervalo` e `resolveFireCadence` reancora. Está correto por
+circunstância, não por construção — fica anotado como fragilidade, não como defeito.
+
+#### Alcance nas medições
+
+- **Bloco 3 (§5.12) intacto.** As capturas de conformidade proíbem `SHIFT` e comparam contra
+  `secondaryUptime: 0`. A primária perdia 200 ms no início da *partida*, não da luta do boss, que só
+  começa aos ≈40 s — `boss_ttk_s` não é tocado.
+- **Bloco 4 contaminado.** As quatro primeiras partidas jogadas (2 `interceptor`, 1 `vanguard`,
+  1 `striker`) correram sem secundária nos primeiros 6 a 12 s. Note **onde** isso pesa: o boss nasce
+  por volta dos 40 s, então na luta do boss a secundária já funcionava — o buraco é todo na fase de
+  ondas. O relato das quatro partidas foi o mesmo, "cheguei ao boss com pouca vida e morri na
+  fase 1", e é exatamente o sintoma que se espera de quem limpou as primeiras ondas sem a arma de
+  área. **Precisam ser refeitas antes de qualquer juízo sobre a dificuldade do boss.**
+- **`accuracy_pct` sobrevive.** `shots_fired` e `shots_hit` contam só a primária, pareados de
+  propósito (`MainGameScene:928`). A leitura de pontaria das três partidas vale — ver §5.14.
+
+### 5.14. O que as três partidas disseram sobre o perfil `mediano` (2026-08-16)
+
+O jogador observou que segura o gatilho sem soltar, inclusive fugindo de tiros, e perguntou como o
+simulador trata isso. A telemetria responde sozinha, porque com o gatilho travado `shots_fired /
+duration_s` mede a fração de tempo atirando:
+
+| partida | acionamentos / `duration_s` | cadência nominal | uso do gatilho |
+|---|---|---|---|
+| interceptor 1 | 566 / 47 s = 12.0/s | 12/s | ≈100% |
+| interceptor 2 | 485 / 41 s = 11.8/s | 12/s | ≈99% |
+| vanguard | 222 / 44 s = 5.05/s | 5/s | ≈100% |
+| striker | (627/3) / 41 s = 5.10/s | 5/s | ≈100% |
+
+O `striker` entra dividido por 3 porque `shots_fired` conta projéteis e o `vulcan_spread` solta 3 por
+acionamento — e 627 é divisível por 3, a mesma conferência de rótulo do §5.12.
+
+**O simulador não se importa com a decomposição.** `accuracy` e `fireUptime` são dois campos do
+`SkillProfile`, mas `combat-model.ts` só os usa multiplicados — nas duas ocorrências, o abate
+pré-boss e o acerto por pelota. O modelo tem um botão comportamental, não dois. E `accuracy_pct` da
+engine é `shots_hit / shots_fired`: os tiros dados enquanto se desvia já estão no denominador. **A
+telemetria mede exatamente o produto que o modelo consome**, o que é sorte, não projeto.
+
+| | pontaria efetiva |
+|---|---|
+| `mediano` do modelo | 0.55 × 0.7 = **38.5%** |
+| interceptor 1 | 39.9% |
+| interceptor 2 | 49.1% |
+| vanguard | 51.8% |
+| striker | 56.1% |
+
+O modelo é **pessimista** em ≈10 pontos percentuais contra este jogador. A previsão de ≈15% de
+vitória do `interceptor` no §5.3 não é otimista demais; se erra, erra para baixo.
+
+O jogador observou também que o `vulcan_spread` "precisa de menos precisão para acertar", e o
+`striker` de fato lidera a tabela. O modelo prevê o **oposto** — ele passa as pelotas externas por um
+segundo portão, `VULCAN_OUTER_PELLET_HIT_RATE`, então a pontaria agregada do vulcan deveria ficar
+*abaixo* da de um tiro único. Não é contradição ainda: `accuracy_pct` cobre a partida inteira, e o
+modelo só descreve a luta do boss, que aqui nem aconteceu. Fica como pergunta para quando houver
+partidas com boss derrotado.
+
+#### Por que o dano recebido não entra nesta conta
+
+A tentação é comparar `damage_taken / duration_s` com `hitsTakenPerSecond`. As unidades até batem —
+`damage_taken` é contagem de acertos (`ScoreCalculator.damageTakenCount`), não pontos de vida. **Os
+denominadores não batem:** o simulador só modela fogo recebido durante a luta do boss
+(`combat-model.ts:301`), enquanto a engine conta a partida inteira, dos quais ≈40 s são de ondas
+pré-boss. Dividir pelo total dilui a taxa da fase que o modelo descreve.
+
+A telemetria atual não separa dano recebido por fase, então este eixo **não é mensurável hoje** — é
+uma lacuna do instrumento, não um resultado. Anotada, sem conserto agora: o Bloco 4 precisa primeiro
+de partidas limpas.
+
+#### O que não se conclui
+
+Que os perfis devam ser recalibrados. São quatro partidas de um jogador só, que conhece o jogo, e o
+único eixo medido é a pontaria. O que se pode dizer é que o `SkillProfile` descreve um jogador
+diferente deste: o `mediano` supõe quem para de atirar e mira melhor (`fireUptime` 0.7,
+`accuracy` 0.55); o medido atira sempre e acerta menos. Como só o produto entra na conta, a previsão
+sobrevive à troca. Os campos continuam marcados `ESTIMATIVA`; recalibrar é trabalho de dados do
+evento, não de quatro amostras — e as quatro estão contaminadas pelo §5.13 em tudo que não seja
+pontaria.
+
+---
+
 ## 6. Entregável 5 — Captura de Playtest
 
 Toda partida, no harness e no estande, emite um resumo JSON: seed, `ship_spec`, resultado, TTK do

@@ -411,6 +411,20 @@ Este é o único bloco cujo critério é um **julgamento humano**, e é o ponto 
 
 > **A dificuldade que o simulador prevê é a que a partida transmite?**
 
+> ### ⚠️ A primeira rodada deste bloco foi invalidada (2026-08-16)
+>
+> Quatro partidas foram jogadas — 2 `interceptor`, 1 `vanguard`, 1 `striker` — e as quatro correram
+> **sem arma secundária nos primeiros 6 a 12 segundos**, com a HUD mostrando PRONTO! o tempo todo.
+> O defeito está descrito na [§5.13 da Spec 09](./09_GAME_BALANCE_AND_DEV_MODE.md) e já foi
+> corrigido; o buraco caía todo na fase de ondas, que é justamente onde se chega ao boss com vida
+> cheia ou não.
+>
+> **As quatro partidas não contam.** Refaça 4.1 do zero contra a build corrigida. A única leitura
+> que sobrevive delas é `accuracy_pct`, que conta só a primária (§5.14).
+>
+> O Bloco 3 **não** foi afetado: lá o `SHIFT` é proibido e a comparação é contra
+> `secondaryUptime: 0`.
+
 - [ ] **4.1 — Cinco partidas completas**
 
 Ainda em `npm run dev:game`, **com God mode DESLIGADO e "Disparo automático" DESLIGADO**, sem pular
@@ -422,6 +436,13 @@ fase, partida inteira do começo ao fim.
 > `secondaryUptime: 0.5`, `hitsTakenPerSecond: 0.4`. Gatilho travado te empurraria para perto de
 > `experiente` e você compararia contra a linha errada. **Use `SHIFT`** normalmente: o `mediano` usa
 > a secundária metade do tempo.
+>
+> **Medido na primeira rodada:** desligar o disparo automático não mudou nada — o jogador segura o
+> gatilho na mão, e `shots_fired / duration_s` deu ≈100% da cadência nominal nas quatro partidas.
+> Isso **não** invalida a comparação, porque o modelo só usa `accuracy × fireUptime` multiplicados
+> (§5.14): o produto medido ficou em ≈49%, entre o `mediano` (38,5%) e o `experiente` (72%), bem mais
+> perto do `mediano`. Continue com a caixa desligada — segurar o gatilho é comportamento de jogador
+> de verdade, e é ele que queremos medir.
 
 Distribua assim:
 
