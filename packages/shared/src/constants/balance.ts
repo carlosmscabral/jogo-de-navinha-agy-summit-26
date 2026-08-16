@@ -134,7 +134,17 @@ export const BALANCE = {
      * em que o boss bate mais forte.
      */
     bullet_damage: { phase1: 1, phase2: 2, phase3: 2 },
-    fire_cooldown_ms: { phase1: 140, phase2: 110, phase3: 80 },
+    /**
+     * 140 (2026-08-16 e antes) não entregava a intenção do comentário acima: playtests manuais
+     * relataram a fase 1 como igualmente difícil de desviar quanto as fases seguintes, com os
+     * dois padrões de tiro (leque de 5 vias + par de lasers sniper) saindo da mesma salva a
+     * 7.14/s -- suficiente para exigir movimento contínuo o tempo todo, sem a folga que "onde o
+     * iniciante passa a luta inteira" pressupõe. 175 (5.71 salvas/s, -20%) é um ajuste moderado
+     * de largada, não uma correção de bug: fase 2 e 3 ficam intocadas, então a escalada entre
+     * fases (hoje mascarada porque a fase 1 já saturava a capacidade de esquiva) passa a ser
+     * perceptível. Botão de dificuldade, sujeito a retuning no próximo round de playtest.
+     */
+    fire_cooldown_ms: { phase1: 175, phase2: 110, phase3: 80 },
     bullet_speed: { phase1: 300, phase2: 340, phase3: 380 },
     hover_speed: { phase1: 0.0018, phase2: 0.0025, phase3: 0.0035 },
     hover_range_px: { phase1: 2.5, phase2: 3.5, phase3: 4.5 }
