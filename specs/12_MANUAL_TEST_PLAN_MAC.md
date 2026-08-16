@@ -16,7 +16,7 @@ perder tempo investigando algo já conhecido.
 | 0 | Preparação | 15 min |
 | 1 | Sanidade da árvore (revalida M0) | 10 min |
 | 2 | M1 parte 1 — engine offline | 20 min |
-| 3 | Captura de conformidade (destrava o teste pulado) | 20 min |
+| 3 | Captura de conformidade (fechado em 2026-08-16; refazer após mexer em balanceamento) | 20 min |
 | 4 | M1 parte 2 — 5 partidas à mão vs. simulador | 30 min |
 | 5 | M2 parte 1 — ciclo completo com `agy` real | 30 min |
 | 6 | M2 parte 2 — falhas provocadas | 25 min |
@@ -110,28 +110,24 @@ npm test 2>&1 | tee ~/Desktop/gate-m1-m2/npm-test.txt
 **Esperado — e leia isto com atenção:**
 
 ```
-shared      57/57  ✅
+shared      67/67  ✅
 mcps         3/3   ✅
 daemon      41/41  ✅
-player-app  28/28  ✅
-sim          9/11  — 1 FALHA + 1 PULADO  ← esperado, conhecido
+player-app  34/34  ✅
+sim         13/14  — 1 FALHA  ← esperada, conhecida
 ```
 
 A falha esperada é exatamente esta, e **só** esta:
 
 ```
 ✖ mantém o espalhamento entre arquétipos abaixo do penhasco
-  espalhamento de 41.6 pontos percentuais entre o melhor e o pior arquétipo
+  espalhamento de 45.8 pontos percentuais entre o melhor e o pior arquétipo
 ```
 
-E o pulado esperado é:
-
-```
-﹣ TTK do boss no simulador está a até 5% do TTK capturado na engine real
-  # harness-runs.json está vazio
-```
-
-**Qualquer outra falha é uma regressão nova** — pare e investigue antes de continuar.
+**Qualquer outra falha é uma regressão nova** — pare e investigue antes de continuar. Em particular,
+os dois testes de conformidade do `sim` **passam** desde 2026-08-16; até então pulavam por falta de
+captura, e voltar a ver `﹣ ... harness-runs.json está vazio` significa fixture perdido, não teste
+novo.
 Contexto completo dos dois itens: [`11_KNOWN_GAPS_AND_OPEN_ITEMS.md` §2](./11_KNOWN_GAPS_AND_OPEN_ITEMS.md).
 
 - [ ] **1.3 — Matriz de balanceamento de referência**
@@ -141,15 +137,14 @@ npm run sim:balance 2>&1 | tee ~/Desktop/gate-m1-m2/sim-balance.txt
 ```
 
 Guarde este arquivo. O Bloco 4 compara as partidas jogadas à mão contra estes números. Os valores de
-referência (2026-08-15, habilidade **mediano**, após o aumento de dificuldade do boss —
-`bullet_damage` por fase + `max_hp` 800) são:
+referência (2026-08-16, habilidade **mediano**, contra o modelo já conferido com a engine real) são:
 
 | Arquétipo | Vitórias | TTK p50 |
 |-----------|----------|---------|
-| `interceptor` | 10,2% | 15,9s |
-| `vanguard` | 43,0% | 18,0s |
-| `striker` | 1,3% | 18,2s |
-| `maximo` | 99,9% | 9,6s |
+| `interceptor` | 14,9% | 14,6s |
+| `vanguard` | 46,2% | 17,4s |
+| `striker` | 0,4% | 21,4s |
+| `maximo` | 100,0% | 9,2s |
 
 Se a sua execução divergir muito destes números **com o mesmo commit**, algo está errado no
 ambiente — o simulador é determinístico.
@@ -236,7 +231,7 @@ Só depois de terminar este bloco.
 
 ---
 
-## Bloco 3 — Captura de conformidade (destrava o teste pulado)
+## Bloco 3 — Captura de conformidade (FECHADO em 2026-08-16)
 
 Este bloco produz os dados que faltam para
 [`packages/sim/fixtures/harness-runs.json`](../packages/sim/fixtures/harness-runs.json). É o item de
@@ -288,21 +283,26 @@ contra a engine real**.
 > lenta e a cadência, que §5.9 tinha posto no relógio de parede, não. A cena inteira passou a rodar
 > em `worldTimeMs`. Ver [Spec 09 §5.10](./09_GAME_BALANCE_AND_DEV_MODE.md).
 >
-> A sétima **fechou o portão em dois dos três presets**: `interceptor` 9.0 s / 108 tiros contra
-> 8.9 / ≈107 previstos (1.1%), `maximo` 6.5 s / 78 contra 6.3 / ≈76 (3.1%). Os números tinham sido
-> publicados antes da medição. As três lutas rodaram a ≈29 fps de mínima — menos que a captura
-> anterior — e mesmo assim os dois relógios da engine concordaram: contra os **+24** acionamentos
-> excedentes que o `interceptor` produzia a 29.9 fps, agora são **−1**. Mesma faixa de taxa de
-> quadros, defeito ausente. Ver [Spec 09 §5.11](./09_GAME_BALANCE_AND_DEV_MODE.md).
+> A sétima **fechou o portão nos três presets**, contra números publicados antes da medição:
 >
-> **Falta só o `striker`.** A corrida rotulada assim na sétima rodada era uma segunda corrida de
-> `interceptor`: `shots_fired: 106` não é divisível por 3, e o `vulcan_spread` solta exatamente 3
-> pelotas por acionamento. O preset da cena nasce em `interceptor`, então o sintoma é o botão
-> **"Aplicar"** não ter sido clicado no passo 3.1.
+> | preset | previsto | medido | desvio | tiros | previsto | `min_fps` |
+> |---|---|---|---|---|---|---|
+> | `striker` | 11.2 s | **11.5 s** | 2.6% | 171 | ≈168 | 29.2 |
+> | `interceptor` | 8.9 s | **9.0 s** | 1.1% | 108 | ≈107 | 29.2 |
+> | `maximo` | 6.3 s | **6.5 s** | 3.1% | 78 | ≈76 | 29.8 |
 >
-> **O modelo prevê, para o `striker`: 11.2 s / ≈168 tiros** (56 acionamentos × 3 pelotas), com ±2
-> acionamentos de folga. É o preset do espalhamento excessivo de §5.3 — a captura dele é o que falta
-> para essa conversa deixar de ser hipótese.
+> As lutas rodaram a ≈29 fps de mínima — menos que a captura anterior — e mesmo assim os dois
+> relógios da engine concordaram: contra os **+24** acionamentos excedentes que o `interceptor`
+> produzia a 29.9 fps, agora são **−1**. Mesma faixa de taxa de quadros, defeito ausente. Ver
+> [Spec 09 §5.11 e §5.12](./09_GAME_BALANCE_AND_DEV_MODE.md).
+>
+> O `striker` precisou de recaptura: a corrida rotulada assim na primeira tentativa era uma segunda
+> corrida de `interceptor` — `shots_fired: 106` não é divisível por 3, e o `vulcan_spread` solta
+> exatamente 3 pelotas por acionamento. O preset da cena nasce em `interceptor`, então o sintoma foi
+> o botão **"Aplicar"** não ter sido clicado no passo 3.1. Daí o passo 3.6b.
+>
+> **Este bloco está fechado.** Refaça-o depois de qualquer mexida em `BALANCE`, na engine ou em
+> `combat-model.ts` — o fixture versionado é uma medição, e medições envelhecem.
 
 Procedimento canônico e completo:
 [`packages/sim/fixtures/README.md`](../packages/sim/fixtures/README.md). O roteiro abaixo é o mesmo,
@@ -350,17 +350,16 @@ De cada JSON, leia `telemetry.boss_ttk_s`, `telemetry.shots_fired` e
 
 ```json
 [
-  { "preset": "striker", "seed": 1, "boss_ttk_s": 0.0, "shots_fired": 0, "boss_fight_min_fps": 0 },
+  { "preset": "striker", "seed": 1, "boss_ttk_s": 11.5, "shots_fired": 171, "boss_fight_min_fps": 29.2 },
   { "preset": "interceptor", "seed": 1, "boss_ttk_s": 9.0, "shots_fired": 108, "boss_fight_min_fps": 29.2 },
   { "preset": "maximo", "seed": 1, "boss_ttk_s": 6.5, "shots_fired": 78, "boss_fight_min_fps": 29.8 }
 ]
 ```
 
-As duas últimas linhas são a sétima captura, já no arquivo e já passando nos dois portões — só
-substitua se quiser recapturá-las. **A linha do `striker` é a que falta**; troque os zeros pelo valor
-medido. `shots_fired` é obrigatório: é o segundo relógio da engine, e é ele que o teste de
-integridade usa para reprovar uma captura corrompida antes de o portão de conformidade dar qualquer
-veredito sobre o modelo.
+Esses são os valores da sétima captura, já versionados e já passando — substitua pelos seus.
+`shots_fired` é obrigatório: é o segundo relógio da engine, e é ele que o teste de integridade usa
+para reprovar uma captura corrompida antes de o portão de conformidade dar qualquer veredito sobre o
+modelo.
 
 - [ ] **3.8 — Rodar a conformidade**
 
@@ -369,9 +368,8 @@ npm run test --workspace=packages/sim
 ```
 
 **Critério:** os dois testes **executam** (deixaram de pular na sétima captura) e passam para os
-**três** presets. Com `interceptor` e `maximo` já verdes, o veredito desta rodada é sobre o
-`striker`. Se passar, o simulador está validado contra a engine real e o item §2.2 das lacunas está
-fechado.
+**três** presets. Com isso o simulador está validado contra a engine real e o item §2.2 das lacunas
+está fechado.
 
 > Uma falha da engine em `packages/sim` continua saindo no meio de 14 testes, dos quais um —
 > a asserção de espalhamento por arquétipo — **já falha de propósito** e está fora de escopo aqui.
@@ -429,10 +427,17 @@ ao fim. Distribua assim:
 - [ ] **4.2 — Comparar com o simulador**
 
 Confronte com `~/Desktop/gate-m1-m2/sim-balance.txt`, linha `mediano`:
-`interceptor` ≈9%, `striker` ≈1%, `vanguard` ≈52%.
+`interceptor` ≈15%, `striker` ≈0,4%, `vanguard` ≈46%.
+
+> **Este bloco vale mais do que valia.** Até o Bloco 3 fechar, ele testava um simulador não
+> verificado contra a mão humana e não havia como saber, em caso de discordância, de que lado estava
+> o erro. Agora o TTK do modelo está confirmado a menos de 3% do da engine nos três presets — então
+> uma discordância aqui aponta para o que o TTK **não** mede: esquiva, pressão de projéteis
+> inimigos, e o quanto os perfis de habilidade do §5.1 (que continuam sendo chute) se parecem com
+> gente de verdade.
 
 **Critério de aprovação:** o resultado das 5 partidas é **compatível** com essas previsões. Não se
-espera correspondência estatística — 5 amostras não medem 9%. O que se espera é ausência de
+espera correspondência estatística — 5 amostras não medem 15%. O que se espera é ausência de
 contradição grosseira:
 
 - Vencer com `striker` logo de cara, ou vencer 4 de 5 no geral → **o modelo está errado**, M1 não
@@ -448,10 +453,11 @@ não passou** e o simulador precisa ser corrigido antes da Fase C — a Fase D v
 
 - [ ] **4.4 — Anotar a disparidade percebida**
 
-Independentemente do resultado: você acabou de jogar `striker` e `vanguard`. A diferença de ≈50 pp
+Independentemente do resultado: você acabou de jogar `striker` e `vanguard`. A diferença de ≈46 pp
 entre eles ([§2.1 das lacunas](./11_KNOWN_GAPS_AND_OPEN_ITEMS.md)) é gritante na mão, ou passa
 despercebida? Essa impressão é o dado que falta para decidir se vale reequilibrar
-`fallback-presets.ts` antes do evento.
+`fallback-presets.ts` antes do evento — e, desde o Bloco 3, é o **único** dado que falta: o número
+já não está sob suspeita.
 
 ---
 

@@ -1,7 +1,7 @@
 # 11 — Lacunas Conhecidas e Itens em Aberto
 
-**Estado em 2026-08-14, após o merge das Fases A e B de
-[`10_IMPLEMENTATION_PLAN.md`](./10_IMPLEMENTATION_PLAN.md).**
+**Estado em 2026-08-16, após o merge das Fases A e B de
+[`10_IMPLEMENTATION_PLAN.md`](./10_IMPLEMENTATION_PLAN.md) e o fechamento do §2.2.**
 
 Este documento existe para que nada que está quebrado, não verificado ou deliberadamente adiado
 fique só na cabeça de quem implementou. Ele é a lista honesta do que **não** está pronto. Cada item
@@ -29,41 +29,50 @@ real → voo → debriefing. O que falta na Fase C é a persistência em nuvem; 
 
 ## 2. Verificações automatizadas que não passam
 
-`npm test` na raiz roda 140 testes. **138 passam, 1 falha, 1 é pulado.** As duas exceções são
-conhecidas, rastreadas aqui, e nenhuma delas é intermitente — as duas falham/pulam de forma
-determinística, sempre pelo mesmo motivo.
+`npm test` na raiz roda 159 testes. **158 passam, 1 falha.** A exceção é conhecida, rastreada aqui, e
+não é intermitente — falha de forma determinística, sempre pelo mesmo motivo. O item pulado do §2.2
+**fechou em 2026-08-16**; ficou registrado abaixo porque a maneira como fechou é o que dá peso ao
+§2.1.
 
 ### 2.1 FALHA — `mantém o espalhamento entre arquétipos abaixo do penhasco`
 
 `packages/sim/src/balance-gate.test.ts`
 
 ```
-AssertionError: espalhamento de 41.6 pontos percentuais entre o melhor e o pior arquétipo
+AssertionError: espalhamento de 45.8 pontos percentuais entre o melhor e o pior arquétipo
 ```
 
 O portão de balanceamento tem quatro condições. **Três passam.** A quarta é esta.
 
-Taxas de vitória na habilidade **mediano**, 2.000 seeds (`npm run sim:balance`, 2026-08-15, após o
-aumento de dificuldade do boss — `BALANCE.boss.bullet_damage` por fase + `max_hp` 800):
+Taxas de vitória na habilidade **mediano**, 2.000 seeds (`npm run sim:balance`, 2026-08-16, contra o
+modelo de combate já conferido com a engine real — ver §2.2):
 
 | Arquétipo | Vitórias (mediano) | No portão? |
 |-----------|--------------------|------------|
-| `vanguard` | **43,0%** | sim — âncora superior |
-| `interceptor` | 10,2% | sim |
-| `glass_cannon` | 6,7% | sim |
-| `striker` | **1,3%** | sim — âncora inferior |
-| `maximo` | 99,9% | não (sintético) |
+| `vanguard` | **46,2%** | sim — âncora superior |
+| `interceptor` | 14,9% | sim |
+| `glass_cannon` | 7,8% | sim |
+| `striker` | **0,4%** | sim — âncora inferior |
+| `maximo` | 100,0% | não (sintético) |
 | `vulcan_max` | 100,0% | não (sintético) |
 | `minimo` | 0,0% | não (sintético) |
-| `tanque` | 0,5% | não (sintético) |
+| `tanque` | 1,3% | não (sintético) |
 
-- Taxa agregada (média das células `mediano` do portão): **15,3%** — dentro da banda de 15-25%. ✅
+- Taxa agregada (média das células `mediano` do portão): **17,3%** — dentro da banda de 15-25%. ✅
 - Nenhum arquétipo do portão em 0% ou 100% na habilidade mediana. ✅
 - Nenhum arquétipo com secundária de dano zero contra o boss (exceto `emp_burst`, esperado). ✅
-- Espalhamento `vanguard` − `striker` = **≈41,6 pp**, contra um teto de 35 pp. ❌
+- Espalhamento `vanguard` − `striker` = **≈45,8 pp**, contra um teto de 35 pp. ❌
 
-> O aumento de dificuldade **melhorou** este espalhamento (era ≈50,7 pp), mas não o fechou: a causa
-> raiz continua sendo a diferença de estatísticas-base entre os dois presets, não o boss.
+> **Os números mudaram desde 2026-08-15** (era 43,0% / 10,2% / 6,7% / 1,3%, espalhamento ≈41,6 pp), e
+> não porque alguém mexeu no balanceamento — ninguém mexeu. Mudaram porque o **modelo** foi corrigido
+> na caça aos defeitos de medição: cadência independente de quadro, tempo de voo do projétil e taxa
+> de acerto das pelotas externas do `vulcan_spread` entraram em `combat-model.ts`
+> ([Spec 09 §5.9](./09_GAME_BALANCE_AND_DEV_MODE.md)). O espalhamento piorou porque o modelo ficou
+> mais fiel, e a tabela de hoje é a primeira produzida por um simulador verificado.
+>
+> O aumento de dificuldade do boss de 2026-08-15 (`BALANCE.boss.bullet_damage` por fase + `max_hp`
+> 800) tinha melhorado o espalhamento — era ≈50,7 pp antes dele —, mas nunca o fechou: a causa raiz é
+> a diferença de estatísticas-base entre os dois presets, não o boss.
 
 **Por que isto é real e não um artefato.** `vanguard` e `striker` são dois presets reais,
 selecionáveis por um visitante ([`fallback-presets.ts`](../packages/shared/src/constants/fallback-presets.ts)).
@@ -75,9 +84,15 @@ somam **exatamente** 100 pontos, e `maximo` exigiria ≈200, `tanque` 120, `mini
 superior e inferior informativos. **A falha que resta não é esse tipo de artefato** — foi verificada
 como uma disparidade genuína entre dois presets reais.
 
-**Risco no evento:** um visitante que caia no preset `striker` tem ≈1,3% de chance de vencer com
-habilidade mediana; um que caia no `vanguard`, ≈43%. A experiência é inconsistente entre visitantes,
-embora nenhum dos dois casos seja injogável.
+> **Confirmado contra a engine em 2026-08-16.** Até então, "genuína" queria dizer "genuína dentro do
+> simulador" — e o simulador não estava verificado. O portão do §2.2 fechou desde então, com o
+> `striker` (o preset do `vulcan_spread`, âncora inferior desta tabela) medido a **2,6%** do TTK
+> real. O espalhamento é uma propriedade do jogo, não do modelo.
+
+**Risco no evento:** um visitante que caia no preset `striker` tem ≈0,4% de chance de vencer com
+habilidade mediana; um que caia no `vanguard`, ≈46%. A experiência é inconsistente entre visitantes,
+embora nenhum dos dois casos seja injogável — na habilidade **experiente** o `striker` vence 47,9%
+das vezes.
 
 **Decisão registrada:** o dono do projeto decidiu **aceitar 3/4 como o estado documentado deste
 merge** e **não** mexer em `fallback-presets.ts` nem afrouxar o teto de 35 pp agora. Isto está aqui
@@ -87,13 +102,13 @@ como item aberto, não como "resolvido".
 `fallback-presets.ts` e reexecutar o portão, ou — com justificativa escrita na Spec 09 §5.3 — rever
 o teto de 35 pp.
 
-### 2.2 PULADO — conformidade simulador × engine real
+### 2.2 ~~PULADO~~ **FECHADO em 2026-08-16** — conformidade simulador × engine real
 
 `packages/sim/src/conformance.test.ts`
 
 ```
-﹣ TTK do boss no simulador está a até 5% do TTK capturado na engine real
-  # harness-runs.json está vazio -- ver fixtures/README.md
+✔ a captura é internamente coerente: shots_fired confere com boss_ttk_s
+✔ TTK do boss no simulador está a até 5% do TTK capturado na engine real
 ```
 
 Este teste compara o TTK do boss calculado pelo simulador com o TTK que a **engine Phaser real**
@@ -101,31 +116,32 @@ produziu, para a mesma spec e o mesmo seed (Spec 09 §5.1). É o que prova que
 [`combat-model.ts`](../packages/sim/src/combat-model.ts) não é uma reimplementação que só *parece*
 certa.
 
-[`packages/sim/fixtures/harness-runs.json`](../packages/sim/fixtures/harness-runs.json) está vazio
-(`[]`). O mecanismo está pronto: assim que o arquivo ganhar entradas reais, o teste deixa de pular e
-vira um portão de verdade.
+[`harness-runs.json`](../packages/sim/fixtures/harness-runs.json) está populado, e o portão passa nos
+três presets — **2,6% / 1,1% / 3,1%**, contra números publicados antes da medição:
 
-> **A primeira captura real já aconteceu (2026-08-15) e pagou o próprio custo na hora.** Ela reprovou
-> com desvios de 90% / 82% / 52% e, mais revelador, com TTKs quase idênticos para builds de DPS
-> nominal 3,3x diferentes. A investigação achou um bug na **engine**, não no modelo: projéteis
-> "consumidos" só faziam `setActive(false)`, e o Arcade Physics do Phaser filtra colisão por
-> `body.enable`, nunca por `active` — cada tiro atravessava o corpo de 300x140 px do boss batendo
-> uma vez por frame. Corrigido em `pooled-body.ts`; história completa na
-> [Spec 09 §5.5](./09_GAME_BALANCE_AND_DEV_MODE.md). A captura foi descartada e precisa ser refeita
-> contra a engine corrigida.
+| preset | simulador | engine | desvio |
+|---|---|---|---|
+| `striker` | 11,2 s | 11,5 s | 2,6% |
+| `interceptor` | 8,9 s | 9,0 s | 1,1% |
+| `maximo` | 6,3 s | 6,5 s | 3,1% |
 
-**Risco no evento:** enquanto isto estiver pulado, **todo número de balanceamento produzido pelo
-simulador não está confirmado contra a realidade**. As decisões de tuning da Tarefa B8 foram tomadas
-em cima do simulador. Se o modelo divergir da engine, o balanceamento medido está errado na mesma
-proporção.
+**Custou sete capturas, e cada uma pagou o próprio custo.** As seis primeiras foram descartadas, mas
+não desperdiçadas: cada uma expôs um defeito de medição distinto na engine — multi-acerto por
+projétil, `boss_ttk_s` inteiro, `this.time.now` valendo 0 dentro de `create`, tempo de reação do
+operador dentro da medição, cadência de tiro quantizada por quadro, e a cena rodando em dois relógios
+ao mesmo tempo. Sete defeitos aninhados, encontrados na ordem em que se escondiam uns atrás dos
+outros. História completa na [Spec 09 §5.5 a §5.12](./09_GAME_BALANCE_AND_DEV_MODE.md).
 
-**Este é o item de maior alavancagem da lista** — ele valida ou invalida todo o §2.1 acima, e a
-primeira tentativa de fechá-lo já provou o porquê.
+**O que isso muda para o §2.1 acima.** O espalhamento de arquétipos era, até aqui, uma afirmação de
+um simulador não verificado. O `striker` é o preset do `vulcan_spread`, e o modelo dele acaba de ser
+medido contra a engine a 2,6% — **o espalhamento é uma propriedade do jogo, não do modelo.** A
+decisão sobre o que fazer a respeito continua aberta e continua sendo do dono do projeto; o que
+mudou é que ela agora se apoia em número medido.
 
-**Fecha o item:** o procedimento de captura está em
-[`packages/sim/fixtures/README.md`](../packages/sim/fixtures/README.md) e está roteirizado passo a
-passo no [Bloco 3 do plano de teste manual](./12_MANUAL_TEST_PLAN_MAC.md). São três capturas
-(`striker`, `interceptor`, `maximo`), ≈10 minutos no Mac.
+**Manutenção:** o fixture é uma medição versionada, e medições envelhecem. Depois de qualquer mexida
+em `BALANCE`, na engine de combate ou em `combat-model.ts`, recapture — procedimento em
+[`packages/sim/fixtures/README.md`](../packages/sim/fixtures/README.md), roteiro no
+[Bloco 3 do plano de teste manual](./12_MANUAL_TEST_PLAN_MAC.md), ≈10 minutos no Mac.
 
 ---
 

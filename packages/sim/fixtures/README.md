@@ -4,12 +4,11 @@
 engine Phaser real produziu, para a mesma spec e o mesmo seed, com tolerância de 5% (Spec 09 §5.1).
 Isso é o que garante que `combat-model.ts` não é uma reimplementação que só parece certa.
 
-**Estado atual: o portão executa e passa, em 2 dos 3 presets.** A sétima captura (2026-08-16) fechou
-`interceptor` em 1.1% e `maximo` em 3.1%, contra números publicados antes da medição. Falta o
-`striker` — a corrida daquela rodada rotulada como tal era, na verdade, uma segunda corrida de
-`interceptor` (ver [Spec 09 §5.11](../../../specs/09_GAME_BALANCE_AND_DEV_MODE.md)). Com o array
-vazio os dois testes pulam (`skip`) em vez de falhar; um fixture vazio nunca pode ser lido como
-"conformidade confirmada".
+**Estado atual: o portão executa e passa nos três presets** — `striker` 2.6%, `interceptor` 1.1%,
+`maximo` 3.1%, todos contra números publicados antes da medição (2026-08-16, ver
+[Spec 09 §5.11 e §5.12](../../../specs/09_GAME_BALANCE_AND_DEV_MODE.md)). Com o array vazio os dois
+testes pulam (`skip`) em vez de falhar; um fixture vazio nunca pode ser lido como "conformidade
+confirmada".
 
 > **Confira o rótulo contra o conteúdo antes de gravar uma entrada.** O preset da cena nasce em
 > `FALLBACK_PRESETS.interceptor`: esquecer o botão **"Aplicar"** produz um arquivo com nome de um
@@ -104,28 +103,39 @@ agora roda inteira em `worldTimeMs`, a soma dos `delta`. Ver
 > publicada, agora em pares que se conferem: **11.2 s / ≈168 tiros**, **8.9 s / ≈107**, **6.3 s /
 > ≈76**, para `striker` / `interceptor` / `maximo`.
 
-## O portão passou: `interceptor` e `maximo` (2026-08-16)
+## O portão passou nos três (2026-08-16)
 
-A sétima captura mediu **9.0 s / 108 tiros** e **6.5 s / 78**, contra os **8.9 / ≈107** e
-**6.3 / ≈76** publicados antes. Desvios de 1.1% e 3.1%, dentro da tolerância de 5%.
+| preset | previsto | medido | desvio | `shots_fired` | previsto | `min_fps` |
+|---|---|---|---|---|---|---|
+| `striker` | 11.2 s | **11.5 s** | 2.6% | 171 | ≈168 | 29.2 |
+| `interceptor` | 8.9 s | **9.0 s** | 1.1% | 108 | ≈107 | 29.2 |
+| `maximo` | 6.3 s | **6.5 s** | 3.1% | 78 | ≈76 | 29.8 |
 
-As três lutas rodaram a ≈29 fps de mínima — menos que a captura anterior, não mais — e mesmo assim
+Todas as lutas rodaram a ≈29 fps de mínima — menos que a captura anterior, não mais — e mesmo assim
 os dois relógios da engine concordaram em todas. Contra os **+24** acionamentos excedentes que o
 `interceptor` a 29.9 fps produzia antes de §5.10, agora são **−1**. Mesma faixa de taxa de quadros,
 defeito ausente.
 
-Falta o `striker`, o preset do espalhamento excessivo de §5.3. Enquanto ele não vier, o portão está
-fechado em dois terços.
+O sinal do resíduo é o mesmo nos três — a engine entre 0.1 s e 0.3 s mais lenta que o modelo, da
+ordem de um intervalo de disparo — e ele deixa o modelo do lado seguro: prevê o jogador um pouco mais
+forte do que ele é.
 
-## Como capturar os dados que faltam
+O `striker` só entrou na sétima rodada em recaptura: o arquivo originalmente rotulado assim era uma
+segunda corrida de `interceptor`, com `shots_fired: 106`, que não é divisível por 3. Ele acabou
+servindo de réplica independente — dois `interceptor` no mesmo seed deram 8.9 s / 106 e 9.0 s / 108,
+**1.1% de dispersão real** contra uma tolerância de 5%.
 
-Alguém com acesso a um navegador e a este repositório precisa:
+## Como recapturar
+
+Este procedimento continua valendo para toda recaptura — depois de mexer em `BALANCE`, na engine, ou
+em `combat-model.ts`. Alguém com acesso a um navegador e a este repositório precisa:
 
 1. Rodar `npm run dev:game` (o harness autônomo do dev, Tarefa B4) e, no painel:
    - Ligar **God mode**.
    - Ligar **Disparo automático** (ver a seção abaixo — sem isso a captura não vale).
    - Definir **seed = 1**.
-   - Selecionar o preset **striker**.
+   - Selecionar o preset **striker** e **clicar em "Aplicar"** — escolher no seletor não muda nada
+     sozinho, e a cena nasce em `interceptor`.
    - Clicar em **"Boss (40s)"** — o rótulo do botão vem de `BALANCE.match.boss_spawn_s`, então
      ele acompanha a constante se ela mudar. A nave já sai atirando; não encoste no teclado.
    - Clicar em **"Baixar resumo"** — isso baixa `match-summary-seed-1.json`, um `MatchCompleteData`
@@ -137,11 +147,14 @@ Alguém com acesso a um navegador e a este repositório precisa:
 
 ```json
 [
-  { "preset": "striker", "seed": 1, "boss_ttk_s": 0.0, "shots_fired": 0, "boss_fight_min_fps": 0 },
-  { "preset": "interceptor", "seed": 1, "boss_ttk_s": 0.0, "shots_fired": 0, "boss_fight_min_fps": 0 },
-  { "preset": "maximo", "seed": 1, "boss_ttk_s": 0.0, "shots_fired": 0, "boss_fight_min_fps": 0 }
+  { "preset": "striker", "seed": 1, "boss_ttk_s": 11.5, "shots_fired": 171, "boss_fight_min_fps": 29.2 },
+  { "preset": "interceptor", "seed": 1, "boss_ttk_s": 9.0, "shots_fired": 108, "boss_fight_min_fps": 29.2 },
+  { "preset": "maximo", "seed": 1, "boss_ttk_s": 6.5, "shots_fired": 78, "boss_fight_min_fps": 29.8 }
 ]
 ```
+
+(os valores acima são a captura de 2026-08-16 que está no arquivo hoje, não um gabarito a copiar —
+substitua pelos seus.)
 
 Campos:
 - `preset`: uma chave de `ARCHETYPES` (`src/archetypes.ts`) — o simulador usa essa chave para

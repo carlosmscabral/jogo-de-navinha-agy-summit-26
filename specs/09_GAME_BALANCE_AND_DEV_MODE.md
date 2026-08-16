@@ -988,6 +988,44 @@ de ser hipótese.
 
 ---
 
+### 5.12. O portão fechou nos três (2026-08-16)
+
+A recaptura do `striker`, com o **"Aplicar"** clicado, fecha o conjunto:
+
+| preset | previsto | medido | desvio | `shots_fired` | previsto | `min_fps` | integridade |
+|---|---|---|---|---|---|---|---|
+| striker | 11.2 s | **11.5 s** | 2.6% | 171 | ≈168 | 29.2 | −1 acionamento |
+| interceptor | 8.9 s | 9.0 s | 1.1% | 108 | ≈107 | 29.2 | −1 acionamento |
+| maximo | 6.3 s | 6.5 s | 3.1% | 78 | ≈76 | 29.8 | +2 acionamentos |
+
+**Os três presets, os três dentro de 5%, com os números publicados antes da medição.** O sinal é o
+mesmo nos três — a engine sempre um pouco mais lenta que o modelo, entre 0.1 s e 0.3 s — o que é
+resíduo, não defeito: é da ordem de um intervalo de disparo, e o modelo continua a favor da
+segurança (prevê o jogador um pouco mais forte do que ele é).
+
+O rótulo confere com o conteúdo: 171 é divisível por 3, a cadência dá 57 acionamentos em 11.5 s
+(4.96/s contra os 5 nominais) e `accuracy_pct` veio 75.4%, a faixa do vulcan.
+
+#### O que isso destrava
+
+O item 6 da sequência do §7 está fechado, e é ele que autorizava o item 7. Até agora, toda afirmação
+sobre balanceamento vinha de um simulador **não verificado**; o espalhamento de 45.8 pontos
+percentuais entre arquétipos que o portão do §5.3 acusa era, a rigor, uma propriedade do modelo, não
+necessariamente do jogo.
+
+Não é mais. O `striker` é o preset do `vulcan_spread`, e as duas partes do modelo de vulcan que
+importam — as 3 pelotas por acionamento e o `vulcan_pellet_factor` de 0.6 que a engine e o simulador
+leem da mesma constante — acabam de ser medidas contra a realidade a 2.6%. **O espalhamento do §5.3
+é uma afirmação sobre o jogo.**
+
+O que ele *não* é: uma decisão. A pergunta de balanceamento — o `vulcan_spread` está forte demais? —
+depende de como a partida se joga, não só de quanto tempo o boss leva para cair sob fogo perfeito e
+imóvel em God mode. Essa medição é o Bloco 4 do [plano de ensaios](./12_MANUAL_TEST_PLAN_MAC.md), com
+God mode desligado e partida inteira. **Nenhuma constante deve ser mexida antes dele** — corrigir
+balanceamento antes de saber medi-lo foi exatamente o que produziu D12.
+
+---
+
 ## 6. Entregável 5 — Captura de Playtest
 
 Toda partida, no harness e no estande, emite um resumo JSON: seed, `ship_spec`, resultado, TTK do
@@ -1033,7 +1071,8 @@ repetiria o erro que produziu D12.
 - [ ] Mesmo seed + mesma spec + mesmos inputs → score idêntico.
 - [ ] Pular direto para a fase 3 do boss leva menos de 5 segundos a partir do clique.
 - [ ] `npm run sim:balance` completa em menos de 60s em um laptop.
-- [ ] O teste de conformidade mantém simulador e engine a menos de 5% de TTK.
+- [x] O teste de conformidade mantém simulador e engine a menos de 5% de TTK. *(2.6% / 1.1% / 3.1%
+  nos três presets, §5.12.)*
 - [ ] A taxa de vitória medida está na banda alvo, com todos os arquétipos estritamente entre 0% e 100%.
 - [ ] Nenhum arquétipo válido tem arma secundária de dano zero (D13 fechado).
 - [ ] Cada sinergia da matriz produz diferença mensurável de taxa de vitória no simulador (D15 fechado).

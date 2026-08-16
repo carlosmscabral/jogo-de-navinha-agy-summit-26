@@ -294,8 +294,15 @@ travar a taxa de vitória em CI. Enquanto isso não existir, qualquer número no
 >
 > **Atualização (2026-08-15).** Os números acima são os de 2026-08-14 e ficam como registro daquela
 > decisão. O aumento de dificuldade do boss (Spec 09 §5.4) mudou as medições sem mudar a conclusão:
-> ainda é 1 das 4 condições falhando, e ainda é o espalhamento — agora 41,6pp, com `vanguard` 43,0%
-> e `striker` 1,3%.
+> ainda é 1 das 4 condições falhando, e ainda é o espalhamento — 41,6pp, com `vanguard` 43,0% e
+> `striker` 1,3%.
+>
+> **Atualização (2026-08-16).** As correções do modelo de combate durante a caça aos defeitos de
+> medição (Spec 09 §5.9) mexeram nos números outra vez, e para pior: **45,8pp**, com `vanguard` 46,2%
+> e `striker` 0,4%. A conclusão segue a mesma, mas o peso dela mudou — o simulador que produz esses
+> números foi conferido contra a engine real nos três presets, a menos de 3% de TTK
+> (Spec 09 §5.12). O espalhamento deixou de ser uma propriedade do modelo e passou a ser uma
+> propriedade do jogo.
 
 ### 5.2. [D15] As sinergias não afetam o boss nem nada
 
@@ -379,11 +386,12 @@ finalScore = round( (combatScore + bossBonus + timeBonus + survivalBonus + syner
       0%/100% em habilidade mediana (mínimo `striker` 0,95%, máximo `vanguard` 51,60%, **passa**),
       mas o espalhamento entre `vanguard` e `striker` — 50,7pp — continua acima do teto de 35pp
       (**falha**). Números de 2026-08-14; após o aumento de dificuldade do boss de 2026-08-15
-      (Spec 09 §5.4) o espalhamento caiu para 41,6pp, ainda acima do teto.
+      (Spec 09 §5.4) o espalhamento caiu para 41,6pp, e após as correções do modelo de combate de
+      2026-08-16 (Spec 09 §5.9) subiu para **45,8pp** — sempre acima do teto.
       Fechar essa última condição segue sendo decisão de uma tarefa futura — nem
       retunar `balance.ts` nem excluir arquétipos adicionais está autorizado por esta mudança. Ver a
-      prova completa em Spec 09 §2.4.1–§2.4.3. Números simulador-somente: o Passo 4 (cinco partidas
-      jogadas à mão) **não foi executado** — nenhuma tarefa desta fase teve acesso a navegador — e
-      continua pendente antes do Gate M1, junto com a captura de conformidade ainda pendente da
-      Tarefa B7.
+      prova completa em Spec 09 §2.4.1–§2.4.3. O Passo 4 (cinco partidas jogadas à mão) **continua
+      não executado** — nenhuma tarefa desta fase teve acesso a navegador — e segue pendente antes do
+      Gate M1. A captura de conformidade da Tarefa B7, essa sim, **foi feita em 2026-08-16 e passou**
+      nos três presets (Spec 09 §5.12): os números acima deixaram de ser simulador-somente.
 - [ ] `ScoreCalculator.test.ts` executa no `npm test` da raiz e passa.
