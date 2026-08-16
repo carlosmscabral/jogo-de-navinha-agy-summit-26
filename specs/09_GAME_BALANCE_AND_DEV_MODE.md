@@ -853,6 +853,95 @@ continua `[]` até a sexta captura, agora contra a engine corrigida. A regra de 
 
 ---
 
+### 5.10. Metade da cena vivia num relógio, metade no outro (2026-08-16)
+
+A sexta captura, a primeira contra a cadência corrigida, trouxe **11.6 / 8.1 / 6.3 s** — e o campo
+`boss_fight_min_fps`, estreando, trouxe **118.6 / 29.9 / 60.0**. Não são ruído: 120, 30 e 60 são os
+degraus de vsync de um display ProMotion. A máquina segurou 120 numa luta e caiu a 30 na outra.
+
+O `interceptor` reprovou em 9.9%, e desta vez com o simulador **pessimista** — inédito, já que as
+cinco capturas anteriores tinham o simulador sempre otimista. Um sinal invertido não é um modelo mal
+calibrado; é outra coisa.
+
+#### O segundo relógio denuncia o primeiro
+
+Com o gatilho travado, `shots_fired` é um cronômetro independente: uma luta de `T` segundos comporta
+`floor(T / intervalo) + 1` acionamentos, **nunca mais** — `resolveFireCadence` avança a âncora
+exatamente um intervalo por tiro, então a taxa média não tem como ultrapassar `1 / intervalo`.
+
+| preset | acionamentos | previstos por `boss_ttk_s` | excedente | `boss_fight_min_fps` |
+|---|---|---|---|---|
+| striker | 58 | 59 | −1 | 118.6 |
+| maximo | 78 | 76 | +2 | 60.0 |
+| interceptor | 122 | 98 | **+24** | 29.9 |
+
+Os 24 acionamentos excedentes do `interceptor` **exigem** 2.0 s que o TTK não relatou. E o excedente
+é monotônico na taxa de quadros. O instrumento está quebrado, não o modelo.
+
+#### O mecanismo, em `Phaser.Core.TimeStep`
+
+`update(time, delta)` entrega dois relógios que **não são o mesmo relógio**:
+
+- `this.time += this.rawDelta` — o `time` é o carimbo cru do `requestAnimationFrame`: relógio de
+  parede.
+- `this.delta = smoothDelta(delta)` — o `delta` é uma média móvel de 10 quadros e, durante os
+  `panicMax` (120) quadros de `_coolDown` que `resetDelta()` arma no boot e a cada `focus`/`resume`,
+  vem **limitado** a `_target = 1000 / targetFps` = 16.67 ms.
+
+Abaixo de 60 fps o limite morde: o mundo anda 16.67 ms por quadro de 33 ms — em câmera lenta — e o
+relógio de parede segue. No caminho do harness o boss nasce dentro de `create`, então **a luta
+inteira começa dentro da janela de `_coolDown`**. A 30 fps, 120 quadros limitados perdem
+`120 × 16.67 ms = 2.0 s`: exatamente o buraco medido.
+
+A correção de §5.9 pôs a cadência no `time` — relógio de parede — enquanto física, movimento e as
+janelas de invulnerabilidade do boss seguiam no `delta`. Gatilho de parede num mundo em câmera lenta
+= mais tiros por segundo de jogo. Daí os 24 extras, e daí o `interceptor` matar o boss em menos
+segundos de mundo do que o simulador previa.
+
+> **§5.9 não estava errada, estava pela metade.** Ela tirou a cadência da borda de quadro, que era
+> real; o que faltou foi notar que `time` e `delta` divergem. O defeito trocou de sinal em vez de
+> sumir: antes a máquina lenta atirava **menos**, depois passou a atirar **mais**.
+
+#### O que foi corrigido
+
+`MainGameScene` mantém `worldTimeMs`, a soma dos `delta`, e é **ele** que vai para armas, boss,
+status da secundária e amostras de DPS — o `time` do Phaser passou a ser ignorado
+(`update(_time, delta)`). Um mundo em câmera lenta é comportamento de projeto do Phaser, que prefere
+simulação consistente a tempo real; o que não pode é metade da cena viver num relógio e metade no
+outro. O jogo agora roda idêntico em qualquer hardware — mais devagar no relógio de parede quando a
+máquina não aguenta, nunca com DPS diferente.
+
+`boss_fight_min_fps` passou a medir `game.loop.rawDelta`. Em `delta` ele tinha piso em 60 pelo
+próprio limite que deveria detectar: o `60.0` cravado do `maximo` era o valor do limite, não uma
+medição.
+
+#### O portão que faltava
+
+A conferência de coerência acima virou teste: `conformance.test.ts` agora exige `shots_fired` em
+cada entrada de `harness-runs.json` e reprova a captura, **antes** de comparar com o simulador, se
+os dois relógios da engine discordarem além de `max(5%, 2 intervalos)`. A investigação manual que
+achou este defeito não precisa ser refeita à mão na próxima vez.
+
+#### Estado
+
+**A sexta captura está invalidada junto com as cinco anteriores.** O `striker` (120 fps, sem
+limitação) e o `maximo` passariam nas duas conferências, mas foram medidos numa build onde os
+relógios podiam divergir — e a máquina do teste demonstravelmente diverge. Reprodutibilidade vale
+mais que economizar uma rodada.
+
+Previsão para a sétima, agora em pares — TTK **e** contagem de tiros, que se conferem mutuamente:
+
+| preset | `boss_ttk_s` previsto | `shots_fired` previsto |
+|---|---|---|
+| striker | 11.2 | ≈ 168 (56 acionamentos × 3 pelotas) |
+| interceptor | 8.9 | ≈ 107 |
+| maximo | 6.3 | ≈ 76 |
+
+A contagem carrega ±2 acionamentos de folga honesta: o primeiro tiro sai no quadro 1 e o último pode
+estar em voo quando o boss cai. O que **não** é folga é um excedente de 24, como o do `interceptor`.
+
+---
+
 ## 6. Entregável 5 — Captura de Playtest
 
 Toda partida, no harness e no estande, emite um resumo JSON: seed, `ship_spec`, resultado, TTK do

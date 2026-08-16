@@ -278,14 +278,25 @@ contra a engine real**.
 > lenta atirando menos. Corrigido em `resolveFireCadence`, chamada pelo motor **e** pelo simulador.
 > Ver [Spec 09 §5.9](./09_GAME_BALANCE_AND_DEV_MODE.md).
 >
-> **As cinco capturas estão descartadas; este bloco precisa ser refeito.** As três conferências
-> desta vez: **marcar "Disparo automático"** (sem ela a captura não vale, e some o passo de segurar
-> `ESPAÇO`), **`boss_ttk_s` batendo com `duration_s - 40`** com casa decimal, e
-> **`boss_fight_min_fps`**, que o resumo agora traz. Se o TTK não bater, pare — o problema é de
-> medição, não de modelo.
+> A sexta, a primeira contra a cadência corrigida, deu **11.6 / 8.1 / 6.3 s** e estreou
+> `boss_fight_min_fps`: **118.6 / 29.9 / 60.0**, os degraus de vsync de um ProMotion. O
+> `interceptor` reprovou em 9.9% com o simulador **pessimista** — sinal invertido pela primeira vez
+> em seis capturas, o que não é modelo mal calibrado. `shots_fired` disse o quê: 122 acionamentos
+> num TTK de 8.1 s, quando 8.1 s a 12 tiros/s comportam 98. Os 24 excedentes exigem 2.0 s que o TTK
+> não relatou. O `time` do `update` do Phaser é relógio de parede; o `delta` é média móvel limitada
+> a 16.67 ms durante os 120 quadros de `_coolDown` do boot. Abaixo de 60 fps o mundo anda em câmera
+> lenta e a cadência, que §5.9 tinha posto no relógio de parede, não. A cena inteira passou a rodar
+> em `worldTimeMs`. Ver [Spec 09 §5.10](./09_GAME_BALANCE_AND_DEV_MODE.md).
 >
-> **O modelo prevê 11.2 / 8.9 / 6.3 s** para `striker` / `interceptor` / `maximo`. É a primeira vez
-> que existe uma previsão publicada antes da captura: se os três caírem perto disso, o portão fecha.
+> **As seis capturas estão descartadas; este bloco precisa ser refeito.** As conferências desta vez:
+> **marcar "Disparo automático"** (sem ela a captura não vale, e some o passo de segurar `ESPAÇO`),
+> **`boss_ttk_s` batendo com `duration_s - 40`** com casa decimal, e **anotar `shots_fired` e
+> `boss_fight_min_fps`** — o primeiro virou campo obrigatório do fixture e agora é verificado por
+> teste. Se o TTK não bater, pare: o problema é de medição, não de modelo.
+>
+> **O modelo prevê, em pares que se conferem:** `striker` 11.2 s / ≈168 tiros, `interceptor` 8.9 s /
+> ≈107, `maximo` 6.3 s / ≈76. A contagem carrega ±2 acionamentos de folga honesta. Se os três
+> caírem perto disso, o portão fecha.
 
 Procedimento canônico e completo:
 [`packages/sim/fixtures/README.md`](../packages/sim/fixtures/README.md). O roteiro abaixo é o mesmo,
@@ -304,25 +315,28 @@ Repita **3.1 a 3.6** para cada um dos três presets: **`striker`**, **`intercept
   `SHIFT` em momento nenhum: o perfil de habilidade que o teste usa tem `secondaryUptime: 0`, então
   qualquer disparo secundário invalida a captura. Mover a nave também muda a geometria dos tiros.
 - [ ] **3.6 — Baixar** — clique em **"Baixar resumo"**. Salva `match-summary-seed-1.json`. Mova para
-  `~/Desktop/gate-m1-m2/` renomeando para `match-summary-<preset>.json`. Confira
-  `telemetry.boss_fight_min_fps` no arquivo: abaixo de ≈45 vale repetir a captura antes de usá-la.
+  `~/Desktop/gate-m1-m2/` renomeando para `match-summary-<preset>.json`. Anote
+  `telemetry.shots_fired` e `telemetry.boss_fight_min_fps`: o primeiro entra no fixture, o segundo
+  fica de registro. Nenhum dos dois invalida a captura sozinho — quem decide é o passo 3.8.
 
 Feitos os três:
 
 - [ ] **3.7 — Montar o fixture**
 
-De cada JSON, leia `telemetry.boss_ttk_s` e escreva
-`packages/sim/fixtures/harness-runs.json`:
+De cada JSON, leia `telemetry.boss_ttk_s`, `telemetry.shots_fired` e
+`telemetry.boss_fight_min_fps`, e escreva `packages/sim/fixtures/harness-runs.json`:
 
 ```json
 [
-  { "preset": "striker", "seed": 1, "boss_ttk_s": 0.0 },
-  { "preset": "interceptor", "seed": 1, "boss_ttk_s": 0.0 },
-  { "preset": "maximo", "seed": 1, "boss_ttk_s": 0.0 }
+  { "preset": "striker", "seed": 1, "boss_ttk_s": 0.0, "shots_fired": 0, "boss_fight_min_fps": 0 },
+  { "preset": "interceptor", "seed": 1, "boss_ttk_s": 0.0, "shots_fired": 0, "boss_fight_min_fps": 0 },
+  { "preset": "maximo", "seed": 1, "boss_ttk_s": 0.0, "shots_fired": 0, "boss_fight_min_fps": 0 }
 ]
 ```
 
-trocando cada `0.0` pelo valor real medido.
+trocando cada zero pelo valor real medido. `shots_fired` é obrigatório: é o segundo relógio da
+engine, e é ele que o teste de integridade usa para reprovar uma captura corrompida antes de o
+portão de conformidade dar qualquer veredito sobre o modelo.
 
 - [ ] **3.8 — Rodar a conformidade**
 
@@ -330,19 +344,29 @@ trocando cada `0.0` pelo valor real medido.
 npm run test --workspace=packages/sim
 ```
 
-**Critério:** o teste que antes pulava agora **executa**. Se passar, o simulador está validado
-contra a engine real e o item §2.2 das lacunas está fechado.
+**Critério:** os dois testes que antes pulavam agora **executam**. Se passarem, o simulador está
+validado contra a engine real e o item §2.2 das lacunas está fechado.
+
+São dois, e a ordem importa:
+
+1. **Integridade da captura** — `shots_fired` tem que bater com `boss_ttk_s`, porque com o gatilho
+   travado uma luta de `T` segundos comporta `floor(T / intervalo) + 1` acionamentos e nunca mais
+   que isso. **Se este falhar, o veredito do outro não vale nada:** o instrumento está quebrado, não
+   o modelo. Foi assim que §5.10 apareceu. Não mexa em `combat-model.ts` — leia a mensagem do teste,
+   que traz os dois relógios lado a lado, e ache a divergência na engine.
+2. **Conformidade** — só depois, o desvio de 5% contra o TTK.
 
 **Granularidade de relógio não é mais desculpa.** Até 2026-08-16 `boss_ttk_s` saía em segundos
 inteiros e um arredondamento de ±1 s podia sozinho estourar a tolerância; hoje a cena acumula o
 tempo de luta quadro a quadro e entrega uma casa decimal (Spec 09 §5.6 e §5.7). **Taxa de quadros
-também não é mais desculpa:** a cadência de tiro passou a ser independente de quadro nos dois lados
-(Spec 09 §5.9). Um desvio acima de 5% agora é sinal real — **desde que o valor tenha passado na
-conferência de sanidade do começo do bloco** (`boss_ttk_s ≈ duration_s - 40`).
+também não é mais desculpa:** a cadência de tiro é independente de quadro nos dois lados (§5.9) e a
+cena inteira corre num relógio só (§5.10). Um desvio acima de 5% agora é sinal real — **desde que o
+valor tenha passado nas duas conferências**: a de sanidade no começo do bloco
+(`boss_ttk_s ≈ duration_s - 40`) e a de integridade acima.
 
-**Se falhar por muito:** **a engine é a realidade, o simulador está errado.** Corrija
-`combat-model.ts`, **nunca** a tolerância do teste. Anote no §8 e trate como bloqueador para a
-Fase C.
+**Se falhar por muito, e a integridade tiver passado:** **a engine é a realidade, o simulador está
+errado.** Corrija `combat-model.ts`, **nunca** a tolerância do teste. Anote no §8 e trate como
+bloqueador para a Fase C.
 
 - [ ] **3.9 — Commitar o fixture**
 

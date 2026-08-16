@@ -42,9 +42,10 @@ inteiro redondo significa build velha; um valor muito acima de `duration_s` sign
 Nos dois casos a captura não presta.
 
 **Confira também `boss_fight_min_fps`**, o pior quadro da luta, que o resumo passou a trazer junto
-com o resto da telemetria (ver a seção seguinte). Depois da correção de cadência ele não deveria mais
-mexer no TTK — é justamente isso que a próxima captura testa. Um valor muito baixo (abaixo de ≈45)
-merece uma segunda captura antes de virar fixture: pode ser uma engasgada da máquina, não do jogo.
+com o resto da telemetria (ver as duas seções seguintes). Depois de §5.9 e §5.10 ele não deveria mais
+mexer no TTK — é justamente isso que a próxima captura testa, e por isso vale anotá-lo mesmo quando
+tudo passa. Ele não invalida captura sozinho: quem faz isso é o teste de integridade
+`shots_fired` × `boss_ttk_s`. O que um valor baixo faz é dizer **onde procurar** se algo mais falhar.
 
 ## Disparo automático: obrigatório desde 2026-08-16
 
@@ -76,10 +77,23 @@ Corrigido em `resolveFireCadence` (`@jogo/shared`), chamada **pelo motor e pelo 
 dois termos que faltavam no modelo: o tempo de voo do projétil e a taxa de acerto das pelotas
 externas do `vulcan_spread`. Ver [Spec 09 §5.9](../../../specs/09_GAME_BALANCE_AND_DEV_MODE.md).
 
-> **Toda captura anterior a 2026-08-16 mede a engine com a cadência bugada.** Como a de §5.5, elas
-> não prestam para o portão. A próxima captura é a primeira contra a engine corrigida, e o modelo
-> prevê **11.2 / 8.9 / 6.3 s** para `striker` / `interceptor` / `maximo` — um desvio grande contra
-> esses números é sinal, não ruído.
+## Armas no relógio de parede, mundo no relógio do jogo: captura 6 invalidada (2026-08-16)
+
+A sexta captura deu **11.6 / 8.1 / 6.3 s** e estreou `boss_fight_min_fps` com **118.6 / 29.9 / 60.0**
+— os degraus de vsync de um ProMotion. O `interceptor` reprovou em 9.9% com o simulador
+**pessimista**, sinal invertido pela primeira vez em seis capturas.
+
+`shots_fired` explicou: 122 acionamentos num TTK de 8.1 s, quando 8.1 s a 12 tiros/s comportam 98. Os
+24 excedentes exigem 2.0 s que o TTK não relatou. Em `Phaser.Core.TimeStep`, o `time` do `update` é
+relógio de parede (`this.time += this.rawDelta`) e o `delta` é média móvel **limitada** a 16.67 ms
+durante os 120 quadros de `_coolDown` do boot. Abaixo de 60 fps o mundo anda em câmera lenta e o
+relógio de parede não — e a cadência corrigida em §5.9 tinha ficado no relógio de parede. A cena
+agora roda inteira em `worldTimeMs`, a soma dos `delta`. Ver
+[Spec 09 §5.10](../../../specs/09_GAME_BALANCE_AND_DEV_MODE.md).
+
+> **As seis capturas estão descartadas.** A sétima é a primeira contra a engine coerente. Previsão
+> publicada, agora em pares que se conferem: **11.2 s / ≈168 tiros**, **8.9 s / ≈107**, **6.3 s /
+> ≈76**, para `striker` / `interceptor` / `maximo`.
 
 ## Como capturar os dados que faltam
 
@@ -101,9 +115,9 @@ Alguém com acesso a um navegador e a este repositório precisa:
 
 ```json
 [
-  { "preset": "striker", "seed": 1, "boss_ttk_s": 0.0 },
-  { "preset": "interceptor", "seed": 1, "boss_ttk_s": 0.0 },
-  { "preset": "maximo", "seed": 1, "boss_ttk_s": 0.0 }
+  { "preset": "striker", "seed": 1, "boss_ttk_s": 0.0, "shots_fired": 0, "boss_fight_min_fps": 0 },
+  { "preset": "interceptor", "seed": 1, "boss_ttk_s": 0.0, "shots_fired": 0, "boss_fight_min_fps": 0 },
+  { "preset": "maximo", "seed": 1, "boss_ttk_s": 0.0, "shots_fired": 0, "boss_fight_min_fps": 0 }
 ]
 ```
 
@@ -112,6 +126,12 @@ Campos:
   buscar a `ShipSpecification` correspondente.
 - `seed`: o seed usado no harness (o mesmo que `simulateMatch` recebe).
 - `boss_ttk_s`: `telemetry.boss_ttk_s` do resumo baixado (segundos entre o boss aparecer e morrer).
+- `shots_fired`: `telemetry.shots_fired`. **Obrigatório.** É o segundo relógio da engine, e o teste
+  de integridade reprova a captura — antes de olhar para o simulador — se ele discordar de
+  `boss_ttk_s` além de `max(5%, 2 intervalos)`. Sem esse campo o portão não distingue modelo errado
+  de instrumento quebrado, que foi como o defeito de §5.10 passou despercebido por uma rodada.
+- `boss_fight_min_fps` (opcional): `telemetry.boss_fight_min_fps`. Não entra em asserção nenhuma;
+  fica registrado para triagem, porque foi o que apontou qual das três capturas investigar.
 - `isHardcore` (opcional): incluir apenas se a captura foi feita com o modo difícil ligado.
 
 O teste roda o simulador com a mesma spec e o mesmo seed, e um perfil de habilidade
