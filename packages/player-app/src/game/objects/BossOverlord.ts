@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BALANCE } from '@jogo/shared';
+import { BALANCE, resolveFireCadence } from '@jogo/shared';
 import { audioManager } from '../audio/AudioManager.js';
 import { despawnPooled, respawnPooled } from './pooled-body.js';
 
@@ -194,9 +194,19 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
       (this.phase === 3 ? BALANCE.boss.fire_cooldown_ms.phase3 : this.phase === 2 ? BALANCE.boss.fire_cooldown_ms.phase2 : BALANCE.boss.fire_cooldown_ms.phase1) / this.difficultyMultiplier
     );
 
-    if (time - this.lastFireTime > fireCooldown && !this.isInvulnerable) {
-      this.lastFireTime = time;
-      this.fireAttackPattern(time, playerX, playerY);
+    // Mesma cadência independente de quadro da primária do jogador (ver `resolveFireCadence`):
+    // corrigir só o lado do jogador deixaria o boss atirando menos numa máquina lenta, trocando um
+    // defeito de desempenho por uma queda de dificuldade silenciosa.
+    //
+    // A invulnerabilidade de transição de fase segura o disparo *e* a âncora, então ela sai da
+    // janela atrasada em muito mais de `CADENCE_RECOVERY_INTERVALS` intervalos e reancora no
+    // presente -- que é o que se quer: o boss volta a atirar no ritmo, não com o troco dos 2s.
+    if (!this.isInvulnerable) {
+      const nextAnchor = resolveFireCadence(this.lastFireTime, time, fireCooldown);
+      if (nextAnchor !== null) {
+        this.lastFireTime = nextAnchor;
+        this.fireAttackPattern(time, playerX, playerY);
+      }
     }
 
     // Clean offscreen bullets

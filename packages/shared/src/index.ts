@@ -1,5 +1,6 @@
 export * from './types/ship.js';
 export * from './game/synergies.js';
+export * from './game/fire-cadence.js';
 export * from './game/score-calculator.js';
 export * from './game/dev-archetypes.js';
 export * from './constants/balance.js';

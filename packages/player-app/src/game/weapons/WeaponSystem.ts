@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BALANCE, ShipWeapons } from '@jogo/shared';
+import { BALANCE, ShipWeapons, resolveFireCadence } from '@jogo/shared';
 import { despawnPooled, respawnPooled } from '../objects/pooled-body.js';
 
 export class WeaponSystem {
@@ -74,10 +74,11 @@ export class WeaponSystem {
     const effectiveFireRate = this.weaponsSpec.primary.fire_rate;
     const fireIntervalMs = 1000 / effectiveFireRate;
 
-    if (time - this.lastPrimaryFireTime < fireIntervalMs) {
+    const nextAnchor = resolveFireCadence(this.lastPrimaryFireTime, time, fireIntervalMs);
+    if (nextAnchor === null) {
       return false;
     }
-    this.lastPrimaryFireTime = time;
+    this.lastPrimaryFireTime = nextAnchor;
 
     const { type, damage, bullet_speed, spread_angle } = this.weaponsSpec.primary;
     // [D14] damage/bullet_speed já chegam validados pelo schema (15 a 45 / 400 a 800);
@@ -120,6 +121,11 @@ export class WeaponSystem {
     if (time - this.lastSecondaryFireTime < cooldownMs) {
       return false;
     }
+    // De propósito carimba o instante do quadro, ao contrário de `firePrimary`: a secundária é uma
+    // habilidade com recarga, acionada a dedo no `SHIFT`, e a recarga conta a partir do *uso*.
+    // Avançar a âncora por múltiplos exatos guardaria crédito para quem esperou demais, soltando
+    // dois tiros em quadros seguidos. E o erro de quadro que motivou `resolveFireCadence` vale
+    // 17ms numa recarga de 2000ms -- 0.05%, contra os 4 a 8% que ele custa na primária.
     this.lastSecondaryFireTime = time;
 
     const { type, damage } = this.weaponsSpec.secondary;
