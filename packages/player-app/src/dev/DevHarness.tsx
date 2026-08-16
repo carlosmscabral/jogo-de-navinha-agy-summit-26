@@ -236,9 +236,9 @@ export function DevHarness(): React.JSX.Element {
 
   // `time.timeScale`/`physics.world.timeScale` only affect Phaser's TimerEvents and physics delta
   // accumulation (match clock, wave spawner). `WeaponSystem.firePrimary` and `BossOverlord.update`
-  // both gate their fire-rate cooldowns on the scene's raw, unscaled `time` value, so at e.g. 4x
-  // the match clock races ahead while weapons keep firing at 1x wall-clock cadence. The DPS
-  // readouts are computed against that same raw `time`, so they read roughly unchanged and would
+  // both gate their fire-rate cooldowns on the scene's `worldTimeMs`, which accumulates the
+  // unscaled `update` delta, so at e.g. 4x the match clock races ahead while weapons keep firing at
+  // 1x cadence. The DPS readouts run off that same world clock, so they read roughly unchanged and would
   // mislead a tuner trying to read TTK off them at any timeScale other than 1x. This is a UI-honesty
   // flag, not a fix to the underlying math (out of scope for the harness).
   const dpsUnreliable = timeScale !== 1;

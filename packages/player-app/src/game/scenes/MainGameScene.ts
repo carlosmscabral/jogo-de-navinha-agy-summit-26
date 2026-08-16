@@ -85,6 +85,29 @@ export class MainGameScene extends Phaser.Scene {
   /** Pior taxa de quadros vista durante a luta contra o boss. Ver Spec 09 §5.9. */
   private bossFightMinFps: number | null = null;
 
+  /**
+   * Relógio do mundo: soma dos `delta` de `update`, o mesmo tempo que a física e todo o resto da
+   * cena enxergam. É ele que vai para armas e boss, **não** o `time` que o Phaser passa.
+   *
+   * Os dois não são o mesmo relógio, e a diferença é o defeito §5.10. Em `Phaser.Core.TimeStep`:
+   *
+   * - `this.time += this.rawDelta` -- o `time` do `update` é o carimbo cru do
+   *   `requestAnimationFrame`, ou seja, relógio de parede;
+   * - `this.delta = smoothDelta(delta)` -- o `delta` do `update` é uma média móvel de 10 quadros
+   *   e, durante os `panicMax` (120) quadros de `_coolDown` que `resetDelta()` arma no boot e a
+   *   cada `focus`/`resume`, vem **limitado** a `_target` = `1000 / targetFps` = 16.67ms.
+   *
+   * Numa máquina que segura 60fps ou mais os dois coincidem e nada disso aparece. Abaixo de 60 o
+   * limite morde: o mundo anda 16.67ms por quadro de 33ms, em câmera lenta, enquanto o relógio de
+   * parede segue. Gatilho no relógio de parede dentro de um mundo em câmera lenta = mais tiros por
+   * segundo de jogo, e as janelas de invulnerabilidade do boss (que correm no relógio do mundo)
+   * comem o dobro de tiros. Ver Spec 09 §5.10.
+   *
+   * Um mundo em câmera lenta é comportamento de projeto do Phaser -- ele prefere simulação
+   * consistente a tempo real. O que não pode é metade da cena viver num relógio e metade no outro.
+   */
+  private worldTimeMs = 0;
+
   enemies!: Phaser.Physics.Arcade.Group;
   enemyBullets!: Phaser.Physics.Arcade.Group;
   stars: StarPoint[] = [];
@@ -133,6 +156,7 @@ export class MainGameScene extends Phaser.Scene {
     this.bossTtkSeconds = null;
     this.bossFightElapsedMs = null;
     this.bossFightMinFps = null;
+    this.worldTimeMs = 0;
     this.scoreCalculator = new ScoreCalculator();
     this.boss = undefined;
     audioManager.setBossMode(false);
@@ -411,7 +435,7 @@ export class MainGameScene extends Phaser.Scene {
 
         const hpBefore = this.boss.currentHp;
         const isKilled = this.boss.takeDamage(damage);
-        this.recordBossDamage(hpBefore - this.boss.currentHp, this.time.now);
+        this.recordBossDamage(hpBefore - this.boss.currentHp, this.worldTimeMs);
         audioManager.playHit();
         this.createHitSpark(bullet.x, bullet.y);
 
@@ -436,7 +460,7 @@ export class MainGameScene extends Phaser.Scene {
         this.createExplosionFX(missile.x, missile.y, true);
         const hpBefore = this.boss.currentHp;
         const isKilled = this.boss.takeDamage(damage);
-        this.recordBossDamage(hpBefore - this.boss.currentHp, this.time.now);
+        this.recordBossDamage(hpBefore - this.boss.currentHp, this.worldTimeMs);
         audioManager.playExplosion();
 
         if (isKilled) {
@@ -958,7 +982,7 @@ export class MainGameScene extends Phaser.Scene {
       if (dmg > 0) {
         const hpBefore = this.boss.currentHp;
         const isKilled = this.boss.takeDamage(dmg);
-        this.recordBossDamage(hpBefore - this.boss.currentHp, this.time.now);
+        this.recordBossDamage(hpBefore - this.boss.currentHp, this.worldTimeMs);
         if (isKilled) this.triggerBossDefeated();
       }
     }
@@ -1099,7 +1123,13 @@ export class MainGameScene extends Phaser.Scene {
     this.controlsLegendContainer.add([barBg, legendText]);
   }
 
-  update(time: number, delta: number): void {
+  update(_time: number, delta: number): void {
+    // Relógio do mundo, antes de qualquer coisa consumi-lo. O parâmetro `time` do Phaser é
+    // deliberadamente ignorado: ele é relógio de parede, o resto da cena anda em `delta`, e misturar
+    // os dois é o defeito §5.10. Ver o comentário de `worldTimeMs`.
+    this.worldTimeMs += delta;
+    const time = this.worldTimeMs;
+
     this.starfieldGraphics.clear();
     for (const star of this.stars) {
       star.y += star.speed;
@@ -1118,8 +1148,14 @@ export class MainGameScene extends Phaser.Scene {
       // Pior quadro da luta, para a captura de conformidade (Spec 09 §5.9). Os dois primeiros
       // quadros depois de `spawnBoss` saem sujos -- no caminho do harness o boss nasce dentro de
       // `create`, e o primeiro `delta` carrega a construção da cena inteira.
-      if (this.bossFightElapsedMs > 100) {
-        const fps = 1000 / delta;
+      //
+      // Medido em `rawDelta`, não em `delta`: o `delta` vem limitado a 16.67ms durante os 120
+      // quadros de `_coolDown` do TimeStep, então `1000 / delta` tem piso em 60 e não consegue
+      // relatar justamente a queda que este campo existe para detectar. A captura de 2026-08-16
+      // trouxe `60` cravado num preset -- o valor do limite, não uma medição. Ver Spec 09 §5.10.
+      const rawDelta = this.game.loop.rawDelta;
+      if (this.bossFightElapsedMs > 100 && rawDelta > 0) {
+        const fps = 1000 / rawDelta;
         this.bossFightMinFps = this.bossFightMinFps === null ? fps : Math.min(this.bossFightMinFps, fps);
       }
     }
