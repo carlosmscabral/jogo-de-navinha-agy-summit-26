@@ -95,6 +95,16 @@ export interface MatchTelemetry {
   seed: number;
   /** Segundos entre o surgimento do boss e sua destruição; null se não foi derrotado. */
   boss_ttk_s: number | null;
+  /**
+   * Menor taxa de quadros observada durante a luta contra o boss.
+   *
+   * Existe para a captura de conformidade (Spec 09 §5.9). Até 2026-08-16 a cadência de tiro era
+   * arredondada para a borda de quadro seguinte, então uma máquina abaixo de 60 fps atirava menos
+   * e o TTK esticava de 4% a 8% -- e a taxa de quadros, que era o termo que explicava tudo, era o
+   * único número que o resumo baixado não trazia. Ela foi reconstruída a partir de `shots_fired`.
+   * Agora vem medida, e uma captura fora de faixa se denuncia sozinha.
+   */
+  boss_fight_min_fps: number | null;
 }
 
 /**

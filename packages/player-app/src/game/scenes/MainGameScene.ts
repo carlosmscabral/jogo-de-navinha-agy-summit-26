@@ -82,6 +82,9 @@ export class MainGameScene extends Phaser.Scene {
    */
   private bossFightElapsedMs: number | null = null;
 
+  /** Pior taxa de quadros vista durante a luta contra o boss. Ver Spec 09 §5.9. */
+  private bossFightMinFps: number | null = null;
+
   enemies!: Phaser.Physics.Arcade.Group;
   enemyBullets!: Phaser.Physics.Arcade.Group;
   stars: StarPoint[] = [];
@@ -129,6 +132,7 @@ export class MainGameScene extends Phaser.Scene {
     this.matchTimer = BALANCE.match.duration_s;
     this.bossTtkSeconds = null;
     this.bossFightElapsedMs = null;
+    this.bossFightMinFps = null;
     this.scoreCalculator = new ScoreCalculator();
     this.boss = undefined;
     audioManager.setBossMode(false);
@@ -385,6 +389,7 @@ export class MainGameScene extends Phaser.Scene {
     audioManager.setBossMode(true);
     this.boss = new BossOverlord(this, this.scale.width / 2, 140, this.isHardcore);
     this.bossFightElapsedMs = 0;
+    this.bossFightMinFps = null;
     this.setupBossHud();
 
     // Primary Bullets vs Boss.
@@ -802,7 +807,9 @@ export class MainGameScene extends Phaser.Scene {
           shots_hit: shotsHit,
           fallback_used: this.shipSpec.build_metadata?.fallback_used === true,
           seed: this.seed,
-          boss_ttk_s: this.bossTtkSeconds
+          boss_ttk_s: this.bossTtkSeconds,
+          boss_fight_min_fps:
+            this.bossFightMinFps !== null ? +this.bossFightMinFps.toFixed(1) : null
         }
       });
     }
@@ -1108,6 +1115,13 @@ export class MainGameScene extends Phaser.Scene {
     // morte do jogador congelam o valor que vai para `boss_ttk_s`.
     if (this.bossFightElapsedMs !== null && !this.isGameOver && !this.isVictory) {
       this.bossFightElapsedMs += delta;
+      // Pior quadro da luta, para a captura de conformidade (Spec 09 §5.9). Os dois primeiros
+      // quadros depois de `spawnBoss` saem sujos -- no caminho do harness o boss nasce dentro de
+      // `create`, e o primeiro `delta` carrega a construção da cena inteira.
+      if (this.bossFightElapsedMs > 100) {
+        const fps = 1000 / delta;
+        this.bossFightMinFps = this.bossFightMinFps === null ? fps : Math.min(this.bossFightMinFps, fps);
+      }
     }
 
     if (!this.isGameOver && !this.isVictory && this.player && this.player.active) {
