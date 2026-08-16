@@ -413,8 +413,17 @@ Este é o único bloco cujo critério é um **julgamento humano**, e é o ponto 
 
 - [ ] **4.1 — Cinco partidas completas**
 
-Ainda em `npm run dev:game`, **com God mode DESLIGADO**, sem pular fase, partida inteira do começo
-ao fim. Distribua assim:
+Ainda em `npm run dev:game`, **com God mode DESLIGADO e "Disparo automático" DESLIGADO**, sem pular
+fase, partida inteira do começo ao fim.
+
+> **As duas caixas desligadas, e é o oposto do Bloco 3 de propósito.** Lá a comparação era contra
+> `{ fireUptime: 1.0, secondaryUptime: 0 }`, um jogador ideal e imóvel, e o disparo automático era
+> obrigatório. Aqui a comparação é contra o perfil **`mediano`** — `fireUptime: 0.7`, `accuracy: 0.55`,
+> `secondaryUptime: 0.5`, `hitsTakenPerSecond: 0.4`. Gatilho travado te empurraria para perto de
+> `experiente` e você compararia contra a linha errada. **Use `SHIFT`** normalmente: o `mediano` usa
+> a secundária metade do tempo.
+
+Distribua assim:
 
 | # | Preset | Registre |
 |---|--------|----------|
