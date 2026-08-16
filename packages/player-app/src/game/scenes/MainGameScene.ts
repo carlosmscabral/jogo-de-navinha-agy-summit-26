@@ -10,6 +10,7 @@ import {
   SecondaryWeaponType,
   SynergyName,
   applySynergies,
+  bossPhaseJustReached,
   regeneratesHp
 } from '@jogo/shared';
 import { PlayerShip } from '../objects/PlayerShip.js';
@@ -445,9 +446,7 @@ export class MainGameScene extends Phaser.Scene {
         despawnPooled(bullet);
         this.scoreCalculator.registerShotHit();
 
-        const hpBefore = this.boss.currentHp;
-        const isKilled = this.boss.takeDamage(damage);
-        this.recordBossDamage(hpBefore - this.boss.currentHp, this.worldTimeMs);
+        const isKilled = this.applyDamageToBoss(damage);
         audioManager.playHit();
         this.createHitSpark(bullet.x, bullet.y);
 
@@ -470,9 +469,7 @@ export class MainGameScene extends Phaser.Scene {
         despawnPooled(missile);
 
         this.createExplosionFX(missile.x, missile.y, true);
-        const hpBefore = this.boss.currentHp;
-        const isKilled = this.boss.takeDamage(damage, 'secondary');
-        this.recordBossDamage(hpBefore - this.boss.currentHp, this.worldTimeMs);
+        const isKilled = this.applyDamageToBoss(damage, 'secondary');
         audioManager.playExplosion();
 
         if (isKilled) {
@@ -526,22 +523,56 @@ export class MainGameScene extends Phaser.Scene {
    */
   private applyStartBossPhase(phase: 1 | 2 | 3 | undefined): void {
     const boss = this.boss;
-    if (!boss || !phase || phase <= 1) return;
+    // `phase === 1` (não `<= 1`): a comparação numérica não estreita `1 | 2 | 3` para `2 | 3` da
+    // forma que a igualdade estreita, e é exatamente essa faixa que `registerBossPhaseReached`
+    // exige abaixo.
+    if (!boss || !phase || phase === 1) return;
     const ratio = phase === 3 ? BALANCE.boss.phase3_hp_ratio : BALANCE.boss.phase2_hp_ratio;
     boss.currentHp = Math.round(boss.maxHp * ratio);
     boss.phase = phase;
     boss.isInvulnerable = false;
+    // Este atalho de harness pula `applyDamageToBoss` inteiro (não há dano nenhum aplicado, só um
+    // teleporte de estado), então sem isto uma partida iniciada aqui em fase 2/3 relataria
+    // `boss_phase_reached: 1` mesmo depois de o visitante ter lutado (e perdido) na fase em que o
+    // harness a colocou -- telemetria de dev mentindo sobre o próprio cenário que ela montou.
+    this.scoreCalculator.registerBossPhaseReached(phase);
   }
 
   /**
    * Records damage actually applied to the boss (post-mitigation, i.e. the observed drop in
    * `currentHp`), for the dev-harness DPS readout. See `buildTelemetryFrame` for how these
    * samples are consumed.
+   *
+   * Also the single feed into `ScoreCalculator.bossDamageDealt`: every real damage source (bala
+   * primária, míssil secundário, EMP) já passa por aqui para o DPS do harness, então é o ponto
+   * certo para alimentar o crédito parcial de dano também, sem manter um segundo contador que
+   * pudesse divergir deste.
    */
   private recordBossDamage(amount: number, time: number): void {
     if (amount <= 0) return;
     this.bossDamageTotal += amount;
     this.bossDamageSamples.push({ t: time, dmg: amount });
+    this.scoreCalculator.registerBossDamage(amount);
+  }
+
+  /**
+   * Aplica dano ao boss e mantém em dia tudo que depende disso fora do próprio `BossOverlord`:
+   * o acumulado de dano (harness + crédito parcial de score) e o bônus de fase alcançada. Os três
+   * pontos de dano (bala primária, míssil secundário, EMP) repetiam o mesmo par hpBefore/
+   * takeDamage/recordBossDamage; centralizar aqui evita que um quarto ponto de dano no futuro
+   * esqueça de replicar o gancho de fase.
+   */
+  private applyDamageToBoss(amount: number, source: 'primary' | 'secondary' = 'primary'): boolean {
+    if (!this.boss) return false;
+    const hpBefore = this.boss.currentHp;
+    const phaseBefore = this.boss.phase;
+    const isKilled = this.boss.takeDamage(amount, source);
+    this.recordBossDamage(hpBefore - this.boss.currentHp, this.worldTimeMs);
+    const justReached = bossPhaseJustReached(phaseBefore, this.boss.phase);
+    if (justReached !== null) {
+      this.scoreCalculator.registerBossPhaseReached(justReached);
+    }
+    return isKilled;
   }
 
   /**
@@ -649,7 +680,8 @@ export class MainGameScene extends Phaser.Scene {
       remainingTimeSeconds: this.matchTimer,
       remainingHp: this.player.currentHp,
       synergyBonusUnlocked: this.appliedSynergies.length > 0,
-      mcpCount
+      mcpCount,
+      bossMaxHp: this.boss?.maxHp
     });
 
     this.overlayContainer = this.add.container(0, 0);
@@ -721,7 +753,11 @@ export class MainGameScene extends Phaser.Scene {
 
   private triggerTimeoutEnd(): void {
     this.isGameOver = true;
-    this.showGameOverOverlay('TEMPO ESGOTADO', 'SINAL PERDIDO // RECUO TÁTICO');
+    // Sobreviver ao relógio inteiro sem derrubar o boss não é o mesmo desfecho que morrer no
+    // primeiro drone: o casco que sobrou é real e ganho, não um artefato de "a partida acabou em
+    // algum HP positivo". Não há bônus de tempo aqui por definição (não sobrou tempo nenhum), mas
+    // `survivalBonus` existe exatamente para premiar HP preservado, e este jogador preservou algum.
+    this.showGameOverOverlay('TEMPO ESGOTADO', 'SINAL PERDIDO // RECUO TÁTICO', this.player.currentHp);
   }
 
   private triggerPlayerDeath(): void {
@@ -733,10 +769,13 @@ export class MainGameScene extends Phaser.Scene {
     this.player.setActive(false);
     this.player.setVisible(false);
 
-    this.time.delayedCall(500, () => this.showGameOverOverlay('SINAL PERDIDO', 'FUSELAGEM DESTRUÍDA EM COMBATE'));
+    // 0 explícito, não `this.player.currentHp` (que já deveria ser 0 aqui de qualquer forma): morrer
+    // é o único desfecho em que inventar `survivalBonus` nunca faz sentido, e um valor literal deixa
+    // essa intenção visível no call site em vez de depender de um invariante silencioso do PlayerShip.
+    this.time.delayedCall(500, () => this.showGameOverOverlay('SINAL PERDIDO', 'FUSELAGEM DESTRUÍDA EM COMBATE', 0));
   }
 
-  private showGameOverOverlay(titleText: string, subtitleText: string): void {
+  private showGameOverOverlay(titleText: string, subtitleText: string, remainingHp: number): void {
     const width = this.scale.width;
     const height = this.scale.height;
     const mcpCount = this.shipSpec.build_metadata?.selected_mcps?.length || 3;
@@ -744,9 +783,10 @@ export class MainGameScene extends Phaser.Scene {
     const scoreResult = this.scoreCalculator.calculateFinalScore({
       bossDefeated: false,
       remainingTimeSeconds: 0,
-      remainingHp: 0,
+      remainingHp,
       synergyBonusUnlocked: this.appliedSynergies.length > 0,
-      mcpCount
+      mcpCount,
+      bossMaxHp: this.boss?.maxHp
     });
 
     this.overlayContainer = this.add.container(0, 0);
@@ -781,10 +821,15 @@ export class MainGameScene extends Phaser.Scene {
       }
     ).setOrigin(0.5);
 
+    // Só aparece quando o boss chegou a nascer: mostrar "BOSS: +0" para quem nunca o viu confundiria
+    // "engajou e não pontuou" com "nunca teve a chance", que é exatamente a distinção que este
+    // crédito parcial existe para fazer (ver `BALANCE.score.boss_damage_bonus_max`).
+    const bossEngagementBonus = scoreResult.breakdown.bossDamageBonus + scoreResult.breakdown.bossPhaseBonus;
+    const bossLine = this.boss ? ` | BOSS: +${bossEngagementBonus.toLocaleString()}` : '';
     const kills = this.add.text(
       width / 2,
       height / 2 + 45,
-      `ALVOS ABATIDOS: ${this.scoreCalculator.totalKills} | COMBO: ${this.scoreCalculator.comboMultiplier.toFixed(1)}x`,
+      `ALVOS ABATIDOS: ${this.scoreCalculator.totalKills} | COMBO: ${this.scoreCalculator.comboMultiplier.toFixed(1)}x${bossLine}`,
       {
         fontFamily: '"Google Sans Code", monospace',
         fontSize: '13px',
@@ -824,12 +869,19 @@ export class MainGameScene extends Phaser.Scene {
       remainingTimeSeconds: this.matchTimer,
       remainingHp: this.player?.currentHp || 0,
       synergyBonusUnlocked: this.appliedSynergies.length > 0,
-      mcpCount
+      mcpCount,
+      bossMaxHp: this.boss?.maxHp
     });
 
     if (this.onMatchComplete) {
       const shotsFired = this.scoreCalculator.shotsFired;
       const shotsHit = this.scoreCalculator.shotsHit;
+      // null quando o boss nunca apareceu (não `1`): "nunca viu o boss" e "viu e nunca saiu da
+      // fase 1" são fatos diferentes, e só `boss_phase_reached` carrega essa distinção -- ver o
+      // comentário do campo em `MatchTelemetry`.
+      const bossPhaseReached: 1 | 2 | 3 | null = this.boss
+        ? this.scoreCalculator.deepestBossPhaseReached
+        : null;
       this.onMatchComplete({
         finalScore: scoreResult.finalScore,
         victory: this.isVictory,
@@ -846,7 +898,9 @@ export class MainGameScene extends Phaser.Scene {
           seed: this.seed,
           boss_ttk_s: this.bossTtkSeconds,
           boss_fight_min_fps:
-            this.bossFightMinFps !== null ? +this.bossFightMinFps.toFixed(1) : null
+            this.bossFightMinFps !== null ? +this.bossFightMinFps.toFixed(1) : null,
+          boss_damage_dealt: this.scoreCalculator.bossDamageDealt,
+          boss_phase_reached: bossPhaseReached
         }
       });
     }
@@ -1011,9 +1065,7 @@ export class MainGameScene extends Phaser.Scene {
       const distance = Phaser.Math.Distance.Between(x, y, this.boss.x, this.boss.y);
       const dmg = computeEmpDamage(damage, distance);
       if (dmg > 0) {
-        const hpBefore = this.boss.currentHp;
-        const isKilled = this.boss.takeDamage(dmg, 'secondary');
-        this.recordBossDamage(hpBefore - this.boss.currentHp, this.worldTimeMs);
+        const isKilled = this.applyDamageToBoss(dmg, 'secondary');
         if (isKilled) this.triggerBossDefeated();
       }
     }

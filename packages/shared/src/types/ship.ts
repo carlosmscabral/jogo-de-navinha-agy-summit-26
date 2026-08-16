@@ -105,6 +105,22 @@ export interface MatchTelemetry {
    * Agora vem medida, e uma captura fora de faixa se denuncia sozinha.
    */
   boss_fight_min_fps: number | null;
+  /**
+   * Dano real (pós-teto/mitigação/piso) causado ao boss na partida inteira, some primária,
+   * secundária e EMP. 0 se o boss nunca apareceu. Existe porque até 2026-08-16 esse número não
+   * sobrevivia à partida de forma nenhuma: uma luta que chegava perto de matar o boss e não
+   * conseguia terminava com o mesmo registro de quem nunca o viu. Alimenta `bossDamageBonus` em
+   * `ScoreBreakdown`, mas fica aqui como fato bruto, independente de como o score decidiu
+   * convertê-lo em pontos.
+   */
+  boss_damage_dealt: number;
+  /**
+   * Fase mais funda do boss alcançada na partida (1, 2 ou 3); null se o boss nunca apareceu. 1
+   * significa "o boss apareceu mas nunca saiu da fase 1", não "nada aconteceu" -- só `null`
+   * representa isso. Alimenta `bossPhaseBonus` em `ScoreBreakdown` pelo mesmo motivo de
+   * `boss_damage_dealt`: o fato sobrevive à partida mesmo quando o score que ele produz é zero.
+   */
+  boss_phase_reached: 1 | 2 | 3 | null;
 }
 
 /**
@@ -116,6 +132,10 @@ export interface ScoreBreakdown {
   bossBonus: number;
   timeBonus: number;
   survivalBonus: number;
+  /** Crédito parcial por dano causado ao boss sem matá-lo. Ver `BALANCE.score.boss_damage_bonus_max`. */
+  bossDamageBonus: number;
+  /** Crédito parcial por alcançar as fases 2/3 do boss. Ver `BALANCE.score.boss_phase2_reached_bonus`. */
+  bossPhaseBonus: number;
   synergyBonus: number;
   mcpMultiplier: number;
 }

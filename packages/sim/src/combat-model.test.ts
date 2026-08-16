@@ -106,4 +106,58 @@ describe('simulateMatch', () => {
     const p3 = Math.max(BALANCE.boss.min_damage_per_hit, Math.round(d * BALANCE.boss.mitigation.phase3));
     assert.ok(p3 > p1);
   });
+
+  /**
+   * Achado de playtest de 2026-08-16: até esta tarefa, dano parcial ao boss e fase alcançada não
+   * sobreviviam à partida em lugar nenhum -- nem no engine real, nem aqui. `bossDamageDealt` e
+   * `bossPhaseReached` são o espelho, no simulador, dos mesmos dois fatos que `MainGameScene`
+   * agora expõe em `MatchTelemetry`.
+   */
+  it('expõe bossDamageDealt e bossPhaseReached mesmo numa partida perdida', () => {
+    const r = simulateMatch({
+      spec: FALLBACK_PRESETS.interceptor,
+      skill: { ...perfect, hitsTakenPerSecond: 3 }, // mesmo perfil do teste de morte acima
+      seed: 5
+    });
+    assert.equal(r.victory, false);
+    assert.equal(r.defeatReason, 'death');
+    // Um jogador com pontaria perfeita chega a bater no boss antes de morrer -- não é um dano
+    // literal zero, mas também não é o boss inteiro (senão teria vencido).
+    assert.ok(r.bossDamageDealt > 0, 'jogador perfeito não causou dano nenhum ao boss antes de morrer');
+    assert.ok(r.bossDamageDealt < BALANCE.boss.max_hp, 'dano parcial não deveria alcançar o max_hp sem vitória');
+    assert.ok(r.bossPhaseReached >= 1 && r.bossPhaseReached <= 3);
+  });
+
+  it('numa vitória, bossDamageDealt satura perto do max_hp e a fase mais funda é 3', () => {
+    const r = simulateMatch({ spec: FALLBACK_PRESETS.striker, skill: perfect, seed: 3 });
+    if (r.victory) {
+      assert.ok(r.bossDamageDealt >= BALANCE.boss.max_hp,
+        `esperava dano acumulado >= max_hp (${BALANCE.boss.max_hp}), veio ${r.bossDamageDealt}`);
+      assert.equal(r.bossPhaseReached, 3, 'matar o boss sempre atravessa a fase 3 antes do golpe final');
+    }
+  });
+
+  /**
+   * Checagem de ponta a ponta pelo simulador inteiro (não isolada como o teste equivalente em
+   * `score-calculator.test.ts`, que zera a diferença de `combatScore` de propósito para provar o
+   * invariante sozinho): uma build fraca que mal belisca o boss e perde não deveria superar uma
+   * que o mata, nem juntando toda vantagem de combatScore pré-boss que a `perfect` skill também
+   * acumula. Serve para garantir que a fiação do bônus parcial dentro de `simulateMatch` não
+   * quebrou o invariante na prática, não para isolar a contribuição exata de cada termo.
+   */
+  it('mantém vitória plena estritamente melhor que perder engajando bem o boss', () => {
+    const loses = simulateMatch({
+      spec: FALLBACK_PRESETS.interceptor,
+      skill: { ...perfect, accuracy: 0.3, fireUptime: 0.3, secondaryUptime: 0 },
+      seed: 11
+    });
+    const wins = simulateMatch({ spec: FALLBACK_PRESETS.striker, skill: perfect, seed: 3 });
+
+    assert.equal(loses.victory, false);
+    assert.equal(wins.victory, true);
+    assert.ok(
+      wins.finalScore > loses.finalScore,
+      `vitória (${wins.finalScore}) deveria superar a derrota engajada (${loses.finalScore})`
+    );
+  });
 });

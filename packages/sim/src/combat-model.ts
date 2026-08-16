@@ -1,4 +1,4 @@
-import { BALANCE, ScoreCalculator, SeededRandom, applySynergies, resolveFireCadence } from '@jogo/shared';
+import { BALANCE, ScoreCalculator, SeededRandom, applySynergies, bossPhaseJustReached, resolveFireCadence } from '@jogo/shared';
 import type { ShipSpecification } from '@jogo/shared';
 
 /**
@@ -37,6 +37,15 @@ export interface SimResult {
   finalScore: number;
   /** Dano real (pós-teto/mitigação/piso) que a arma secundária causou ao boss na partida inteira. */
   secondaryDamageDealt: number;
+  /**
+   * Dano real total (primária + secundária) causado ao boss na partida inteira -- o mesmo valor
+   * que alimenta `bossDamageBonus` em `ScoreBreakdown`. Faltava um total assim mesmo antes desta
+   * tarefa: só a fração secundária (`secondaryDamageDealt`) sobrevivia à simulação; a primária
+   * (a maioria do dano em toda build real) não tinha equivalente algum.
+   */
+  bossDamageDealt: number;
+  /** Fase mais funda do boss alcançada na simulação (o `duration_s` de 90s sempre excede os 40s de `boss_spawn_s`, então o boss sempre aparece). */
+  bossPhaseReached: 1 | 2 | 3;
 }
 
 const TICK_MS = 1000 / 60;
@@ -186,6 +195,24 @@ export function simulateMatch(input: SimInput): SimResult {
   let damageTaken = 0;
   let secondaryDamageTotal = 0;
 
+  /**
+   * Espelha `MainGameScene.applyDamageToBoss`: os dois pontos de dano abaixo (pelota primária,
+   * míssil secundário) repetiam o mesmo par phaseBefore/applyBossHit/registerBossDamage. Um dano
+   * e um bônus de fase registrados aqui usam a MESMA `ScoreCalculator.calculateFinalScore` que a
+   * engine real chama -- só o passo a passo do combate é duplicado (a regra documentada no topo
+   * deste arquivo), a fórmula de score em si não é.
+   */
+  function applyBossHitAndScore(rawDamage: number, source: 'primary' | 'secondary' = 'primary'): number {
+    const phaseBefore = boss.phase;
+    const actual = applyBossHit(boss, rawDamage, source);
+    scoreCalculator.registerBossDamage(actual);
+    const justReached = bossPhaseJustReached(phaseBefore, boss.phase);
+    if (justReached !== null) {
+      scoreCalculator.registerBossPhaseReached(justReached);
+    }
+    return actual;
+  }
+
   const isVulcan = weapons.primary.type === 'vulcan_spread';
   const pelletCount = isVulcan ? BALANCE.weapons.primary.vulcan_pellet_count : 1;
   // WeaponSystem.firePrimary: `Math.round(balancedDamage * vulcan_pellet_factor)` per pellet.
@@ -257,7 +284,7 @@ export function simulateMatch(input: SimInput): SimResult {
           // A central (p === 0) sobe reta; as externas ainda precisam pegar o boss onde ele está.
           // Só o `vulcan_spread` tem mais de uma pelota, então isto não toca laser nem plasma.
           if (p > 0 && !rng.chance(VULCAN_OUTER_PELLET_HIT_RATE)) continue;
-          applyBossHit(boss, perPelletDamage);
+          applyBossHitAndScore(perPelletDamage);
         }
       }
 
@@ -278,7 +305,7 @@ export function simulateMatch(input: SimInput): SimResult {
             // capped, mitigated and floored, not one combined hit.
             for (let m = 0; m < BALANCE.weapons.secondary.missile_count_per_volley; m++) {
               if (boss.hp <= 0) break;
-              secondaryDamageTotal += applyBossHit(boss, weapons.secondary.damage, 'secondary');
+              secondaryDamageTotal += applyBossHitAndScore(weapons.secondary.damage, 'secondary');
             }
           }
           // `emp_burst` (and any other type): zero boss damage. `computeEmpDamage` falls off to
@@ -339,7 +366,8 @@ export function simulateMatch(input: SimInput): SimResult {
     // `victory ?` conditional belongs here at all.
     remainingHp: playerHp,
     synergyBonusUnlocked: synergy.applied.length > 0,
-    mcpCount: spec.build_metadata?.selected_mcps?.length ?? 3
+    mcpCount: spec.build_metadata?.selected_mcps?.length ?? 3,
+    bossMaxHp: boss.maxHp
   });
 
   return {
@@ -348,7 +376,14 @@ export function simulateMatch(input: SimInput): SimResult {
     defeatReason: victory ? null : defeatReason,
     damageTaken,
     finalScore: scoreResult.finalScore,
-    secondaryDamageDealt: secondaryDamageTotal
+    secondaryDamageDealt: secondaryDamageTotal,
+    bossDamageDealt: scoreCalculator.bossDamageDealt,
+    // Vem de `scoreCalculator`, não de `boss.phase` direto: os dois deveriam sempre concordar (a
+    // flag só é marcada quando `boss.phase` muda), mas ler daqui é ler exatamente o que alimentou
+    // `bossPhaseBonus` em `finalScore` -- se um dia divergirem, é porque o registro quebrou, e é
+    // isso que se quer detectar. `duration_s` (90s) sempre excede `boss_spawn_s` (40s), então toda
+    // partida simulada alcança pelo menos a fase 1.
+    bossPhaseReached: scoreCalculator.deepestBossPhaseReached
   };
 }
 
