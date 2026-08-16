@@ -173,7 +173,7 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
     });
   }
 
-  update(time: number, delta: number, playerX = 300, playerY = 680): void {
+  update(time: number, delta: number): void {
     if (this.isDead || !this.active) return;
 
     // Tactical Maneuvering (Aggressive horizontal sweeping)
@@ -205,7 +205,7 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
       const nextAnchor = resolveFireCadence(this.lastFireTime, time, fireCooldown);
       if (nextAnchor !== null) {
         this.lastFireTime = nextAnchor;
-        this.fireAttackPattern(time, playerX, playerY);
+        this.fireAttackPattern();
       }
     }
 
@@ -242,7 +242,7 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
     this.shieldGraphic.fillPath();
   }
 
-  private fireAttackPattern(time: number, playerX: number, playerY: number): void {
+  private fireAttackPattern(): void {
     const bulletSpeed = (this.phase === 3 ? BALANCE.boss.bullet_speed.phase3 : this.phase === 2 ? BALANCE.boss.bullet_speed.phase2 : BALANCE.boss.bullet_speed.phase1) * this.difficultyMultiplier;
 
     if (this.phase === 1) {
@@ -260,7 +260,15 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
       }
 
     } else if (this.phase === 2) {
-      // Phase 2: Rotating 12-Way Bullet Hell Spiral + Twin Tracking Lasers
+      // Phase 2: Rotating 12-Way Bullet Hell Spiral. Só a espiral -- os dois lasers sniper
+      // saíram no mesmo playtest que tirou os da fase 1 (2026-08-16). Cada tiro deles já nascia
+      // reto (nenhuma bala do boss curva depois de disparada -- só `update()` limpa as que saem
+      // da tela), mas eles recalculavam a mira pra posição exata do jogador a cada salva, a 9.1
+      // salvas/s e 450px/s: o efeito agregado de "sempre um novo mirando onde você acabou de
+      // estar" lia como perseguição mesmo sem homing de verdade, o mesmo mecanismo da fase 1. A
+      // espiral sozinha tem folga real: 30° de espaçamento entre os 12 raios contra 13.75° de
+      // incremento por salva (0.24 rad) -- 54% do espaçamento sobra livre a cada volta, bem
+      // diferente da fase 3 antes do ajuste do incremento.
       this.fireAngle += 0.24;
       for (let i = 0; i < 12; i++) {
         const rad = this.fireAngle + (i * Math.PI) / 6;
@@ -276,11 +284,6 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
         const vx = Math.cos(rad) * bulletSpeed;
         this.spawnBullet(this.x, this.y + 40, vx, vy);
       }
-
-      // Fast tracking sniper bursts aimed at player escape vector
-      const aimAngle = Phaser.Math.Angle.Between(this.x, this.y + 40, playerX, playerY);
-      this.spawnBullet(this.x - 50, this.y + 40, Math.cos(aimAngle - 0.1) * (bulletSpeed + 110), Math.sin(aimAngle - 0.1) * (bulletSpeed + 110), 'bullet_boss_laser');
-      this.spawnBullet(this.x + 50, this.y + 40, Math.cos(aimAngle + 0.1) * (bulletSpeed + 110), Math.sin(aimAngle + 0.1) * (bulletSpeed + 110), 'bullet_boss_laser');
 
     } else {
       // Phase 3 BERSERK: 18-Way Starburst Storm + Double Forward Sweepers

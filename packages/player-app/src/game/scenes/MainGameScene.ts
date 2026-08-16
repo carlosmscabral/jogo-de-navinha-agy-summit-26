@@ -1231,7 +1231,7 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     if (this.boss && this.boss.active) {
-      this.boss.update(time, delta, this.player.x, this.player.y);
+      this.boss.update(time, delta);
       if (this.bossHpBarFill) {
         const pct = Math.max(0, this.boss.currentHp / this.boss.maxHp);
         this.bossHpBarFill.width = 388 * pct;
