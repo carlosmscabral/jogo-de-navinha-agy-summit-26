@@ -35,7 +35,14 @@ function broadcast(message: Record<string, unknown>): void {
   }
 }
 
-const AGY_SILENCE_TIMEOUT_MS = Number(process.env.AGY_SILENCE_TIMEOUT_MS) || 15_000;
+// 15s (2026-08-16 e antes) não sobrava pro caso real que este relógio agora cobre desde o
+// início da sessão (achado do mesmo dia): o visitante sai da Tela 1 (cockpit, onde clicou "Ir
+// para a Forja") e precisa chegar na Tela 2, ler o banner do `agy` e responder à primeira
+// pergunta do Fast-Grill-Me antes da primeira ferramenta MCP ser chamada -- essa travessia
+// sozinha, num estande cheio, passa de 15s. 30s dá essa folga sem enfraquecer o gate: o teto
+// pós-auditoria (mais generoso, abaixo) continua intocado, e ainda existe o teto rígido de
+// 150s como última rede.
+const AGY_SILENCE_TIMEOUT_MS = Number(process.env.AGY_SILENCE_TIMEOUT_MS) || 30_000;
 const AGY_HARD_TIMEOUT_MS = Number(process.env.AGY_HARD_TIMEOUT_MS) || 150_000;
 const AGY_POST_AUDIT_TIMEOUT_MS = Number(process.env.AGY_POST_AUDIT_TIMEOUT_MS) || 90_000;
 const AGY_LIVENESS_POLL_MS = 1_000;
@@ -258,6 +265,13 @@ app.post('/api/session/start', (req, res) => {
       () => triggerFallback(energy_sliders, `teto rígido de ${AGY_HARD_TIMEOUT_MS}ms`),
       AGY_HARD_TIMEOUT_MS
     );
+    // Sem isto, `silenceTimer` só nasce dentro de onMcpActivity/onSpecRejected/
+    // onAuditGateSatisfied -- se o agy nunca chegar a chamar uma ferramenta (sessão inerte desde
+    // o início, ship_spec.json corrompido antes de qualquer atividade), nenhum desses três dispara
+    // e a única rede de segurança que sobra é o teto rígido de 150s, dez vezes mais que os 15s
+    // prometidos ao visitante. Achado no Bloco 6.1 (2026-08-16): sessão sem interação nenhuma
+    // ficou presa na tela de forja bem além de 15s, sem nenhuma atividade de MCP nos logs.
+    armSilenceTimer(energy_sliders, 'sessão iniciada sem atividade');
     livenessTimer = setInterval(() => {
       const pidFile = path.join(sessionDir, '.agy_pid');
       if (!fs.existsSync(pidFile)) {
