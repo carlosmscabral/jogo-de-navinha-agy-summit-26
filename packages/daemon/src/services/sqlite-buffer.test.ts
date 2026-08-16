@@ -51,7 +51,8 @@ describe('SQLiteBufferService', () => {
       telemetry: {
         duration_s: 90, enemies_killed: 42, boss_defeated: true, damage_taken: 2,
         accuracy_pct: 61.5, shots_fired: 400, shots_hit: 246,
-        fallback_used: false, seed: 7, boss_ttk_s: 31.2, boss_fight_min_fps: 58.4
+        fallback_used: false, seed: 7, boss_ttk_s: 31.2, boss_fight_min_fps: 58.4,
+        boss_damage_dealt: 800, boss_phase_reached: 3
       },
       ship_spec_snapshot: { pilot: { callsign: 'NOVA' } } as any,
       created_at: new Date().toISOString()
