@@ -5,8 +5,13 @@ import { despawnPooled, respawnPooled } from '../objects/pooled-body.js';
 export class WeaponSystem {
   scene: Phaser.Scene;
   weaponsSpec: ShipWeapons;
-  lastPrimaryFireTime = 0;
-  lastSecondaryFireTime = 0;
+  // "Nunca disparou" precisa ser um instante *inalcançável*. O relógio que a cena entrega
+  // (`worldTimeMs`, Spec 09 §5.10) começa em zero, então uma âncora `0` colide com o quadro
+  // zero real e cala as duas armas por uma recarga inteira no começo da partida. O idioma da
+  // casa é a âncora não-finita -- ver a doc de `resolveFireCadence` e as duas âncoras de
+  // `combat-model.ts`, que já nascem em -Infinity.
+  lastPrimaryFireTime = -Infinity;
+  lastSecondaryFireTime = -Infinity;
 
   primaryBullets!: Phaser.Physics.Arcade.Group;
   secondaryMissiles!: Phaser.Physics.Arcade.Group;
@@ -145,7 +150,10 @@ export class WeaponSystem {
   getSecondaryStatus(time: number): { isReady: boolean; progress: number; remainingSec: number; type: string } {
     const cooldownMs = (this.weaponsSpec.secondary?.cooldown_seconds || 2) * 1000;
     const elapsed = time - this.lastSecondaryFireTime;
-    const isReady = this.lastSecondaryFireTime === 0 || elapsed >= cooldownMs;
+    // Sem cláusula especial para "nunca disparou": a âncora não-finita já entrega
+    // `elapsed === Infinity`. Tratar `=== 0` como sentinela aqui, além de duplicar a regra que
+    // `fireSecondary` aplica, mentia ao contrário depois de um disparo legítimo no quadro zero.
+    const isReady = elapsed >= cooldownMs;
     const progress = isReady ? 1.0 : Math.min(1.0, Math.max(0, elapsed / cooldownMs));
     const remainingSec = isReady ? 0 : Math.ceil((cooldownMs - elapsed) / 1000);
     const type = this.weaponsSpec.secondary?.type || 'homing_missiles';
