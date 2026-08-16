@@ -53,6 +53,14 @@ export const BALANCE = {
       missile_count_per_volley: 2,
       missile_speed_y: -300,
       missile_speed_x: 100,
+      /**
+       * Velocidade angular máxima de correção de curso, em radianos por segundo. `homing_missiles`
+       * não perseguia nada até esta versão -- `WeaponSystem.spawnMissile` recebia `targets` e nunca
+       * lia o parâmetro, então o nome descrevia uma feature que não existia. π rad/s dá meia-volta
+       * em 1s: corrige um lançamento de costas para o alvo em menos de um segundo de voo sem virar
+       * mira automática instantânea (isso exigiria vários múltiplos de π).
+       */
+      missile_turn_rate_rad_s: Math.PI,
       emp_radius_px: 300,
       /** Dano do EMP na borda do raio, como fração do dano no centro. */
       emp_edge_falloff: 0.5
@@ -91,15 +99,25 @@ export const BALANCE = {
     mitigation: { phase1: 0.65, phase2: 0.70, phase3: 1.0 },
     min_damage_per_hit: 5,
     /**
-     * Teto por hit aplicado a QUALQUER dano recebido pelo boss. `BossOverlord.takeDamage`
-     * é o único ponto de entrada de dano do boss e usa este teto incondicionalmente, então
-     * ele também captura os mísseis secundários e o EMP (Tarefa B6) -- não só a arma
-     * primária, apesar do nome do campo. Comportamento aceito e atual (medido e travado
-     * pelo portão de balanceamento em B7/B8, ver Spec 09 §2.4): o teto se aplica a toda
-     * fonte de dano do boss, sem exceção para secundária/EMP. Nome do campo mantido por
-     * compatibilidade histórica, não porque só a arma primária o respeite.
+     * Teto por hit da arma primária contra o boss. Até 2026-08-16 este era o único teto e
+     * `BossOverlord.takeDamage` o aplicava incondicionalmente a QUALQUER fonte -- inclusive
+     * mísseis e EMP, cuja faixa de schema é 60 a 150. Todo valor de secundária colapsava em 45,
+     * e sete partidas manuais de Bloco 4 mediram a secundária como menos de 8% do dano total
+     * contra o boss em qualquer preset: um atributo que o `agy` deixa o visitante melhorar sem
+     * efeito nenhum no momento em que mais importa. `max_damage_per_secondary_hit`, logo abaixo,
+     * é o teto próprio que faltava -- ver o mesmo raciocínio de "teto = topo da própria faixa"
+     * aplicado aqui: 45 é o topo de `ranges.primary.damage` (15-45).
      */
     max_damage_per_primary_hit: 45,
+    /**
+     * Teto por hit da arma secundária (mísseis, EMP) contra o boss, separado do teto da primária
+     * em 2026-08-16. Mesmo princípio do campo acima: 150 é o topo de `ranges.secondary.damage`
+     * (60-150), então nenhum valor dentro da faixa que o `agy` pode escolher é desperdiçado.
+     * `BossOverlord.takeDamage` escolhe entre este campo e o de cima pela origem do dano, não
+     * mais um teto único incondicional -- `combat-model.ts` espelha a mesma escolha em
+     * `applyBossHit`.
+     */
+    max_damage_per_secondary_hit: 150,
     phase_transition_invuln_ms: 2000,
     /**
      * Dano que cada projétil do boss tira do jogador, por fase. Escala com a fase de

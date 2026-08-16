@@ -312,11 +312,21 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
-  takeDamage(amount: number): boolean {
+  /**
+   * `source` escolhe qual teto (`max_damage_per_primary_hit` ou `max_damage_per_secondary_hit`)
+   * se aplica a este hit -- até 2026-08-16 havia um só teto e todo dano de secundária (faixa
+   * 60-150) colapsava nos 45 da primária, deixando o campo `secondary.damage` do schema inerte
+   * contra o boss. Default `'primary'` preserva o comportamento de todo chamador existente que
+   * não precisa escolher (projéteis do jogador contra inimigos comuns nem passam por aqui).
+   */
+  takeDamage(amount: number, source: 'primary' | 'secondary' = 'primary'): boolean {
     if (this.isDead || this.isInvulnerable) return false;
 
+    const cap = source === 'secondary'
+      ? BALANCE.boss.max_damage_per_secondary_hit
+      : BALANCE.boss.max_damage_per_primary_hit;
     // Cap single-pellet raw damage to prevent instantaneous multi-bullet melting
-    const cappedPelletDamage = Math.min(BALANCE.boss.max_damage_per_primary_hit, amount);
+    const cappedPelletDamage = Math.min(cap, amount);
 
     // Phase 1 Kinetic Hex Shield absorbs 35% damage (BALANCE.boss.mitigation.phase1, Task B8)
     // Phase 2 Titanium Armor absorbs 30% damage

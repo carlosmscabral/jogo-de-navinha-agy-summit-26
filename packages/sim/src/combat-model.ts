@@ -133,18 +133,22 @@ interface BossState {
 
 /**
  * Applies one incoming hit to the boss, exactly mirroring `BossOverlord.takeDamage` — the single
- * damage entry point for the boss in the real engine, which applies `max_damage_per_primary_hit`
- * **unconditionally** to every hit regardless of source (the field's name suggests primary-only,
- * but `balance.ts`'s own comment on it confirms the cap captures secondary/EMP damage too — this
- * is accepted, current engine behavior, measured and gated on throughout Tasks B7/B8, not an open
- * question), then phase mitigation, then the damage floor. Phase-transition invulnerability blocks
- * the *damage*, not the attempt (fire cadence keeps running underneath it), matching the real
- * engine. Returns the damage actually applied (0 if the boss was invulnerable or already dead).
+ * damage entry point for the boss in the real engine. Until 2026-08-16 there was one cap
+ * (`max_damage_per_primary_hit`) applied unconditionally regardless of source, which collapsed
+ * every secondary-weapon value in its 60-150 schema range down to 45. The engine now picks
+ * between `max_damage_per_primary_hit` and `max_damage_per_secondary_hit` by damage source; this
+ * function mirrors that choice via the `source` parameter, then applies phase mitigation, then
+ * the damage floor. Phase-transition invulnerability blocks the *damage*, not the attempt (fire
+ * cadence keeps running underneath it), matching the real engine. Returns the damage actually
+ * applied (0 if the boss was invulnerable or already dead).
  */
-function applyBossHit(boss: BossState, rawDamage: number): number {
+function applyBossHit(boss: BossState, rawDamage: number, source: 'primary' | 'secondary' = 'primary'): number {
   if (boss.hp <= 0 || boss.invulnMsRemaining > 0) return 0;
 
-  const capped = Math.min(BALANCE.boss.max_damage_per_primary_hit, rawDamage);
+  const cap = source === 'secondary'
+    ? BALANCE.boss.max_damage_per_secondary_hit
+    : BALANCE.boss.max_damage_per_primary_hit;
+  const capped = Math.min(cap, rawDamage);
   const mitigation = mitigationForPhase(boss.phase);
   const actual = Math.max(BALANCE.boss.min_damage_per_hit, Math.round(capped * mitigation));
   boss.hp -= actual;
@@ -274,7 +278,7 @@ export function simulateMatch(input: SimInput): SimResult {
             // capped, mitigated and floored, not one combined hit.
             for (let m = 0; m < BALANCE.weapons.secondary.missile_count_per_volley; m++) {
               if (boss.hp <= 0) break;
-              secondaryDamageTotal += applyBossHit(boss, weapons.secondary.damage);
+              secondaryDamageTotal += applyBossHit(boss, weapons.secondary.damage, 'secondary');
             }
           }
           // `emp_burst` (and any other type): zero boss damage. `computeEmpDamage` falls off to

@@ -2,6 +2,26 @@ import Phaser from 'phaser';
 import { BALANCE, ShipAttributes, ShipWeapons, ShipVisuals } from '@jogo/shared';
 import { WeaponSystem } from '../weapons/WeaponSystem.js';
 
+/**
+ * Resultado de um projétil que encostou no jogador. São duas perguntas diferentes, e o booleano
+ * único de antes só sabia responder a segunda:
+ *
+ * - `hit`  -- o casco ou o escudo realmente pagaram alguma coisa?
+ * - `dead` -- a partida acabou agora?
+ *
+ * Os i-frames e o god mode devolvem `hit: false`: nada foi pago, então nada deve entrar em
+ * `damage_taken` nem tocar o som de acerto. Com o retorno antigo (`boolean` = "morreu"), quem
+ * chamava não tinha como distinguir "invulnerável, absorveu" de "levou dano e sobreviveu", e os
+ * três handlers de colisão contavam as duas coisas igual -- o interceptor fechou uma partida com
+ * `damage_taken: 13` tendo capacidade para 4 acertos, porque cada sobreposição durante os 1500ms
+ * de invulnerabilidade virava mais um. A inflação escalava com a densidade de projéteis, ou seja,
+ * justamente com o que o campo existe para medir.
+ */
+export interface PlayerHitResult {
+  hit: boolean;
+  dead: boolean;
+}
+
 export class PlayerShip extends Phaser.Physics.Arcade.Sprite {
   attributes: ShipAttributes;
   weaponSystem: WeaponSystem;
@@ -110,8 +130,8 @@ export class PlayerShip extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
-  update(time: number, delta: number): void {
-    this.weaponSystem.update();
+  update(time: number, delta: number, getSecondaryTargets?: () => Phaser.GameObjects.Sprite[]): void {
+    this.weaponSystem.update(delta);
 
     // Movement & Banking
     const speed = this.attributes.speed_px_s;
@@ -152,14 +172,16 @@ export class PlayerShip extends Phaser.Physics.Arcade.Sprite {
       this.weaponSystem.firePrimary(this.x, this.y, time);
     }
 
-    // Secondary fire (Shift)
+    // Secondary fire (Shift). `getSecondaryTargets` só é chamado no quadro que realmente dispara
+    // -- ela monta um array novo a cada chamada, e recalcular isso a 60fps para uma tecla que
+    // recarrega em segundos seria custo pago sem motivo em todo quadro de partida.
     if (Phaser.Input.Keyboard.JustDown(this.keyShift)) {
-      this.weaponSystem.fireSecondary(this.x, this.y, time);
+      this.weaponSystem.fireSecondary(this.x, this.y, time, getSecondaryTargets?.());
     }
   }
 
-  takeDamage(amount = 1): boolean {
-    if (this.isInvulnerable || this.godMode) return false;
+  takeDamage(amount = 1): PlayerHitResult {
+    if (this.isInvulnerable || this.godMode) return { hit: false, dead: false };
 
     // Absorb with shield first. O escudo come o hit inteiro, independente de `amount`
     // (ver BALANCE.boss.bullet_damage) -- 1 pip por acerto, não 1 pip por ponto de dano.
@@ -188,7 +210,7 @@ export class PlayerShip extends Phaser.Physics.Arcade.Sprite {
       }
     });
 
-    return this.currentHp <= 0;
+    return { hit: true, dead: this.currentHp <= 0 };
   }
 
   destroy(fromScene?: boolean): void {

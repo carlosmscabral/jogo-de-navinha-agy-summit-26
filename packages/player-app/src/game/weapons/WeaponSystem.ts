@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
-import { BALANCE, ShipWeapons, resolveFireCadence } from '@jogo/shared';
+import { BALANCE, ShipWeapons, SecondaryWeaponType, resolveFireCadence } from '@jogo/shared';
 import { despawnPooled, respawnPooled } from '../objects/pooled-body.js';
+import { audioManager } from '../audio/AudioManager.js';
 
 export class WeaponSystem {
   scene: Phaser.Scene;
@@ -120,9 +121,21 @@ export class WeaponSystem {
     return true;
   }
 
+  /**
+   * Tipo efetivo da secundária. Uma spec sem o bloco `secondary` é tratada como `'none'`, e não
+   * como míssil: `agy` pode montar uma nave sem secundária (`weapons-arsenal` emite `'none'`), e
+   * o antigo default `'homing_missiles'` de `getSecondaryStatus` fazia o HUD anunciar uma arma
+   * que `fireSecondary` recusa na primeira linha. Os dois métodos leem daqui para não poderem
+   * discordar.
+   */
+  private get secondaryType(): SecondaryWeaponType {
+    return this.weaponsSpec.secondary?.type ?? 'none';
+  }
+
   fireSecondary(x: number, y: number, time: number, targets?: Phaser.GameObjects.Sprite[]): boolean {
+    if (this.secondaryType === 'none') return false;
+
     const cooldownMs = (this.weaponsSpec.secondary?.cooldown_seconds || 2) * 1000;
-    if (this.weaponsSpec.secondary?.type === 'none') return false;
     if (time - this.lastSecondaryFireTime < cooldownMs) {
       return false;
     }
@@ -138,16 +151,36 @@ export class WeaponSystem {
     const balancedDamage = damage;
 
     if (type === 'homing_missiles') {
-      this.spawnMissile(x - 20, y, -BALANCE.weapons.secondary.missile_speed_x, BALANCE.weapons.secondary.missile_speed_y, balancedDamage, targets);
-      this.spawnMissile(x + 20, y, BALANCE.weapons.secondary.missile_speed_x, BALANCE.weapons.secondary.missile_speed_y, balancedDamage, targets);
+      // As duas saem lado a lado do mesmo lançador, então travam no mesmo alvo -- é o que "duas
+      // saem juntas contra a ameaça mais próxima" quer dizer num volley de 2.
+      const target = pickNearestTarget(x, y, targets);
+      this.spawnMissile(x - 20, y, -BALANCE.weapons.secondary.missile_speed_x, BALANCE.weapons.secondary.missile_speed_y, balancedDamage, target);
+      this.spawnMissile(x + 20, y, BALANCE.weapons.secondary.missile_speed_x, BALANCE.weapons.secondary.missile_speed_y, balancedDamage, target);
+      audioManager.playSecondary('missile');
     } else if (type === 'emp_burst') {
       this.triggerEmpBurst(x, y, balancedDamage);
+      audioManager.playSecondary('emp');
     }
+
+    // A única confirmação de que o SHIFT surtiu efeito, para os dois tipos de secundária -- sem
+    // isso a pista mais visível é a recarga começando a contar, fácil de não notar num toque só.
+    // `?.` porque os testes de cadência montam uma cena sem `events`.
+    this.scene.events?.emit('secondary-weapon-fired', { type });
 
     return true;
   }
 
-  getSecondaryStatus(time: number): { isReady: boolean; progress: number; remainingSec: number; type: string } {
+  getSecondaryStatus(time: number): { isReady: boolean; progress: number; remainingSec: number; type: SecondaryWeaponType } {
+    const type = this.secondaryType;
+
+    // Sem secundária não existe recarga para exibir. Sem este ramo o cálculo de cadência abaixo
+    // devolvia `isReady: true` do primeiro ao último quadro -- a barra ficava cheia a partida
+    // inteira anunciando uma arma que `fireSecondary` recusa. É exatamente o sintoma "barra cheia,
+    // SHIFT não faz nada", só que permanente.
+    if (type === 'none') {
+      return { isReady: false, progress: 0, remainingSec: 0, type };
+    }
+
     const cooldownMs = (this.weaponsSpec.secondary?.cooldown_seconds || 2) * 1000;
     const elapsed = time - this.lastSecondaryFireTime;
     // Sem cláusula especial para "nunca disparou": a âncora não-finita já entrega
@@ -156,7 +189,6 @@ export class WeaponSystem {
     const isReady = elapsed >= cooldownMs;
     const progress = isReady ? 1.0 : Math.min(1.0, Math.max(0, elapsed / cooldownMs));
     const remainingSec = isReady ? 0 : Math.ceil((cooldownMs - elapsed) / 1000);
-    const type = this.weaponsSpec.secondary?.type || 'homing_missiles';
 
     return { isReady, progress, remainingSec, type };
   }
@@ -169,16 +201,43 @@ export class WeaponSystem {
     }
   }
 
-  private spawnMissile(x: number, y: number, vx: number, vy: number, damage: number, targets?: Phaser.GameObjects.Sprite[]): void {
+  private spawnMissile(x: number, y: number, vx: number, vy: number, damage: number, target?: Phaser.GameObjects.Sprite): void {
     const missile = this.secondaryMissiles.get(x, y, 'missile_tex') as Phaser.Physics.Arcade.Sprite;
     if (missile) {
       missile.setData('damage', damage);
+      // Lido por `steerMissile` a cada quadro. Sem alvo (nenhum inimigo vivo no lançamento), o
+      // míssil voa reto -- mesmo comportamento de sempre, só que agora por falta de alvo, não por
+      // falta de implementação.
+      missile.setData('target', target);
       respawnPooled(missile, x, y, vx, vy);
     }
   }
 
+  /**
+   * Gira a velocidade do míssil em direção ao alvo travado no lançamento, no máximo
+   * `missile_turn_rate_rad_s` por segundo, preservando a velocidade escalar. Um alvo que morreu
+   * ou saiu de cena no meio do voo (`!target.active`) deixa o míssil na reta que já estava --
+   * comportamento correto de "perdeu o sinal", não um crash por acessar posição de algo destruído.
+   */
+  private steerMissile(missile: Phaser.Physics.Arcade.Sprite, deltaMs: number): void {
+    const target = missile.getData('target') as Phaser.GameObjects.Sprite | undefined;
+    const body = missile.body as Phaser.Physics.Arcade.Body | null;
+    if (!target || !target.active || !body) return;
+
+    const currentAngle = body.velocity.angle();
+    const desiredAngle = Phaser.Math.Angle.Between(missile.x, missile.y, target.x, target.y);
+    const maxTurnRad = BALANCE.weapons.secondary.missile_turn_rate_rad_s * (deltaMs / 1000);
+    const newAngle = Phaser.Math.Angle.RotateTo(currentAngle, desiredAngle, maxTurnRad);
+
+    body.velocity.setToPolar(newAngle, body.speed);
+  }
+
   private triggerEmpBurst(x: number, y: number, damage: number): void {
-    const ring = this.scene.add.circle(x, y, 10, 0x38bdf8, 0.4);
+    // O anel antigo (alpha 0.4, sem borda, sem som) era fácil de perder em cima do resto da tela
+    // de combate -- e sem nenhum retorno, apertar SHIFT parecia não ter feito nada. A borda clara
+    // e o alpha maior dão ao anel um perfil que se destaca mesmo contra a espiral do boss.
+    const ring = this.scene.add.circle(x, y, 10, 0x38bdf8, 0.55);
+    ring.setStrokeStyle(4, 0xbae6fd, 0.95);
     this.scene.tweens.add({
       targets: ring,
       radius: BALANCE.weapons.secondary.emp_radius_px,
@@ -189,12 +248,23 @@ export class WeaponSystem {
     this.scene.events.emit('secondary-emp-burst', { x, y, damage });
   }
 
-  update(): void {
+  update(deltaMs = 0): void {
     // Clean out of bounds bullets
     this.primaryBullets.children.iterate((child) => {
       const b = child as Phaser.Physics.Arcade.Sprite;
       if (b && b.active && (b.y < -50 || b.y > 900 || b.x < -50 || b.x > 850)) {
         despawnPooled(b);
+      }
+      return true;
+    });
+
+    // Corrige o curso dos mísseis a caminho, antes da limpeza de fora de tela abaixo -- um míssil
+    // que acabou de virar na direção certa não deve ser despachado no mesmo quadro por um teste de
+    // fronteira que ainda reflete a posição de antes da curva.
+    this.secondaryMissiles.children.iterate((child) => {
+      const m = child as Phaser.Physics.Arcade.Sprite;
+      if (m && m.active) {
+        this.steerMissile(m, deltaMs);
       }
       return true;
     });
@@ -210,6 +280,29 @@ export class WeaponSystem {
       return true;
     });
   }
+}
+
+/**
+ * Alvo ativo mais próximo do ponto de lançamento, ou `undefined` se `targets` estiver vazio ou
+ * só tiver entradas já inativas (drone morto no mesmo quadro do disparo, por exemplo). Pura de
+ * propósito -- sem isso o teste de cadência precisaria de sprites Phaser reais só para exercitar
+ * `fireSecondary`.
+ */
+export function pickNearestTarget(x: number, y: number, targets?: Phaser.GameObjects.Sprite[]): Phaser.GameObjects.Sprite | undefined {
+  if (!targets) return undefined;
+  let nearest: Phaser.GameObjects.Sprite | undefined;
+  let nearestDistSq = Infinity;
+  for (const candidate of targets) {
+    if (!candidate.active) continue;
+    const dx = candidate.x - x;
+    const dy = candidate.y - y;
+    const distSq = dx * dx + dy * dy;
+    if (distSq < nearestDistSq) {
+      nearestDistSq = distSq;
+      nearest = candidate;
+    }
+  }
+  return nearest;
 }
 
 /**

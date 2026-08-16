@@ -7,6 +7,7 @@ import {
   ScoreBreakdown,
   ScoreCalculator,
   SeededRandom,
+  SecondaryWeaponType,
   SynergyName,
   applySynergies,
   regeneratesHp
@@ -22,6 +23,17 @@ import { computeEmpDamage } from '../weapons/WeaponSystem.js';
 // here would create a runtime circular dependency. `import type` is erased entirely by the
 // compiler/bundler, so no cycle exists at runtime (verified via `npm run build`).
 import type { DevGameOptions, DevTelemetryFrame } from '../index.js';
+
+/**
+ * Nome de cada secundária no HUD. `none` nunca é exibido -- o indicador inteiro some --, mas o
+ * mapa é total para que um tipo novo em `SecondaryWeaponType` quebre a compilação aqui em vez de
+ * aparecer em branco na tela do visitante.
+ */
+const SECONDARY_HUD_LABELS: Record<SecondaryWeaponType, string> = {
+  homing_missiles: 'MÍSSEIS',
+  emp_burst: 'EMP',
+  none: 'SEM SECUNDÁRIA'
+};
 
 interface StarPoint {
   x: number;
@@ -459,7 +471,7 @@ export class MainGameScene extends Phaser.Scene {
 
         this.createExplosionFX(missile.x, missile.y, true);
         const hpBefore = this.boss.currentHp;
-        const isKilled = this.boss.takeDamage(damage);
+        const isKilled = this.boss.takeDamage(damage, 'secondary');
         this.recordBossDamage(hpBefore - this.boss.currentHp, this.worldTimeMs);
         audioManager.playExplosion();
 
@@ -479,16 +491,17 @@ export class MainGameScene extends Phaser.Scene {
       // existe só para o caso de um projétil sobrevivente de um pool reciclado antes desta versão;
       // se ele começar a disparar de verdade, é bug de spawn, não fase 1 legítima.
       const damage = (bullet.getData('damage') as number | undefined) ?? BALANCE.boss.bullet_damage.phase1;
-      const isDead = this.player.takeDamage(damage);
-      // Dev-harness god mode (Task B4): takeDamage() already no-ops the HP/shield change, but
-      // this call is unconditional, so without this guard every "hit" still zeroes the combo and
-      // counts as damage taken while god mode is on -- corrupting the very telemetry/score the
-      // harness exists to show. `isDead` can't be used for this: it means "the player died", a
-      // different condition from "was hit".
-      if (!this.player.godMode) this.scoreCalculator.registerDamageTaken();
-      audioManager.playHit();
+      // `hit` já cobre god mode e i-frames (ver `PlayerHitResult`): os dois absorvem sem pagar
+      // nada, e nem a telemetria nem o áudio devem tratá-los como acerto. Na fase 2 do boss são
+      // 127 projéteis por segundo, então contar sobreposição durante os 1500ms de i-frame também
+      // disparava `playHit` dezenas de vezes seguidas.
+      const { hit, dead } = this.player.takeDamage(damage);
+      if (hit) {
+        this.scoreCalculator.registerDamageTaken();
+        audioManager.playHit();
+      }
 
-      if (isDead) {
+      if (dead) {
         this.triggerPlayerDeath();
       }
     });
@@ -888,19 +901,24 @@ export class MainGameScene extends Phaser.Scene {
       this.handleEmpBurst(x, y, damage)
     );
 
+    // Confirma no HUD que a secundária disparou, para míssil e EMP igual -- sem isto a única pista
+    // de que o SHIFT surtiu efeito é a recarga começando a contar, fácil de não notar num toque só.
+    this.events.on('secondary-weapon-fired', () => this.pulseSecondaryHud());
+
     // Enemy Bullets vs Player Ship
     this.physics.add.overlap(this.player, this.enemyBullets, (_, bulletObj) => {
       if (this.isGameOver || this.isVictory) return;
       const bullet = bulletObj as Phaser.Physics.Arcade.Sprite;
       despawnPooled(bullet);
 
-      const isDead = this.player.takeDamage(1);
-      // See the identical guard on the boss-bullets overlap above: god mode must not corrupt the
-      // combo/score telemetry the harness reads.
-      if (!this.player.godMode) this.scoreCalculator.registerDamageTaken();
-      audioManager.playHit();
+      // Mesmo contrato do overlap de projéteis do boss acima: só conta o que foi pago.
+      const { hit, dead } = this.player.takeDamage(1);
+      if (hit) {
+        this.scoreCalculator.registerDamageTaken();
+        audioManager.playHit();
+      }
 
-      if (isDead) {
+      if (dead) {
         this.triggerPlayerDeath();
       }
     });
@@ -912,12 +930,14 @@ export class MainGameScene extends Phaser.Scene {
       this.createExplosionFX(enemy.x, enemy.y);
       despawnPooled(enemy);
 
-      const isDead = this.player.takeDamage(1);
-      // Same god-mode guard as the two overlap handlers above.
-      if (!this.player.godMode) this.scoreCalculator.registerDamageTaken();
-      audioManager.playHit();
+      // Mesmo contrato dos dois overlaps acima: só conta o que foi pago.
+      const { hit, dead } = this.player.takeDamage(1);
+      if (hit) {
+        this.scoreCalculator.registerDamageTaken();
+        audioManager.playHit();
+      }
 
-      if (isDead) {
+      if (dead) {
         this.triggerPlayerDeath();
       }
     });
@@ -955,6 +975,17 @@ export class MainGameScene extends Phaser.Scene {
 
   private handleEmpBurst(x: number, y: number, damage: number): void {
     if (this.isGameOver || this.isVictory) return;
+
+    // Utilidade defensiva, não só ofensiva: o EMP limpa qualquer projétil inimigo dentro do raio
+    // de dano, o mesmo raio de `computeEmpDamage`. É a resposta do jogador à parede de densidade
+    // da fase 2 do boss -- a espiral acumula balas na tela por causa do `Math.max(60, vy)` que
+    // trava a velocidade vertical mínima -- sem baixar a dificuldade de quem não usa a secundária.
+    const radius = BALANCE.weapons.secondary.emp_radius_px;
+    this.clearBulletsInRadius(this.enemyBullets, x, y, radius);
+    if (this.boss) this.clearBulletsInRadius(this.boss.bullets, x, y, radius);
+
+    this.cameras.main.flash(150, 56, 189, 248);
+
     this.enemies.children.each((enemyObj) => {
       const enemy = enemyObj as Phaser.Physics.Arcade.Sprite;
       if (!enemy.active) return true;
@@ -981,11 +1012,43 @@ export class MainGameScene extends Phaser.Scene {
       const dmg = computeEmpDamage(damage, distance);
       if (dmg > 0) {
         const hpBefore = this.boss.currentHp;
-        const isKilled = this.boss.takeDamage(dmg);
+        const isKilled = this.boss.takeDamage(dmg, 'secondary');
         this.recordBossDamage(hpBefore - this.boss.currentHp, this.worldTimeMs);
         if (isKilled) this.triggerBossDefeated();
       }
     }
+  }
+
+  /** Alvos vivos para `homing_missiles` travar no lançamento: drones/cruzadores ativos e o boss,
+   * se ele já nasceu e ainda não morreu. `WeaponSystem` não conhece `enemies`/`boss` -- só a cena
+   * tem os dois grupos --, então é ela que monta a lista a cada disparo. */
+  private collectSecondaryTargets(): Phaser.GameObjects.Sprite[] {
+    const targets = this.enemies.getChildren().filter(
+      (child) => (child as Phaser.Physics.Arcade.Sprite).active
+    ) as Phaser.Physics.Arcade.Sprite[];
+    if (this.boss && this.boss.active && !this.boss.isDead) {
+      targets.push(this.boss);
+    }
+    return targets;
+  }
+
+  private clearBulletsInRadius(group: Phaser.Physics.Arcade.Group, x: number, y: number, radius: number): void {
+    group.children.each((child) => {
+      const bullet = child as Phaser.Physics.Arcade.Sprite;
+      if (bullet.active && Phaser.Math.Distance.Between(x, y, bullet.x, bullet.y) <= radius) {
+        despawnPooled(bullet);
+      }
+      return true;
+    });
+  }
+
+  private pulseSecondaryHud(): void {
+    this.tweens.add({
+      targets: [this.hudSecondaryBarFill, this.hudSecondaryText],
+      scale: 1.35,
+      duration: 90,
+      yoyo: true
+    });
   }
 
   private createExplosionFX(x: number, y: number, isMajor = false): void {
@@ -1080,8 +1143,11 @@ export class MainGameScene extends Phaser.Scene {
       this.hudShieldBars.push(bar);
     }
 
-    // Secondary Weapon Indicator
-    this.hudSecondaryLabel = this.add.text(290, 48, '[SHIFT] MÍSSEIS:', {
+    // Secondary Weapon Indicator. O rótulo nasce vazio de propósito: quem o escreve é o `update`,
+    // a partir do tipo que `getSecondaryStatus` devolve. Fixo em "MÍSSEIS" ele mentia para dois dos
+    // três presets -- vanguard e striker carregam `emp_burst` -- e o jogador apertava SHIFT
+    // esperando um míssil, via um anel de EMP e concluía que a arma não tinha disparado.
+    this.hudSecondaryLabel = this.add.text(290, 48, '', {
       fontFamily: '"Google Sans Code", monospace',
       fontSize: '10px',
       color: '#ff9e0b'
@@ -1161,7 +1227,7 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     if (!this.isGameOver && !this.isVictory && this.player && this.player.active) {
-      this.player.update(time, delta);
+      this.player.update(time, delta, () => this.collectSecondaryTargets());
     }
 
     if (this.boss && this.boss.active) {
@@ -1224,6 +1290,17 @@ export class MainGameScene extends Phaser.Scene {
       // Update Secondary Weapon Cooldown & Status
       if (this.player && this.player.weaponSystem) {
         const sec = this.player.weaponSystem.getSecondaryStatus(time);
+
+        // Uma nave sem secundária não tem indicador nenhum -- melhor que uma barra que nunca se
+        // move ao lado de uma tecla que nunca responde.
+        const hasSecondary = sec.type !== 'none';
+        this.hudSecondaryLabel.setVisible(hasSecondary);
+        this.hudSecondaryBarBg.setVisible(hasSecondary);
+        this.hudSecondaryBarFill.setVisible(hasSecondary);
+        this.hudSecondaryText.setVisible(hasSecondary);
+
+        this.hudSecondaryLabel.setText(`[SHIFT] ${SECONDARY_HUD_LABELS[sec.type]}:`);
+
         if (sec.isReady) {
           this.hudSecondaryText.setText('PRONTO!');
           this.hudSecondaryText.setColor('#ff9e0b');
