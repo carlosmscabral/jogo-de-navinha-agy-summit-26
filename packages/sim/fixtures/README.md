@@ -41,6 +41,11 @@ harness a luta começa em `BALANCE.match.boss_spawn_s`, então `duration_s - 40`
 inteiro redondo significa build velha; um valor muito acima de `duration_s` significa relógio errado.
 Nos dois casos a captura não presta.
 
+**Confira também `boss_fight_min_fps`**, o pior quadro da luta, que o resumo passou a trazer junto
+com o resto da telemetria (ver a seção seguinte). Depois da correção de cadência ele não deveria mais
+mexer no TTK — é justamente isso que a próxima captura testa. Um valor muito baixo (abaixo de ≈45)
+merece uma segunda captura antes de virar fixture: pode ser uma engasgada da máquina, não do jogo.
+
 ## Disparo automático: obrigatório desde 2026-08-16
 
 A captura de 2026-08-16 passou na conferência acima, o portão executou pela primeira vez e reprovou
@@ -54,6 +59,27 @@ O harness ganhou a caixa **"Disparo automático"** (`DevGameOptions.autoFirePrim
 gatilho primário desde o primeiro quadro sem teclado. **Marque-a — a captura de conformidade agora
 depende dela**, e com ela o passo de segurar `ESPAÇO` deixa de existir. Ver
 [Spec 09 §5.8](../../../specs/09_GAME_BALANCE_AND_DEV_MODE.md).
+
+## A cadência dependia da taxa de quadros: capturas 1 a 5 invalidadas (2026-08-16)
+
+A quinta captura confirmou que o disparo automático funciona — os dois lasers caíram exatamente o
+tempo de reação que a seção acima previa — e, com o gatilho travado, `shots_fired` virou um
+cronômetro independente. Os três presets, com dois intervalos nominais diferentes, implicaram o
+mesmo tempo de quadro: **17.3 a 18.1 ms, ou 55 a 58 fps**. O Mac da captura não segurava 60.
+
+Isso importa porque `WeaponSystem.firePrimary` carimbava o instante do quadro ao marcar o último
+disparo, então cada intervalo era arredondado para cima até a borda de quadro seguinte e o erro
+acumulava: 4% a 8% de TTK a mais, com a máquina mais lenta atirando menos. A 60 fps exatos o defeito
+é invisível (83.3 ms são 5 quadros, 200 ms são 12) — só hardware real o revela.
+
+Corrigido em `resolveFireCadence` (`@jogo/shared`), chamada **pelo motor e pelo simulador**, mais
+dois termos que faltavam no modelo: o tempo de voo do projétil e a taxa de acerto das pelotas
+externas do `vulcan_spread`. Ver [Spec 09 §5.9](../../../specs/09_GAME_BALANCE_AND_DEV_MODE.md).
+
+> **Toda captura anterior a 2026-08-16 mede a engine com a cadência bugada.** Como a de §5.5, elas
+> não prestam para o portão. A próxima captura é a primeira contra a engine corrigida, e o modelo
+> prevê **11.2 / 8.9 / 6.3 s** para `striker` / `interceptor` / `maximo` — um desvio grande contra
+> esses números é sinal, não ruído.
 
 ## Como capturar os dados que faltam
 

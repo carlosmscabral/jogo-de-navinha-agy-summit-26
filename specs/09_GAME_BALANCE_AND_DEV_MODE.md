@@ -760,6 +760,97 @@ está capturando. **A captura de conformidade passa a exigir essa caixa marcada.
 > §5.6 e §5.7 já custaram duas capturas. Com `autoFirePrimary`, `boss_ttk_s − janela de tiro` entrega
 > o tempo de voo de graça, e aí os dois termos se separam sem reconstrução nenhuma.
 
+### 5.9. A cadência de tiro dependia da taxa de quadros (2026-08-16)
+
+A quinta captura, a primeira com **"Disparo automático"** marcado, confirmou que a caixa funciona: os
+dois lasers caíram de 9.7 s para 9.3 s e de 7.0 s para 6.5 s, exatamente o tempo de reação que §5.8
+tinha reconstruído. Byte por byte, todo o resto do resumo veio idêntico à captura anterior — mesmo
+`shots_fired`, mesmo `shots_hit`, mesmo `finalScore`. Só o relógio mudou.
+
+E com o gatilho travado desde o primeiro quadro, `shots_fired` deixa de ser reconstrução e vira
+**cronômetro independente**: se o cano dispara N vezes em `boss_ttk_s` segundos, o intervalo real
+entre disparos é conhecido sem consultar relógio nenhum.
+
+| preset        | acionamentos | intervalo nominal | intervalo real | erro  | quadro implícito |
+| ------------- | ------------ | ----------------- | -------------- | ----- | ---------------- |
+| `striker`     | 56           | 200.0 ms          | 207.3 ms       | +3.6% | 17.3 ms (58 fps) |
+| `interceptor` | 104          | 83.3 ms           | 90.3 ms        | +8.4% | 18.1 ms (55 fps) |
+| `maximo`      | 74           | 83.3 ms           | 89.0 ms        | +6.8% | 17.8 ms (56 fps) |
+
+**Três presets, dois intervalos nominais diferentes, e todos implicam o mesmo tempo de quadro: 17.3
+a 18.1 ms, ou 55 a 58 fps.** Não é ruído, é um defeito com nome.
+
+`WeaponSystem.firePrimary` marcava o último disparo carimbando o instante do quadro
+(`this.lastPrimaryFireTime = time`). Como o disparo só pode acontecer *num* quadro, cada intervalo é
+arredondado para cima até a próxima borda de quadro — e carimbar `time` joga a sobra fora, então o
+arredondamento se repete a cada disparo em vez de se cancelar. A `fire_rate` efetiva vira
+`1 / (⌈intervalo / quadro⌉ × quadro)`, sempre abaixo da nominal.
+
+A 60 fps exatos o defeito é invisível: 83.33 ms são exatamente 5 quadros, 200 ms são exatamente 12.
+É por isso que ele atravessou toda a Fase B sem aparecer — **só uma máquina que não segura 60 fps o
+revela**, e o simulador, que roda a 60 Hz fixos, nunca ia revelá-lo sozinho.
+
+> **Isto não é só um artefato de medição.** Numa máquina lenta o jogador perde DPS proporcionalmente:
+> a 40 fps, uma `fire_rate` de 12 vira 10 disparos por segundo, 17% a menos. O estande pode rodar em
+> Chromebooks — é exatamente a classe de hardware em que isso morde.
+
+#### O que foi corrigido
+
+`resolveFireCadence` (`packages/shared/src/game/fire-cadence.ts`) avança a âncora em múltiplos
+exatos do intervalo em vez de carimbar o quadro, com um teto de recuperação de 2 intervalos para que
+uma pausa longa (aba em segundo plano, `timeScale` do harness) reancore no presente em vez de soltar
+uma rajada. Vive em `@jogo/shared` de propósito: o motor e o `combat-model.ts` chamam **a mesma
+função**, não duas transcrições que podem divergir — foi assim que este defeito nasceu.
+
+Aplicada em `WeaponSystem.firePrimary` e em `BossOverlord` (`update`). O boss entrou junto por
+simetria: corrigir só o lado do jogador deixaria o boss atirando menos numa máquina lenta, trocando
+um defeito de desempenho por uma queda silenciosa de dificuldade. **`fireSecondary` ficou de fora de
+propósito** — é uma habilidade com recarga acionada a dedo, a recarga conta a partir do uso, e um
+acumulador guardaria crédito para quem esperou demais. Ali o erro de quadro vale 17 ms em 2000 ms.
+
+#### Os dois termos que faltavam no simulador
+
+Com a cadência igual dos dois lados, o resíduo restante se separou em dois, e a conferência que os
+fixou **não usa relógio**: compara quantos projéteis precisam acertar o boss com o `shots_hit` que a
+engine reportou.
+
+| preset        | acertos necessários | perdidos na invulnerabilidade | total previsto | `shots_hit` medido |
+| ------------- | ------------------- | ----------------------------- | -------------- | ------------------ |
+| `striker`     | 76                  | 44                            | 120            | 118                |
+| `interceptor` | 54                  | 44                            | 98             | **98**             |
+| `maximo`      | 24                  | 45                            | 69             | 68                 |
+
+1. **Tempo de voo do projétil** (`primaryFlightMs`). O modelo cobrava o dano no instante do disparo.
+   Como o atraso é uniforme, ele custa **uma travessia no TTK total, não uma por tiro** — depois que
+   o cano encheu, cada acerto chega um intervalo depois do anterior. Aplicá-lo como adiamento do
+   início da cadência é exato, não aproximado: as duas janelas de invulnerabilidade deslocam junto.
+   Vale 0.55 s a 0.76 s conforme a arma. Antes da correção de cadência ele estava escondido — os dois
+   erros tinham sinais opostos e se cancelavam por acaso nos lasers.
+
+2. **As pelotas externas do `vulcan_spread` erram** (`VULCAN_OUTER_PELLET_HIT_RATE = 0.63`). A
+   cadência rolava `rng.chance(skill.accuracy)` por pelota, então com `accuracy: 1.0` as três sempre
+   acertavam. Duas derivações independentes concordam: **medida**, 168 pelotas disparadas e 118
+   acertos, descontadas as ≈11.5 ainda em voo na morte do boss, dão 75.4% chegando, e com a central
+   sempre acertando `(1 + 2q)/3 = 0.754` → `q ≈ 0.63`; **geométrica**, a 15° e 460 px de subida a
+   pelota desloca 123 px na horizontal, contra a meia-largura de 150 px do boss, e erra assim que ele
+   deriva mais de 27 px do eixo da nave — `q ≈ 0.61` numa amplitude de ±80 px.
+
+A constante mora em `combat-model.ts`, não em `BALANCE`: `BALANCE` é o contrato numérico que o
+*motor* lê, e o motor não lê isto — ele produz esse comportamento a partir de `spread_angle`, da
+velocidade do projétil e da hitbox do boss. Mexer nela muda o que o modelo prevê, nunca o que o jogo
+faz.
+
+#### Estado
+
+O modelo corrigido prevê **11.2 / 8.9 / 6.3 s**. Escalar a captura 5 pela razão entre intervalo
+nominal e real prevê **11.2 / 9.0 / 6.4 s** para a engine corrigida — dois caminhos independentes
+concordando dentro de 1%.
+
+**As cinco capturas até aqui estão todas invalidadas**, esta última pelo defeito que ela mesma
+revelou: elas medem uma engine cuja cadência dependia da taxa de quadros. `harness-runs.json`
+continua `[]` até a sexta captura, agora contra a engine corrigida. A regra de §5.5 não mudou —
+*só capture com a correção aplicada.*
+
 ---
 
 ## 6. Entregável 5 — Captura de Playtest

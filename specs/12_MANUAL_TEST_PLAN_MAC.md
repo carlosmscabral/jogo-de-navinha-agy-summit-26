@@ -243,7 +243,7 @@ Este bloco produz os dados que faltam para
 maior alavancagem da lista de lacunas: sem ele, **nenhum número de balanceamento está confirmado
 contra a engine real**.
 
-> **Já rodado três vezes, e as três pagaram o próprio custo.**
+> **Já rodado cinco vezes, e as cinco pagaram o próprio custo.**
 >
 > A primeira, em 2026-08-15, reprovou com desvios de 90% / 82% / 52% e expôs um bug de multi-acerto
 > por projétil na engine (um tiro consumido continuava com o corpo físico habilitado e batia no boss
@@ -269,10 +269,23 @@ contra a engine real**.
 > `boss_ttk_s`. Daí a caixa **"Disparo automático"**. Ver
 > [Spec 09 §5.8](./09_GAME_BALANCE_AND_DEV_MODE.md).
 >
-> **As quatro capturas estão descartadas; este bloco precisa ser refeito.** As duas conferências
+> A quinta, a primeira com **"Disparo automático"**, confirmou que a caixa funciona: os dois lasers
+> caíram de 9.7 s para 9.3 s e de 7.0 s para 6.5 s, exatamente o tempo de reação previsto, e todo o
+> resto do resumo veio idêntico byte a byte. Com o gatilho travado, `shots_fired` virou cronômetro
+> independente — e os três presets, com dois intervalos nominais diferentes, implicaram o mesmo
+> tempo de quadro: **55 a 58 fps**. A cadência de tiro carimbava o instante do quadro, então cada
+> intervalo era arredondado para cima e o erro acumulava: 4% a 8% de TTK a mais, com a máquina mais
+> lenta atirando menos. Corrigido em `resolveFireCadence`, chamada pelo motor **e** pelo simulador.
+> Ver [Spec 09 §5.9](./09_GAME_BALANCE_AND_DEV_MODE.md).
+>
+> **As cinco capturas estão descartadas; este bloco precisa ser refeito.** As três conferências
 > desta vez: **marcar "Disparo automático"** (sem ela a captura não vale, e some o passo de segurar
-> `ESPAÇO`) e **`boss_ttk_s` batendo com `duration_s - 40`**, com casa decimal. Se o TTK não bater,
-> pare — o problema é de medição, não de modelo.
+> `ESPAÇO`), **`boss_ttk_s` batendo com `duration_s - 40`** com casa decimal, e
+> **`boss_fight_min_fps`**, que o resumo agora traz. Se o TTK não bater, pare — o problema é de
+> medição, não de modelo.
+>
+> **O modelo prevê 11.2 / 8.9 / 6.3 s** para `striker` / `interceptor` / `maximo`. É a primeira vez
+> que existe uma previsão publicada antes da captura: se os três caírem perto disso, o portão fecha.
 
 Procedimento canônico e completo:
 [`packages/sim/fixtures/README.md`](../packages/sim/fixtures/README.md). O roteiro abaixo é o mesmo,
@@ -291,7 +304,8 @@ Repita **3.1 a 3.6** para cada um dos três presets: **`striker`**, **`intercept
   `SHIFT` em momento nenhum: o perfil de habilidade que o teste usa tem `secondaryUptime: 0`, então
   qualquer disparo secundário invalida a captura. Mover a nave também muda a geometria dos tiros.
 - [ ] **3.6 — Baixar** — clique em **"Baixar resumo"**. Salva `match-summary-seed-1.json`. Mova para
-  `~/Desktop/gate-m1-m2/` renomeando para `match-summary-<preset>.json`.
+  `~/Desktop/gate-m1-m2/` renomeando para `match-summary-<preset>.json`. Confira
+  `telemetry.boss_fight_min_fps` no arquivo: abaixo de ≈45 vale repetir a captura antes de usá-la.
 
 Feitos os três:
 
@@ -321,9 +335,10 @@ contra a engine real e o item §2.2 das lacunas está fechado.
 
 **Granularidade de relógio não é mais desculpa.** Até 2026-08-16 `boss_ttk_s` saía em segundos
 inteiros e um arredondamento de ±1 s podia sozinho estourar a tolerância; hoje a cena acumula o
-tempo de luta quadro a quadro e entrega uma casa decimal (Spec 09 §5.6 e §5.7). Um desvio acima de
-5% agora é sinal real — **desde que o valor tenha passado na conferência de sanidade do começo do
-bloco** (`boss_ttk_s ≈ duration_s - 40`).
+tempo de luta quadro a quadro e entrega uma casa decimal (Spec 09 §5.6 e §5.7). **Taxa de quadros
+também não é mais desculpa:** a cadência de tiro passou a ser independente de quadro nos dois lados
+(Spec 09 §5.9). Um desvio acima de 5% agora é sinal real — **desde que o valor tenha passado na
+conferência de sanidade do começo do bloco** (`boss_ttk_s ≈ duration_s - 40`).
 
 **Se falhar por muito:** **a engine é a realidade, o simulador está errado.** Corrija
 `combat-model.ts`, **nunca** a tolerância do teste. Anote no §8 e trate como bloqueador para a
