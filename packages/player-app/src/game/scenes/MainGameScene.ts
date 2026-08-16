@@ -50,7 +50,18 @@ export class MainGameScene extends Phaser.Scene {
   isGameOver = false;
   isVictory = false;
   hasNotifiedCompletion = false;
-  bossKilledAtSeconds: number | null = null;
+  /**
+   * Tempo de vida do boss, do spawn até a morte, em segundos com uma casa decimal.
+   *
+   * Medido no relógio de milissegundos da cena (`this.time.now`), NÃO em `elapsedSeconds`. Este
+   * último só anda de segundo em segundo, num `time.addEvent` de 1000ms cuja fase não tem relação
+   * com o instante em que o boss aparece -- ainda mais no harness, onde `fastForwardTo` empurra o
+   * contador para 40 no meio de um tick. Derivar o TTK dali embutia até 1s de erro de
+   * quantização, o que num TTK de 11s é 9%: quase o dobro da tolerância de 5% do teste de
+   * conformidade (`packages/sim/src/conformance.test.ts`), que portanto não conseguia distinguir
+   * um modelo errado de um arredondamento. Ver Spec 09 §5.6.
+   */
+  bossTtkSeconds: number | null = null;
 
   // Boss DPS bookkeeping for the dev harness telemetry stream (Task B4). See buildTelemetryFrame's
   // comment for the exact instant/average algorithm. Cheap to maintain even when unused.
@@ -103,7 +114,7 @@ export class MainGameScene extends Phaser.Scene {
     this.hasNotifiedCompletion = false;
     this.elapsedSeconds = 0;
     this.matchTimer = BALANCE.match.duration_s;
-    this.bossKilledAtSeconds = null;
+    this.bossTtkSeconds = null;
     this.scoreCalculator = new ScoreCalculator();
     this.boss = undefined;
     audioManager.setBossMode(false);
@@ -137,6 +148,8 @@ export class MainGameScene extends Phaser.Scene {
       this.shipSpec.visuals
     );
     this.player.godMode = !!this.devOptions?.godMode;
+    this.player.weaponSystem.onPrimaryShotsFired = (projectiles) =>
+      this.scoreCalculator.registerShotsFired(projectiles);
 
     // 4. Enemy and Enemy Bullet Pools
     this.enemies = this.physics.add.group({
@@ -374,6 +387,7 @@ export class MainGameScene extends Phaser.Scene {
         const damage = (bullet.getData('damage') as number) || 30;
 
         despawnPooled(bullet);
+        this.scoreCalculator.registerShotHit();
 
         const hpBefore = this.boss.currentHp;
         const isKilled = this.boss.takeDamage(damage);
@@ -548,7 +562,8 @@ export class MainGameScene extends Phaser.Scene {
 
   private triggerBossDefeated(): void {
     this.isVictory = true;
-    this.bossKilledAtSeconds = this.elapsedSeconds;
+    this.bossTtkSeconds =
+      this.bossFightStartMs !== null ? +((this.time.now - this.bossFightStartMs) / 1000).toFixed(1) : null;
     audioManager.setBossMode(false);
     audioManager.playVictoryJingle();
 
@@ -772,7 +787,7 @@ export class MainGameScene extends Phaser.Scene {
           shots_hit: shotsHit,
           fallback_used: this.shipSpec.build_metadata?.fallback_used === true,
           seed: this.seed,
-          boss_ttk_s: this.bossKilledAtSeconds !== null ? +(this.bossKilledAtSeconds - BALANCE.match.boss_spawn_s).toFixed(1) : null
+          boss_ttk_s: this.bossTtkSeconds
         }
       });
     }
@@ -810,7 +825,7 @@ export class MainGameScene extends Phaser.Scene {
     this.physics.add.overlap(
       this.player.weaponSystem.primaryBullets,
       this.enemies,
-      (bulletObj, enemyObj) => this.handleBulletHitsEnemy(bulletObj, enemyObj)
+      (bulletObj, enemyObj) => this.handleBulletHitsEnemy(bulletObj, enemyObj, true)
     );
 
     // Secondary Missiles vs Enemies. Missiles fill `getData('damage')` the same way
@@ -819,7 +834,7 @@ export class MainGameScene extends Phaser.Scene {
     this.physics.add.overlap(
       this.player.weaponSystem.secondaryMissiles,
       this.enemies,
-      (missileObj, enemyObj) => this.handleBulletHitsEnemy(missileObj, enemyObj)
+      (missileObj, enemyObj) => this.handleBulletHitsEnemy(missileObj, enemyObj, false)
     );
 
     // Secondary EMP bursts vs enemies and boss (see WeaponSystem.triggerEmpBurst).
@@ -862,13 +877,19 @@ export class MainGameScene extends Phaser.Scene {
     });
   }
 
-  private handleBulletHitsEnemy(bulletObj: unknown, enemyObj: unknown): void {
+  /**
+   * `isPrimary` distingue as duas origens que este mesmo handler atende: projétil da arma
+   * primária e míssil da secundária. Só a primária alimenta `shotsHit`, para casar com
+   * `shotsFired`, que `WeaponSystem.onPrimaryShotsFired` também só conta na primária.
+   */
+  private handleBulletHitsEnemy(bulletObj: unknown, enemyObj: unknown, isPrimary: boolean): void {
     if (this.isGameOver || this.isVictory) return;
     const bullet = bulletObj as Phaser.Physics.Arcade.Sprite;
     const enemy = enemyObj as Phaser.Physics.Arcade.Sprite;
     const damage = (bullet.getData('damage') as number) || 30;
 
     despawnPooled(bullet);
+    if (isPrimary) this.scoreCalculator.registerShotHit();
 
     let hp = (enemy.getData('hp') as number) || 30;
     hp -= damage;

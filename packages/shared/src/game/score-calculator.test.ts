@@ -26,6 +26,19 @@ describe('ScoreCalculator Unit Tests', () => {
     assert.ok(!Number.isNaN(calc.currentScore));
   });
 
+  it('conta tiros e acertos da primária, incluindo as 3 pelotas de um acionamento do vulcan', () => {
+    const calc = new ScoreCalculator();
+    assert.equal(calc.shotsFired, 0);
+    assert.equal(calc.shotsHit, 0);
+
+    calc.registerShotsFired(); // laser: 1 projétil por acionamento
+    calc.registerShotsFired(3); // vulcan_spread: 3 pelotas, 3 corpos, 3 tiros
+    calc.registerShotHit();
+
+    assert.equal(calc.shotsFired, 4);
+    assert.equal(calc.shotsHit, 1);
+  });
+
   it('should reset combo multiplier when damage is taken', () => {
     const calc = new ScoreCalculator();
     calc.registerKill('drone');

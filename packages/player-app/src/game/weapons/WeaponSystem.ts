@@ -60,6 +60,14 @@ export class WeaponSystem {
     }
   }
 
+  /**
+   * Avisa quantos projéteis primários acabaram de sair do cano (3 no `vulcan_spread`, 1 nas
+   * demais). Quem conta é o `ScoreCalculator` da cena, dono de `shotsFired`/`shotsHit`: o
+   * `WeaponSystem` não conhece a cena e os dois contadores precisam viver no mesmo objeto, senão
+   * `accuracy_pct` divide números que podem sair de sincronia.
+   */
+  onPrimaryShotsFired?: (projectiles: number) => void;
+
   firePrimary(x: number, y: number, time: number): boolean {
     // [D14] fire_rate já chega validado pelo schema (5 a 12 -- ver BALANCE.ranges);
     // reclampar aqui seria o próprio bug que a Tarefa B2 elimina.
@@ -77,6 +85,8 @@ export class WeaponSystem {
     const balancedDamage = damage;
     const speed = bullet_speed;
 
+    let projectiles = 1;
+
     if (type === 'laser') {
       // Rapid focused laser pulse
       this.spawnBullet(x, y - 20, 0, -speed, 'bullet_plasma', balancedDamage);
@@ -93,10 +103,13 @@ export class WeaponSystem {
         const vy = Math.sin(rad) * speed;
         this.spawnBullet(x, y - 10, vx, vy, 'bullet_vulcan', spreadDamage);
       }
+      projectiles = angles.length;
     } else {
       // Plasma cannon
       this.spawnBullet(x, y - 20, 0, -speed, 'bullet_plasma', balancedDamage);
     }
+
+    this.onPrimaryShotsFired?.(projectiles);
 
     return true;
   }

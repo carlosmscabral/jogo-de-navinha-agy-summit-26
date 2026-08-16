@@ -243,12 +243,24 @@ Este bloco produz os dados que faltam para
 maior alavancagem da lista de lacunas: sem ele, **nenhum número de balanceamento está confirmado
 contra a engine real**.
 
-> **Já rodado uma vez, em 2026-08-15, e já pagou o próprio custo.** A captura reprovou com desvios de
-> 90% / 82% / 52% e expôs um bug de multi-acerto por projétil na engine (um tiro consumido continuava
-> com o corpo físico habilitado e batia no boss uma vez por frame). O bug foi corrigido; **aquela
-> captura foi descartada e este bloco precisa ser refeito do zero contra a engine corrigida.** Ver
-> [Spec 09 §5.5](./09_GAME_BALANCE_AND_DEV_MODE.md). Os TTKs agora devem escalar com a build: se
-> `maximo` e `striker` voltarem a dar quase o mesmo número, o problema não foi embora.
+> **Já rodado duas vezes, e as duas já pagaram o próprio custo.**
+>
+> A primeira, em 2026-08-15, reprovou com desvios de 90% / 82% / 52% e expôs um bug de multi-acerto
+> por projétil na engine (um tiro consumido continuava com o corpo físico habilitado e batia no boss
+> uma vez por frame). Ver [Spec 09 §5.5](./09_GAME_BALANCE_AND_DEV_MODE.md).
+>
+> A segunda, em 2026-08-16, contra a engine corrigida, deu 11 s / 9 s / 6 s — os TTKs voltaram a
+> escalar com a build, e os dois presets de `laser` (`interceptor`, `maximo`) fecharam em 1.1% e
+> 1.7%. Só o `striker` (`vulcan_spread`) ficou fora, em 13.6%. Ela expôs, por sua vez, que
+> `boss_ttk_s` era um inteiro: com até 1 s de erro de quantização num TTK de 11 s, o portão não
+> distinguia modelo errado de arredondamento. Ver
+> [Spec 09 §5.6](./09_GAME_BALANCE_AND_DEV_MODE.md).
+>
+> **`boss_ttk_s` agora sai com casa decimal e `accuracy_pct` funciona; este bloco precisa ser
+> refeito com a nova medição.** As duas capturas anteriores estão descartadas. O que olhar desta
+> vez: **`accuracy_pct` do `striker`.** Se vier em ≈100%, todas as pelotas do vulcan acertam e o
+> desvio de 13.6% tem outra origem; se vier bem abaixo, o simulador superestima o `vulcan_spread` e
+> é ele que muda.
 
 Procedimento canônico e completo:
 [`packages/sim/fixtures/README.md`](../packages/sim/fixtures/README.md). O roteiro abaixo é o mesmo,
@@ -292,10 +304,10 @@ npm run test --workspace=packages/sim
 **Critério:** o teste que antes pulava agora **executa**. Se passar, o simulador está validado
 contra a engine real e o item §2.2 das lacunas está fechado.
 
-**Se falhar por pouco (até ≈1s de desvio num TTK de ≈20s):** pode ser apenas granularidade de
-relógio — o relógio real da engine só anda em segundos inteiros, e num TTK de 20s um arredondamento
-de ±1s já consome os 5% inteiros de tolerância. O README do fixture explica isso em detalhe. Leia
-antes de concluir que o modelo está errado.
+**Granularidade de relógio não é mais desculpa.** Até 2026-08-16 `boss_ttk_s` saía em segundos
+inteiros e um arredondamento de ±1 s podia sozinho estourar a tolerância; hoje a engine mede o TTK
+no relógio de milissegundos e entrega uma casa decimal (Spec 09 §5.6). Um desvio acima de 5% agora
+é sinal real.
 
 **Se falhar por muito:** **a engine é a realidade, o simulador está errado.** Corrija
 `combat-model.ts`, **nunca** a tolerância do teste. Anote no §8 e trate como bloqueador para a

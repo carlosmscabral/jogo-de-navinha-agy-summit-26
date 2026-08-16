@@ -211,12 +211,14 @@ código.
 - Duas constantes mortas em `balance.ts` (`min_bullet_speed`, `default_bullet_speed`).
 - A prévia do terminal em `HandoffTerminalScreen.tsx` desenha um polígono genérico fixo, não o
   `svg_path_data` real do agente — mesmo problema do D17, um passo antes no fluxo.
-- **`shots_fired` / `shots_hit` / `accuracy_pct` são sempre zero.** `ScoreCalculator.shotsFired` e
-  `.shotsHit` são declarados e lidos por `MainGameScene.finishMatchAndTransition`, mas **nada no
-  repositório os incrementa** — não existe `registerShot`/`registerHit`. Como `accuracy_pct` é
-  derivada dos dois, os três campos vão zerados para a telemetria, o SQLite do daemon e o placar.
-  Descoberto ao conferir a primeira captura do Bloco 3, que veio com `shots_fired: 0` num combate
-  em que o disparo ficou segurado o tempo todo. Não afeta `boss_ttk_s` nem o score.
+- ~~**`shots_fired` / `shots_hit` / `accuracy_pct` são sempre zero.**~~ **Corrigido em 2026-08-16.**
+  `ScoreCalculator.shotsFired` e `.shotsHit` eram declarados e lidos por
+  `MainGameScene.finishMatchAndTransition`, mas nada no repositório os incrementava, então os três
+  campos iam zerados para a telemetria, o SQLite do daemon e o placar. Descoberto ao conferir a
+  primeira captura do Bloco 3, que veio com `shots_fired: 0` num combate em que o disparo ficou
+  segurado o tempo todo. Agora `WeaponSystem.onPrimaryShotsFired` conta os projéteis primários por
+  acionamento (3 no `vulcan_spread`) e os handlers de colisão da primária contam os acertos; a
+  secundária fica de fora de propósito. Ver [Spec 09 §5.6](./09_GAME_BALANCE_AND_DEV_MODE.md).
 
 ---
 

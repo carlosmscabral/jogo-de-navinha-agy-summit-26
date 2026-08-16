@@ -616,6 +616,58 @@ jogador.
 
 ---
 
+### 5.6. Resolução da medição: `boss_ttk_s` em milissegundos e contadores de tiro (2026-08-16)
+
+A recaptura do Bloco 3 contra a engine corrigida (§5.5) deu, com seed 1, God mode e disparo
+primário contínuo:
+
+| preset        | arma primária   | engine | simulador | desvio |
+| ------------- | --------------- | ------ | --------- | ------ |
+| `striker`     | `vulcan_spread` | 11 s   | 9.5 s     | 13.6%  |
+| `interceptor` | `laser`         | 9 s    | 9.1 s     | 1.1%   |
+| `maximo`      | `laser`         | 6 s    | 6.1 s     | 1.7%   |
+
+Os TTKs voltaram a escalar com a build, que era o sinal que faltava em §5.5. Os dois presets de
+`laser` fecham dentro da tolerância de 5%, o que valida cadência de tiro, HP do boss, mitigação por
+fase e janelas de invulnerabilidade do modelo de uma vez só. Sobra o `striker`, único
+`vulcan_spread` dos três.
+
+Antes de mexer no modelo de pelotas, porém, havia um problema na própria régua:
+
+**`boss_ttk_s` era um inteiro.** `triggerBossDefeated` derivava o TTK de `elapsedSeconds`, um
+contador que só anda de segundo em segundo num `time.addEvent` de 1000 ms cuja fase não tem relação
+nenhuma com o instante em que o boss aparece — ainda mais no harness, onde `fastForwardTo` empurra o
+contador para 40 no meio de um tick. O erro de quantização chega a 1 s. Num TTK de 11 s isso é 9%,
+quase o dobro da tolerância de 5% do teste de conformidade: **o portão não conseguia distinguir um
+modelo errado de um arredondamento.** Qualquer luta abaixo de ≈20 s era invalidável por construção.
+
+A cena já gravava `bossFightStartMs = this.time.now` no spawn do boss (usado no ritmo das fases);
+`triggerBossDefeated` passa a medir dali, e `boss_ttk_s` sai com uma casa decimal. Não é mudança de
+comportamento de jogo — é a mesma grandeza, medida com resolução suficiente para o teste que a
+consome.
+
+**`shots_fired`/`shots_hit`/`accuracy_pct` eram sempre zero.** Os campos existiam em
+`ScoreCalculator` e ninguém os incrementava (registrado como defeito em
+[Spec 11 §4.6](./11_KNOWN_GAPS_AND_OPEN_ITEMS.md)). Ligados agora, porque é exatamente o dado que
+falta para decidir o caso do `striker`: `WeaponSystem` avisa quantos projéteis primários saíram do
+cano por acionamento (3 no `vulcan_spread`, 1 nas demais) e os handlers de colisão da primária
+contam os acertos. A secundária fica fora de propósito — míssil teleguiado e explosão em área não
+medem pontaria, e incluí-los tornaria `accuracy_pct` incomparável entre builds.
+
+Com isso a próxima captura do `striker` mede diretamente a fração de pelotas que conecta, em vez de
+deixá-la para estimativa geométrica.
+
+> **Hipótese em aberto, a confirmar com a captura, não a assumir.** O simulador conta as 3 pelotas
+> como acerto certo (`combat-model.ts` declara não ter simulação espacial). Na engine elas saem a
+> -15°/0°/+15°, e o boss oscila horizontalmente ≈±80 px em torno do ponto de spawn — a integração de
+> `this.x += Math.sin(time * hover_speed) * hover_range_px` acumula muito além dos 2.5–4.5 px do
+> nome do campo. Se as pelotas laterais erram parte do tempo, o simulador superestima a DPS do
+> `vulcan_spread` e o desvio de 13.6% é do modelo, como diz a regra do Bloco 3. **Se `accuracy_pct`
+> voltar em ≈100% no `striker`, essa hipótese está morta** e o desvio tem outra origem. Nada de
+> ajustar `combat-model.ts` antes de ler o número.
+
+---
+
 ## 6. Entregável 5 — Captura de Playtest
 
 Toda partida, no harness e no estande, emite um resumo JSON: seed, `ship_spec`, resultado, TTK do

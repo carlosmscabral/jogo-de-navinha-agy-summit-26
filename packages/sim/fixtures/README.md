@@ -14,20 +14,19 @@ ganhar entradas reais, o teste passa a valer e vira um gate de verdade.
 > por tiro e morria em 4-5s independentemente da build. Qualquer captura anterior a essa correção
 > mede a engine bugada, não o jogo. **Só capture com a correção aplicada.**
 
-## Atenção: granularidade do relógio real é de 1s, não 0,1s
+## Granularidade do relógio: resolvida em 2026-08-16
 
-`telemetry.boss_ttk_s` na engine real vem de `MainGameScene.elapsedSeconds`, um contador que só
+Até 2026-08-16 `telemetry.boss_ttk_s` vinha de `MainGameScene.elapsedSeconds`, um contador que só
 avança em números inteiros de segundo (`handleMatchTick` roda a cada 1000ms via
-`this.time.addEvent`). `boss_ttk_s = bossKilledAtSeconds - BALANCE.match.boss_spawn_s` é, portanto,
-sempre um inteiro de segundos na captura real, ainda que o `.toFixed(1)` no código o formate como
-`"20.0"` em vez de `"20"`. O simulador, por rodar em ticks de 60Hz, reporta `bossTtkSeconds` com
-resolução real de 0,1s (ex.: `20.3`).
+`this.time.addEvent`), e cuja fase não tem relação com o instante em que o boss aparece. O TTK
+capturado era sempre um inteiro, com até 1s de erro de quantização — o que, contra a tolerância de
+5% deste teste, tornava invalidável por construção qualquer luta abaixo de ≈20s. Uma captura de 11s
+carregava ±9% de ruído puro de relógio.
 
-Isso importa porque a tolerância do teste de conformidade é 5%: para um TTK de ≈20s, só o
-arredondamento de ±1s do relógio real já consome a tolerância inteira (1s / 20s = 5%). Um desvio
-de até ≈1s entre simulador e engine, nessa faixa de TTK, pode ser *apenas* granularidade de
-relógio — não necessariamente um erro real de `combat-model.ts`. Quem revisar uma captura real que
-falhe por uma margem pequena deve checar isso antes de assumir que o modelo está errado.
+`triggerBossDefeated` agora mede o TTK em `this.time.now - bossFightStartMs` e `boss_ttk_s` sai com
+uma casa decimal real (ex.: `11.4`). O simulador sempre reportou `bossTtkSeconds` com resolução de
+0,1s, então os dois lados finalmente têm a mesma régua. **Um desvio acima de 5% é sinal real, não
+arredondamento.** Ver [Spec 09 §5.6](../../../specs/09_GAME_BALANCE_AND_DEV_MODE.md).
 
 ## Como capturar os dados que faltam
 

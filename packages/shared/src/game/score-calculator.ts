@@ -32,6 +32,24 @@ export class ScoreCalculator {
     this.comboMultiplier = 1.0; // Reset combo streak
   }
 
+  /**
+   * Um projétil da arma PRIMÁRIA saiu do cano. `count` existe por causa do `vulcan_spread`, que
+   * dispara `vulcan_pellet_count` pelotas por acionamento: cada pelota é um projétil independente,
+   * com corpo e colisão próprios, então cada uma conta como um tiro.
+   *
+   * A secundária (mísseis, EMP) fica fora de propósito. `accuracy_pct` é a pontaria da arma que o
+   * jogador aponta segurando o gatilho; míssil teleguiado e explosão em área não medem pontaria, e
+   * misturá-los tornaria o número incomparável entre builds com secundárias diferentes.
+   */
+  registerShotsFired(count = 1): void {
+    this.shotsFired += count;
+  }
+
+  /** Um projétil da arma primária encostou em algo que recebe dano (boss ou inimigo comum). */
+  registerShotHit(): void {
+    this.shotsHit += 1;
+  }
+
   calculateFinalScore(params: {
     bossDefeated: boolean;
     remainingTimeSeconds: number;
