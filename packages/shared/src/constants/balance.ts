@@ -158,6 +158,41 @@ export const BALANCE = {
     time_bonus_per_second: 80,
     survival_bonus_per_hp: 1200,
     synergy_bonus: 2000,
+    /**
+     * Teto do bônus proporcional a dano causado ao boss, para quem não fecha a luta (achado de
+     * playtest de 2026-08-16: as sete partidas manuais válidas até então zeravam `bossBonus`,
+     * `timeBonus` e `survivalBonus` porque ninguém tinha matado o boss ainda, e a metade final de
+     * cada partida virava boss-ou-nada -- chegar à fase 3 e morrer valia exatamente o mesmo que
+     * nunca ter visto o boss). `ScoreCalculator.calculateFinalScore` multiplica este teto pela
+     * fração de `max_hp` efetivamente causada (saturada em 1.0), então só quem chega perto de
+     * matar o boss chega perto do teto.
+     *
+     * 3000 fica bem abaixo de `boss_bonus` (10000) de propósito, e o motivo é o pior caso, não o
+     * típico: no instante exato em que o boss morre, o dano acumulado bate ~100% de `max_hp`, e
+     * este bônus empata com o teto -- mas matar o boss soma, por cima disso, o próprio
+     * `points.boss` (10000, escalado por combo) via `registerKill('boss')` MAIS os 10000 de
+     * `boss_bonus`. Ou seja, mesmo no empate de dano, vencer ainda soma pelo menos +20000 sobre
+     * qualquer partida que só chegou perto. Nenhuma fração de dano parcial alcança esse piso.
+     */
+    boss_damage_bonus_max: 3000,
+    /**
+     * Bônus fixo por alcançar a fase 2 do boss (66% de HP, `BALANCE.boss.phase2_hp_ratio`),
+     * pago uma vez por partida e independente do desfecho final. Existe porque chegar à fase 2
+     * já prova algo que o dano bruto não mede sozinho: o visitante sobreviveu ao padrão de tiro
+     * da fase 1 inteira, não só acumulou dano aos poucos entre respawns de vida. Metade do bônus
+     * de fase 3 (abaixo) porque a fase 1 é, de propósito, "onde o visitante iniciante passa a
+     * luta inteira" (ver comentário de `BALANCE.boss.bullet_damage`) -- superá-la é a barreira
+     * mais baixa das duas.
+     */
+    boss_phase2_reached_bonus: 500,
+    /**
+     * Bônus fixo por alcançar a fase 3 (33% de HP), em cima do bônus de fase 2 -- os dois somam
+     * quando os dois são alcançados, do mesmo jeito que `points.boss` soma sobre `boss_bonus` numa
+     * vitória. O dobro do valor da fase 2 porque a fase 3 é estritamente mais difícil de alcançar
+     * (mitigação sobe a 1.0, cadência de tiro quase dobra -- ver `BALANCE.boss.fire_cooldown_ms`)
+     * e reflete progresso por cima de um progresso que já foi pago.
+     */
+    boss_phase3_reached_bonus: 1000,
     mcp_multiplier_by_count: { 1: 1.25, 2: 1.10 } as Record<number, number>,
     mcp_multiplier_default: 1.0
   },
