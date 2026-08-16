@@ -243,7 +243,7 @@ Este bloco produz os dados que faltam para
 maior alavancagem da lista de lacunas: sem ele, **nenhum número de balanceamento está confirmado
 contra a engine real**.
 
-> **Já rodado duas vezes, e as duas já pagaram o próprio custo.**
+> **Já rodado três vezes, e as três pagaram o próprio custo.**
 >
 > A primeira, em 2026-08-15, reprovou com desvios de 90% / 82% / 52% e expôs um bug de multi-acerto
 > por projétil na engine (um tiro consumido continuava com o corpo físico habilitado e batia no boss
@@ -256,11 +256,16 @@ contra a engine real**.
 > distinguia modelo errado de arredondamento. Ver
 > [Spec 09 §5.6](./09_GAME_BALANCE_AND_DEV_MODE.md).
 >
-> **`boss_ttk_s` agora sai com casa decimal e `accuracy_pct` funciona; este bloco precisa ser
-> refeito com a nova medição.** As duas capturas anteriores estão descartadas. O que olhar desta
-> vez: **`accuracy_pct` do `striker`.** Se vier em ≈100%, todas as pelotas do vulcan acertam e o
-> desvio de 13.6% tem outra origem; se vier bem abaixo, o simulador superestima o `vulcan_spread` e
-> é ele que muda.
+> A terceira, também em 2026-08-16, validou os contadores de tiro (`accuracy_pct` de 69% / 94.2% /
+> 91.9%, o que mantém viva a hipótese de que o simulador superestima o `vulcan_spread`), mas veio
+> com `boss_ttk_s` de 34 / 80.6 / 116.9: a correção para milissegundos lia `this.time.now` dentro de
+> `create`, onde ele ainda vale 0, e reportava o relógio da aba do navegador. Corrigido acumulando
+> `delta` quadro a quadro. Ver [Spec 09 §5.7](./09_GAME_BALANCE_AND_DEV_MODE.md).
+>
+> **As três capturas estão descartadas; este bloco precisa ser refeito.** O que olhar desta vez:
+> **`boss_ttk_s` tem que bater com `duration_s - 40`** (a luta começa em `BALANCE.match.boss_spawn_s`)
+> e ter casa decimal. Se não bater, pare — a captura não presta e o problema é de medição, não de
+> modelo.
 
 Procedimento canônico e completo:
 [`packages/sim/fixtures/README.md`](../packages/sim/fixtures/README.md). O roteiro abaixo é o mesmo,
@@ -305,9 +310,10 @@ npm run test --workspace=packages/sim
 contra a engine real e o item §2.2 das lacunas está fechado.
 
 **Granularidade de relógio não é mais desculpa.** Até 2026-08-16 `boss_ttk_s` saía em segundos
-inteiros e um arredondamento de ±1 s podia sozinho estourar a tolerância; hoje a engine mede o TTK
-no relógio de milissegundos e entrega uma casa decimal (Spec 09 §5.6). Um desvio acima de 5% agora
-é sinal real.
+inteiros e um arredondamento de ±1 s podia sozinho estourar a tolerância; hoje a cena acumula o
+tempo de luta quadro a quadro e entrega uma casa decimal (Spec 09 §5.6 e §5.7). Um desvio acima de
+5% agora é sinal real — **desde que o valor tenha passado na conferência de sanidade do começo do
+bloco** (`boss_ttk_s ≈ duration_s - 40`).
 
 **Se falhar por muito:** **a engine é a realidade, o simulador está errado.** Corrija
 `combat-model.ts`, **nunca** a tolerância do teste. Anote no §8 e trate como bloqueador para a

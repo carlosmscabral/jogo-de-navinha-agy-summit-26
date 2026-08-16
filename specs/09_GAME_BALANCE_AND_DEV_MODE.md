@@ -642,9 +642,9 @@ quase o dobro da tolerância de 5% do teste de conformidade: **o portão não co
 modelo errado de um arredondamento.** Qualquer luta abaixo de ≈20 s era invalidável por construção.
 
 A cena já gravava `bossFightStartMs = this.time.now` no spawn do boss (usado no ritmo das fases);
-`triggerBossDefeated` passa a medir dali, e `boss_ttk_s` sai com uma casa decimal. Não é mudança de
+`triggerBossDefeated` passou a medir dali, e `boss_ttk_s` saiu com uma casa decimal. Não é mudança de
 comportamento de jogo — é a mesma grandeza, medida com resolução suficiente para o teste que a
-consome.
+consome. **Essa primeira correção estava errada por outro motivo; ver §5.7.**
 
 **`shots_fired`/`shots_hit`/`accuracy_pct` eram sempre zero.** Os campos existiam em
 `ScoreCalculator` e ninguém os incrementava (registrado como defeito em
@@ -665,6 +665,53 @@ deixá-la para estimativa geométrica.
 > `vulcan_spread` e o desvio de 13.6% é do modelo, como diz a regra do Bloco 3. **Se `accuracy_pct`
 > voltar em ≈100% no `striker`, essa hipótese está morta** e o desvio tem outra origem. Nada de
 > ajustar `combat-model.ts` antes de ler o número.
+
+### 5.7. `this.time.now` vale 0 dentro de `create`, e o que a pontaria medida disse (2026-08-16)
+
+A correção de §5.6 mediu em milissegundos a partir do relógio errado. A captura seguinte voltou com
+`boss_ttk_s` de **34**, **80.6** e **116.9** para lutas que a própria duração da partida diz terem
+durado 11, 9 e 6 segundos. Os três valores crescem monotonicamente na ordem em que as capturas foram
+feitas: não é TTK, é o relógio da aba do navegador.
+
+`fastForwardTo` roda dentro de `create`, ou seja, `spawnBoss` grava `bossFightStartMs` **antes do
+primeiro passo do game loop**. Nesse instante `this.time.now` ainda vale `0`:
+`Phaser.Time.Clock.boot` copia `game.loop.time`, e `TimeStep.time` nasce em `0` — só vira
+`performance.now()` quando o loop dá o primeiro passo. Com marco zero, a subtração no fim devolvia
+"milissegundos desde que a página carregou". O `DevHarness` destrói e recria o `Phaser.Game` a cada
+run, mas `performance.now()` não reinicia junto: daí a escada 34 → 80.6 → 116.9.
+
+`MainGameScene` passa a acumular `bossFightElapsedMs += delta` no `update`, zerado em `spawnBoss`.
+Não depende de relógio absoluto nenhum, funciona igual no caminho do harness e no da partida real, e
+de quebra imuniza a medição contra troca de aba — sem `requestAnimationFrame` não há quadro, não há
+delta, e o relógio de parede não infla o TTK. O mesmo defeito estava latente no cálculo de DPS média
+de `buildTelemetryFrame`, corrigido junto.
+
+**Os contadores de tiro funcionaram, e trouxeram um relógio de brinde.** Nesta mesma captura:
+
+| preset        | arma primária   | disparados | acertos | `accuracy_pct` | projéteis/s | duração implícita |
+| ------------- | --------------- | ---------- | ------- | -------------- | ----------- | ----------------- |
+| `striker`     | `vulcan_spread` | 171        | 118     | 69.0%          | 15          | 11.4 s            |
+| `interceptor` | `laser`         | 104        | 98      | 94.2%          | 12          | 8.7 s             |
+| `maximo`      | `laser`         | 74         | 68      | 91.9%          | 12          | 6.2 s             |
+
+`shots_fired` dividido pela cadência da arma é um cronômetro independente, feito da própria arma:
+`fire_rate` 5 × 3 pelotas = 15 projéteis/s no `striker`, `fire_rate` 12 × 1 nos dois `laser`. As três
+durações implícitas reproduzem os TTKs inteiros de §5.6 (11, 9, 6) sem usar relógio nenhum. Ou seja,
+**aquela primeira captura estava certa** — o que faltava era resolução, não veracidade.
+
+E a hipótese das pelotas sobreviveu ao teste que poderia tê-la matado: o `striker` voltou em **69%**,
+não em ≈100%, contra 94.2% e 91.9% das duas builds de `laser`. Nos `laser` a diferença para 100% é
+compatível com os tiros em voo no instante em que o boss morre (≈750 px/s sobre ≈450 px dá ≈0,6 s de
+voo, ≈7 tiros a 12/s; observados 6). No `striker` sobram ≈41 erros genuínos além dos ≈12 em voo, o
+que põe **≈2,2 das 3 pelotas** conectando por acionamento.
+
+> **Ainda não é o número para plugar no modelo.** `accuracy_pct` conta acertos em inimigos comuns
+> junto com os do boss, e conta como acerto a pelota que encosta no boss durante os 2 × 2 s de
+> `phase_transition_invuln_ms` — quando `takeDamage` retorna cedo e o dano é zero. A fração que
+> interessa a `combat-model.ts` é a de pelotas que **causam dano**, e ela não sai de `accuracy_pct`
+> sozinha. O que a medição estabelece é a direção e a ordem de grandeza: o simulador superestima o
+> `vulcan_spread` porque assume 3 de 3, e a engine entrega ≈2,2 de 3. Falta uma captura com o
+> `boss_ttk_s` corrigido para calibrar contra um TTK real em vez de contra uma estimativa.
 
 ---
 

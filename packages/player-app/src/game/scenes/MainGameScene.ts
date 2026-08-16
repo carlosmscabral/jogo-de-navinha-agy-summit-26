@@ -53,13 +53,13 @@ export class MainGameScene extends Phaser.Scene {
   /**
    * Tempo de vida do boss, do spawn até a morte, em segundos com uma casa decimal.
    *
-   * Medido no relógio de milissegundos da cena (`this.time.now`), NÃO em `elapsedSeconds`. Este
-   * último só anda de segundo em segundo, num `time.addEvent` de 1000ms cuja fase não tem relação
-   * com o instante em que o boss aparece -- ainda mais no harness, onde `fastForwardTo` empurra o
-   * contador para 40 no meio de um tick. Derivar o TTK dali embutia até 1s de erro de
-   * quantização, o que num TTK de 11s é 9%: quase o dobro da tolerância de 5% do teste de
-   * conformidade (`packages/sim/src/conformance.test.ts`), que portanto não conseguia distinguir
-   * um modelo errado de um arredondamento. Ver Spec 09 §5.6.
+   * Vem de `bossFightElapsedMs`, NÃO de `elapsedSeconds`. Este último só anda de segundo em
+   * segundo, num `time.addEvent` de 1000ms cuja fase não tem relação com o instante em que o boss
+   * aparece -- ainda mais no harness, onde `fastForwardTo` empurra o contador para 40 no meio de um
+   * tick. Derivar o TTK dali embutia até 1s de erro de quantização, o que num TTK de 11s é 9%:
+   * quase o dobro da tolerância de 5% do teste de conformidade
+   * (`packages/sim/src/conformance.test.ts`), que portanto não conseguia distinguir um modelo
+   * errado de um arredondamento. Ver Spec 09 §5.6.
    */
   bossTtkSeconds: number | null = null;
 
@@ -67,7 +67,20 @@ export class MainGameScene extends Phaser.Scene {
   // comment for the exact instant/average algorithm. Cheap to maintain even when unused.
   private bossDamageSamples: { t: number; dmg: number }[] = [];
   private bossDamageTotal = 0;
-  private bossFightStartMs: number | null = null;
+  /**
+   * Tempo de luta contra o boss, acumulado quadro a quadro a partir do `delta` de `update`.
+   * `null` enquanto o boss não apareceu.
+   *
+   * Acumular o delta em vez de guardar um instante inicial e subtrair depois não é preciosismo:
+   * `spawnBoss` roda dentro de `create` no caminho do harness (`fastForwardTo`), ou seja, ANTES do
+   * primeiro passo do game loop, e nesse instante `this.time.now` ainda vale 0 --
+   * `Phaser.Time.Clock.boot` copia `game.loop.time`, que só vira `performance.now()` quando o loop
+   * começa a rodar (`TimeStep.time` nasce em 0). Guardar `this.time.now` ali dava marco zero, e a
+   * subtração no fim devolvia "milissegundos desde que a página carregou" em vez do tempo de luta.
+   * Somar `delta` também imuniza a medição contra troca de aba: sem `requestAnimationFrame` não há
+   * quadro, não há delta, e o relógio de parede não infla o TTK. Ver Spec 09 §5.6.
+   */
+  private bossFightElapsedMs: number | null = null;
 
   enemies!: Phaser.Physics.Arcade.Group;
   enemyBullets!: Phaser.Physics.Arcade.Group;
@@ -115,6 +128,7 @@ export class MainGameScene extends Phaser.Scene {
     this.elapsedSeconds = 0;
     this.matchTimer = BALANCE.match.duration_s;
     this.bossTtkSeconds = null;
+    this.bossFightElapsedMs = null;
     this.scoreCalculator = new ScoreCalculator();
     this.boss = undefined;
     audioManager.setBossMode(false);
@@ -369,7 +383,7 @@ export class MainGameScene extends Phaser.Scene {
   private spawnBoss(): void {
     audioManager.setBossMode(true);
     this.boss = new BossOverlord(this, this.scale.width / 2, 140, this.isHardcore);
-    this.bossFightStartMs = this.time.now;
+    this.bossFightElapsedMs = 0;
     this.setupBossHud();
 
     // Primary Bullets vs Boss.
@@ -502,7 +516,7 @@ export class MainGameScene extends Phaser.Scene {
     const windowStart = time - 1000;
     this.bossDamageSamples = this.bossDamageSamples.filter((s) => s.t >= windowStart);
     const bossDpsInstant = this.bossDamageSamples.reduce((sum, s) => sum + s.dmg, 0);
-    const fightElapsedS = this.bossFightStartMs !== null ? (time - this.bossFightStartMs) / 1000 : 0;
+    const fightElapsedS = (this.bossFightElapsedMs ?? 0) / 1000;
     const bossDpsAverage = fightElapsedS > 0.001 ? this.bossDamageTotal / fightElapsedS : 0;
 
     return {
@@ -563,7 +577,7 @@ export class MainGameScene extends Phaser.Scene {
   private triggerBossDefeated(): void {
     this.isVictory = true;
     this.bossTtkSeconds =
-      this.bossFightStartMs !== null ? +((this.time.now - this.bossFightStartMs) / 1000).toFixed(1) : null;
+      this.bossFightElapsedMs !== null ? +(this.bossFightElapsedMs / 1000).toFixed(1) : null;
     audioManager.setBossMode(false);
     audioManager.playVictoryJingle();
 
@@ -1087,6 +1101,12 @@ export class MainGameScene extends Phaser.Scene {
       }
       this.starfieldGraphics.fillStyle(star.color, star.alpha);
       this.starfieldGraphics.fillCircle(star.x, star.y, star.size);
+    }
+
+    // Relógio da luta contra o boss. Só corre enquanto a luta corre: `triggerBossDefeated` e a
+    // morte do jogador congelam o valor que vai para `boss_ttk_s`.
+    if (this.bossFightElapsedMs !== null && !this.isGameOver && !this.isVictory) {
+      this.bossFightElapsedMs += delta;
     }
 
     if (!this.isGameOver && !this.isVictory && this.player && this.player.active) {
