@@ -35,13 +35,19 @@ function broadcast(message: Record<string, unknown>): void {
   }
 }
 
-// 15s (2026-08-16 e antes) não sobrava pro caso real que este relógio agora cobre desde o
-// início da sessão (achado do mesmo dia): o visitante sai da Tela 1 (cockpit, onde clicou "Ir
-// para a Forja") e precisa chegar na Tela 2, ler o banner do `agy` e responder à primeira
-// pergunta do Fast-Grill-Me antes da primeira ferramenta MCP ser chamada -- essa travessia
-// sozinha, num estande cheio, passa de 15s. 30s dá essa folga sem enfraquecer o gate: o teto
-// pós-auditoria (mais generoso, abaixo) continua intocado, e ainda existe o teto rígido de
-// 150s como última rede.
+// 2026-08-16: armar este relógio desde o início da sessão (não só depois da primeira atividade
+// de MCP) expôs que ele mede a coisa errada na largada. O Fast-Grill-Me faz DUAS perguntas
+// conversacionais (foco de arma, estilo estético) ANTES de qualquer ferramenta MCP ser chamada,
+// e o daemon não enxerga nada dessa troca -- só `mcp_audit.log` e `ship_spec.json` contam como
+// sinal de vida. Um teste manual real (visitante lendo e respondendo as duas perguntas, sem
+// pressa nenhuma) já bastou pra estourar os 30s antigos e matar o `agy` no meio da conversa. 30s
+// nunca foi pouco tempo pra "o agente travou"; era pouco tempo pra "um humano leu duas perguntas
+// e digitou duas respostas". Ver AGY_SILENCE_TIMEOUT_MS abaixo para a fase que continua rápida
+// por natureza (chamadas de ferramenta são automáticas, não esperam humano).
+const AGY_PRE_MCP_SILENCE_TIMEOUT_MS = Number(process.env.AGY_PRE_MCP_SILENCE_TIMEOUT_MS) || 60_000;
+// Vale só DEPOIS da primeira ferramenta MCP já ter sido chamada: daqui pra frente é o `agy`
+// encadeando chamadas de tool sozinho, sem esperar resposta de humano, então o ritmo é de
+// máquina -- 30s de silêncio nessa fase é sinal real de travamento, não de gente pensando.
 const AGY_SILENCE_TIMEOUT_MS = Number(process.env.AGY_SILENCE_TIMEOUT_MS) || 30_000;
 const AGY_HARD_TIMEOUT_MS = Number(process.env.AGY_HARD_TIMEOUT_MS) || 150_000;
 const AGY_POST_AUDIT_TIMEOUT_MS = Number(process.env.AGY_POST_AUDIT_TIMEOUT_MS) || 90_000;
@@ -52,6 +58,7 @@ let hardTimer: NodeJS.Timeout | undefined;
 let livenessTimer: NodeJS.Timeout | undefined;
 let shipDelivered = false;
 let auditGateSatisfied = false;
+let firstMcpActivitySeen = false;
 let lastKnownAgyPid: number | null = null;
 
 function clearAgyTimers(): void {
@@ -63,7 +70,11 @@ function clearAgyTimers(): void {
 
 function armSilenceTimer(sliders: EnergySliders, reasonPrefix: string): void {
   if (silenceTimer) clearTimeout(silenceTimer);
-  const timeoutMs = auditGateSatisfied ? AGY_POST_AUDIT_TIMEOUT_MS : AGY_SILENCE_TIMEOUT_MS;
+  const timeoutMs = auditGateSatisfied
+    ? AGY_POST_AUDIT_TIMEOUT_MS
+    : firstMcpActivitySeen
+      ? AGY_SILENCE_TIMEOUT_MS
+      : AGY_PRE_MCP_SILENCE_TIMEOUT_MS;
   silenceTimer = setTimeout(() => triggerFallback(sliders, `${reasonPrefix}: silêncio de ${timeoutMs}ms`), timeoutMs);
 }
 
@@ -232,6 +243,11 @@ app.post('/api/session/start', (req, res) => {
         broadcast({ type: 'EVENT_SHIP_READY', spec: shipSpec });
       },
       onMcpActivity: (activity) => {
+        // A partir da primeira chamada de ferramenta, o resto da sessão é o `agy` encadeando
+        // tool calls sozinho -- sem humano no meio, sem motivo pra manter a janela generosa da
+        // conversa. Setado ANTES de rearmar para que este e todo silêncio seguinte já cobrem
+        // pelo relógio apertado (AGY_SILENCE_TIMEOUT_MS), não o de pré-conversa.
+        firstMcpActivitySeen = true;
         armSilenceTimer(energy_sliders, 'após atividade MCP');
         broadcast({ type: 'EVENT_MCP_ACTIVITY', data: activity });
       },
@@ -259,6 +275,7 @@ app.post('/api/session/start', (req, res) => {
 
     shipDelivered = false;
     auditGateSatisfied = false;
+    firstMcpActivitySeen = false;
     lastKnownAgyPid = null;
     clearAgyTimers();
     hardTimer = setTimeout(
@@ -341,6 +358,7 @@ app.post('/api/session/reset', (req, res) => {
     clearAgyTimers();
     shipDelivered = false;
     auditGateSatisfied = false;
+    firstMcpActivitySeen = false;
     lastKnownAgyPid = null;
     fileWatcher.stopWatching();
     currentSessionMetadata = null;
