@@ -265,9 +265,17 @@ export class BossOverlord extends Phaser.Physics.Arcade.Sprite {
       this.fireAngle += 0.24;
       for (let i = 0; i < 12; i++) {
         const rad = this.fireAngle + (i * Math.PI) / 6;
-        const vx = Math.cos(rad) * bulletSpeed;
         const vy = Math.sin(rad) * bulletSpeed;
-        this.spawnBullet(this.x, this.y + 40, vx, Math.max(60, vy));
+        // Um ângulo que apontaria pra cima (vy < 0) virava, com `Math.max(60, vy)`, uma bala
+        // forçada pra baixo a só 60px/s -- exatamente os tiros que deveriam sumir rápido pela
+        // borda de cima ficavam em vez disso quase parados por até 12s bem debaixo do boss.
+        // Numa rotação completa isso empilha uma coluna de balas lentas a cada volta, o campo
+        // "impossível de desviar" que o playtest de 2026-08-16 relatou. Pular o disparo em vez
+        // de forçar a direção devolve à fase 2 a mesma limpeza de tela que a fase 3 já tem sem
+        // clamp nenhum, e reduz a densidade instantânea pela metade como efeito colateral.
+        if (vy < 0) continue;
+        const vx = Math.cos(rad) * bulletSpeed;
+        this.spawnBullet(this.x, this.y + 40, vx, vy);
       }
 
       // Fast tracking sniper bursts aimed at player escape vector
