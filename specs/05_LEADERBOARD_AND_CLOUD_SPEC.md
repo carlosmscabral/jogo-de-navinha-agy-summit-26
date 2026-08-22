@@ -51,7 +51,7 @@ graph TD
     subgraph Cloud [Google Cloud]
         RUN[Cloud Run: API de ingestao]
         FS[(Cloud Firestore)]
-        VERTEX[Vertex AI: gemini-3.6-flash]
+        VERTEX[Vertex AI: gemini-3.7-flash]
         TVAPP[Leaderboard App hospedado]
     end
 
@@ -118,7 +118,7 @@ Alocado à **Tarefa C0** do [plano](./10_IMPLEMENTATION_PLAN.md).
 > **Correção.** A especificação original previa **Gemini 1.5 Flash com timeout de 600ms** no caminho
 > síncrono de registro. Duas mudanças:
 >
-> - O modelo é **`gemini-3.6-flash`**, consumido exclusivamente via **Vertex AI / Gemini Enterprise
+> - O modelo é **`gemini-3.7-flash`**, consumido exclusivamente via **Vertex AI / Gemini Enterprise
 >   Agent Platform**, com autenticação por ADC ou conta de serviço. Não existe chave de API de modelo
 >   em nenhum ponto deste sistema.
 > - A chamada **sai do caminho síncrono**. Um orçamento de 600ms para uma ida e volta de LLM em Wi-Fi
@@ -130,7 +130,7 @@ Alocado à **Tarefa C0** do [plano](./10_IMPLEMENTATION_PLAN.md).
 1. O registro grava `company_raw` e a melhor resolução **local** como `company_canonical`. O visitante
    nunca espera. Esse é o caminho crítico, e ele já resolve a grande maioria dos casos.
 2. Quando a resolução local tem confiança baixa, o registro é marcado para revisão e enfileirado.
-3. Na nuvem, um handler chama `gemini-3.6-flash` para desambiguar o lote, com o catálogo canônico no
+3. Na nuvem, um handler chama `gemini-3.7-flash` para desambiguar o lote, com o catálogo canônico no
    prompt e resposta em JSON estruturado.
 4. Se o modelo devolver uma canônica diferente e com confiança suficiente, o documento em `matches` é
    atualizado, o agregado em `company_rankings` é corrigido por transação, e o alias volta para o
@@ -167,7 +167,7 @@ checagem duas vezes.
 > alguém adiciona um termo numa e esquece a outra, e o termo passa pelo campo que ninguém lembrava
 > que existia. Uma lista, dois chamadores.
 
-Estender a camada 2 (semântica, por `gemini-3.6-flash`) também ao campo empresa é **opcional na
+Estender a camada 2 (semântica, por `gemini-3.7-flash`) também ao campo empresa é **opcional na
 Tarefa C4**, não obrigatório: diferente do callsign, aqui o pior caso já tem uma saída segura e
 barata — `'Independente'`.
 
@@ -363,7 +363,7 @@ O worker a construir:
   chave é copiado para a máquina do estande.
 - **O estande recebe um token de escopo único** para o endpoint de ingestão, rotacionável sem tocar em
   nada além da variável de ambiente do daemon.
-- **Nenhuma chave de API de modelo existe.** Todo acesso a `gemini-3.6-flash` é via Vertex AI com
+- **Nenhuma chave de API de modelo existe.** Todo acesso a `gemini-3.7-flash` é via Vertex AI com
   credencial de serviço, e acontece **somente** no Cloud Run.
 
 Detalhamento completo do modelo de credenciais na

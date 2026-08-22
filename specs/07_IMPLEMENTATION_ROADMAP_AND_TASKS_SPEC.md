@@ -22,7 +22,7 @@
 | MCPs mockados | `@modelcontextprotocol/sdk` 1.6 sobre stdio + `zod` 3 | Três servidores, resposta local. |
 | Persistência local | `better-sqlite3` 11 | Buffer de partidas e catálogo de empresas. |
 | Nuvem | **Ausente** | Firestore e Admin SDK não instalados (**U1**). |
-| Modelo | **Ausente** | Alvo: `gemini-3.6-flash` via Vertex AI (**U2**). |
+| Modelo | **Ausente** | Alvo: `gemini-3.7-flash` via Vertex AI (**U2**). |
 
 > **Correção de modelo.** Toda referência a *Gemini 1.5 Flash API* está superada. O consumo é
 > exclusivamente pelo flavor **Vertex AI / Gemini Enterprise Agent Platform**, com credencial de conta

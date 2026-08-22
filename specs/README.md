@@ -79,7 +79,7 @@ graph LR
     subgraph Cloud [Google Cloud]
         RUN[Cloud Run: API de ingestao]
         FS[(Cloud Firestore)]
-        VERTEX[Vertex AI: gemini-3.6-flash]
+        VERTEX[Vertex AI: gemini-3.7-flash]
         TVAPP[Leaderboard hospedado]
     end
 
@@ -98,7 +98,7 @@ graph LR
     TVAPP --> TV
 ```
 
-**Modelo:** `gemini-3.6-flash`, consumido **exclusivamente** pelo flavor Vertex AI / Gemini Enterprise
+**Modelo:** `gemini-3.7-flash`, consumido **exclusivamente** pelo flavor Vertex AI / Gemini Enterprise
 Agent Platform, com credencial de conta de serviço. Nenhuma chave de API de modelo existe neste
 projeto, em nenhum ambiente.
 

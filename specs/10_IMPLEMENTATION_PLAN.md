@@ -10,7 +10,7 @@ estande operável por 8 horas contínuas no Summit, fechando todos os 32 achados
 
 **Arquitetura:** Topologia C da [Spec 08](./08_DEPLOYMENT_TOPOLOGY_AND_CLOUD_SPLIT.md) — `agy`, os 3 MCPs
 stdio, o session bridge e o `player-app` **servido pelo próprio bridge** ficam na máquina do estande;
-Firestore, a API de ingestão em Cloud Run, todo consumo de `gemini-3.6-flash` via Vertex AI e o
+Firestore, a API de ingestão em Cloud Run, todo consumo de `gemini-3.7-flash` via Vertex AI e o
 `leaderboard-app` vão para GCP. O buffer SQLite permanece como garantia de que nenhuma pontuação se
 perde com o Wi-Fi do centro de convenções fora do ar.
 
@@ -24,7 +24,7 @@ Firebase Admin SDK (novo) · `@google-cloud/vertexai` (novo) · Cloud Run · Clo
 
 Valem para **todas** as tarefas. Os requisitos de cada tarefa incluem implicitamente esta seção.
 
-1. **Modelo:** o único modelo permitido é **`gemini-3.6-flash`**, consumido **exclusivamente** pelo
+1. **Modelo:** o único modelo permitido é **`gemini-3.7-flash`**, consumido **exclusivamente** pelo
    flavor **Vertex AI / Gemini Enterprise Agent Platform**, autenticado por ADC ou service account.
    **Proibido** em qualquer arquivo do repositório: `GEMINI_API_KEY`, `generativelanguage.googleapis.com`,
    `@google/generative-ai`. A documentação de referência é `docs.cloud.google.com`, nunca `ai.google.dev`.
@@ -3717,6 +3717,12 @@ Gates M0, M1 e M2, e a telemetria hoje chega completa.
 > painel de administração, renovação de credencial), não da revisão de código. As duas primeiras
 > viraram tarefa; a terceira foi deliberadamente **não** automatizada — ver a Tarefa D1.
 >
+> **Correção de modelo, 2026-08-22, feita durante a implementação da Tarefa C4.** O modelo passa de
+> `gemini-3.6-flash` para **`gemini-3.7-flash`**, e a região do Vertex AI — até então "a confirmar
+> na implementação" (Spec 08 §6.3) — fica decidida em **`global`**, não `us-central1`. Atualizado em
+> todas as specs e nesta tarefa; `VERTEX_LOCATION` continua uma variável de ambiente, com `global`
+> como default.
+>
 > Três achados do `gemini-com-pe` foram avaliados e **rejeitados** para esta fase, com motivo:
 > fan-out por Pub/Sub (temos um consumidor só — a regra é dos próprios autores), polling de 1,5s no
 > telão (fica como plano B nomeado na Spec 05 §7), e o script Python de CI contra deriva de schema
@@ -4837,14 +4843,14 @@ git commit -m "feat(cloud): API de ingestão em Cloud Run com idempotência por 
 
 ---
 
-### Tarefa C4 — [U2] `gemini-3.6-flash` via Vertex AI: moderação bloqueante e canonicalização assíncrona
+### Tarefa C4 — [U2] `gemini-3.7-flash` via Vertex AI: moderação bloqueante e canonicalização assíncrona
 
 O primeiro código de modelo do projeto. Dois usos com exigências **opostas**, e confundi-los é o erro
 a evitar: moderação vale a espera e falha fechada; canonicalização não vale a espera e é reconciliada
 depois.
 
 > **Restrição Global 1, repetida porque é aqui que ela se aplica:** exclusivamente
-> **Vertex AI / Gemini Enterprise Agent Platform**, modelo `gemini-3.6-flash`, autenticação por ADC ou
+> **Vertex AI / Gemini Enterprise Agent Platform**, modelo `gemini-3.7-flash`, autenticação por ADC ou
 > service account. Nada de `GEMINI_API_KEY`, nada de `generativelanguage.googleapis.com`, nada de
 > `@google/generative-ai`. A biblioteca é `@google-cloud/vertexai`.
 
@@ -4865,7 +4871,7 @@ depois.
 
 - [ ] **Passo 1: Confirmar os parâmetros vigentes da API**
 
-Antes de escrever, consultar `docs.cloud.google.com` para o `gemini-3.6-flash` em Vertex AI e anotar no
+Antes de escrever, consultar `docs.cloud.google.com` para o `gemini-3.7-flash` em Vertex AI e anotar no
 código: as regiões que o servem, o nome vigente do controle de raciocínio (`thinking_level`, que
 substituiu `thinking_budget`) e a confirmação de que `temperature` / `top_p` / `top_k` **não** se
 aplicam à família 3.x. Registrar a data da consulta em comentário. Um parâmetro obsoleto passado ao
@@ -4961,10 +4967,10 @@ import { VertexAI } from '@google-cloud/vertexai';
  */
 const vertex = new VertexAI({
   project: requireEnv('GOOGLE_CLOUD_PROJECT'),
-  location: process.env.VERTEX_LOCATION || 'us-central1'
+  location: process.env.VERTEX_LOCATION || 'global'
 });
 
-export const MODEL_ID = 'gemini-3.6-flash';
+export const MODEL_ID = 'gemini-3.7-flash';
 
 /** Uma geração com saída JSON forçada por schema. Devolve o texto bruto. */
 export async function generateJson(prompt: string, responseSchema: object): Promise<string> {
@@ -5009,7 +5015,7 @@ Qualquer ocorrência em código é violação da Restrição Global 1.
 
 ```bash
 git add packages/cloud-api/src packages/daemon/src package.json
-git commit -m "feat(vertex): moderação bloqueante e canonicalização assíncrona com gemini-3.6-flash"
+git commit -m "feat(vertex): moderação bloqueante e canonicalização assíncrona com gemini-3.7-flash"
 ```
 
 ---

@@ -414,7 +414,7 @@ o `USER_GUIDE` está certo. O `leaderboard-app` lê o SQLite do daemon por HTTP 
 (`leaderboard-app/src/App.tsx:42,65`), não `onSnapshot` do Firestore.
 
 Sobre **U2**: além de ausente, o modelo especificado está obsoleto. Todas as menções a *Gemini 1.5
-Flash* (05 §2.1, 06 §2.2, 07 §1, README) devem passar a **`gemini-3.6-flash` consumido via Vertex AI /
+Flash* (05 §2.1, 06 §2.2, 07 §1, README) devem passar a **`gemini-3.7-flash` consumido via Vertex AI /
 Gemini Enterprise Agent Platform**, conforme decidido na Spec 08.
 
 Há ainda uma tensão de latência a resolver: a Spec 05 §2.1 fixa timeout de 600ms para a desambiguação.

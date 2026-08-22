@@ -66,7 +66,7 @@ command -v agy               # precisa retornar um caminho
 agy --version
 ```
 
-O `agy` precisa estar no sabor **Vertex AI / Enterprise**, com `gemini-3.6-flash` — **não** com
+O `agy` precisa estar no sabor **Vertex AI / Enterprise**, com `gemini-3.7-flash` — **não** com
 chave de API. Confirme antes de começar; um `agy` autenticado do jeito errado só falha no Bloco 5,
 depois de você já ter gasto 1h30.
 

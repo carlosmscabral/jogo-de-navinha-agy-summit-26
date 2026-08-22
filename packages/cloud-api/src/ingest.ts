@@ -78,9 +78,17 @@ async function ingestOne(db: Firestore, m: MatchDocument): Promise<void> {
   });
 }
 
-export async function ingestBatch(db: Firestore, matches: MatchDocument[]): Promise<IngestResult> {
+export async function ingestBatch(
+  db: Firestore,
+  matches: MatchDocument[],
+  // Tarefa C4 (Spec 05 §3.2): gatilho da canonicalização assíncrona, injetado por quem monta o
+  // servidor (index.ts). `ingest.test.ts` não passa nada, então os testes de ingestão nunca
+  // tocam o Vertex. Chamado SEM `await` logo abaixo — nunca no caminho de resposta.
+  onNeedsReview?: (db: Firestore) => void
+): Promise<IngestResult> {
   const accepted: string[] = [];
   const rejected: Array<{ match_id: string; reason: string }> = [];
+  let anyNeedsReview = false;
 
   for (const m of matches) {
     const reason = validate(m);
@@ -90,6 +98,11 @@ export async function ingestBatch(db: Firestore, matches: MatchDocument[]): Prom
     }
     await ingestOne(db, m);
     accepted.push(m.match_id);
+    if (m.needs_company_review) anyNeedsReview = true;
+  }
+
+  if (anyNeedsReview && onNeedsReview) {
+    onNeedsReview(db);
   }
 
   return { accepted, rejected };

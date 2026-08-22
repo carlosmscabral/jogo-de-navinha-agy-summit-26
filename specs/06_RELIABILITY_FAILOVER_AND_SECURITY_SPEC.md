@@ -138,14 +138,14 @@ Três correções necessárias:
 - **Um visitante barrado precisa entender o porquê.** A UI mostra o motivo; o caminho de API não.
 
 **Camada 2 — semântica, ausente (U2).** Um filtro de dicionário não pega ofensa contextual nem uma
-frase montada com palavras inócuas. A validação semântica usa **`gemini-3.6-flash` via Vertex AI /
+frase montada com palavras inócuas. A validação semântica usa **`gemini-3.7-flash` via Vertex AI /
 Gemini Enterprise Agent Platform**, chamada **somente no Cloud Run**, e — diferente da canonicalização
 de empresa — é **bloqueante**, com timeout curto e **falha fechada**: se o modelo não responder a
 tempo, o callsign é recusado e o visitante escolhe outro. Esperar 1s vale menos que um palavrão no
 telão do estande do Google.
 
 > **Correção de modelo.** Toda referência a *Gemini 1.5 Flash* nesta especificação está superada. O
-> modelo é `gemini-3.6-flash`, e o acesso é exclusivamente por Vertex AI — nunca por chave de API.
+> modelo é `gemini-3.7-flash`, e o acesso é exclusivamente por Vertex AI — nunca por chave de API.
 
 ---
 

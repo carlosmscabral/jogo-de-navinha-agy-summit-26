@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { SQLiteBufferService } from './services/sqlite-buffer.js';
 import { WorkspaceGeneratorService } from './services/workspace-generator.js';
 import { FileWatcherService } from './services/file-watcher.js';
+import { moderateRemotely } from './services/remote-moderation.js';
 import { validateCallsign, selectFallbackPreset, EnergySliders } from '@jogo/shared';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -138,6 +139,15 @@ function triggerFallback(sliders: EnergySliders, reason: string): void {
 
 const sessionDir = process.env.BOOTH_SESSION_DIR || '/tmp/booth_session';
 
+// Tarefa C4 (Spec 05 §3.2, Spec 08 §6.2) — camada 2 de moderação, remota. `BOOTH_CLOUD_API_BASE`
+// é o mesmo nome de variável que a Tarefa C5 (worker de sincronização) vai reutilizar; `null`
+// aqui é "nenhuma nuvem configurada", o modo em que todo desenvolvimento local roda hoje.
+const CLOUD_API_BASE = process.env.BOOTH_CLOUD_API_BASE || null;
+// Mesmo token de escopo único que a cloud-api espera em `Authorization: Bearer` (ver
+// packages/cloud-api/src/auth.ts) — o daemon é o único cliente autorizado a chamá-la.
+const CLOUD_API_TOKEN = process.env.BOOTH_INGEST_TOKEN || null;
+const MODERATION_L2_TIMEOUT_MS = Number(process.env.BOOTH_MODERATION_L2_TIMEOUT_MS) || 1500;
+
 let currentSessionMetadata: any = null;
 
 // --- REST Endpoints ---
@@ -187,11 +197,43 @@ app.get('/api/session/activity', (req, res) => {
   res.json({ activity });
 });
 
-app.post('/api/session/start', (req, res) => {
+app.post('/api/session/start', async (req, res) => {
   try {
     const { pilot, energy_sliders, selected_mcps, selected_subagents } = req.body;
 
     const validation = validateCallsign(pilot?.callsign || '');
+
+    // Tarefa C4 — camada 2, só consultada quando a camada 1 local já aprovou. Se a camada 1
+    // já achou problema (curto demais, profanidade, etc.), ela já saneou o callsign para um
+    // placeholder seguro por construção (ex.: "PILOTO_042") — perguntar ao modelo de novo não
+    // muda nada e só custaria uma chamada de rede. É só no caminho "aprovado localmente" que
+    // o insulto velado que a camada 1 não pega tem chance de passar, e é aí que a camada 2 entra.
+    if (validation.isValid) {
+      const remote = await moderateRemotely(
+        CLOUD_API_BASE, CLOUD_API_TOKEN, validation.sanitized, MODERATION_L2_TIMEOUT_MS
+      );
+
+      if (remote.verdict === 'block') {
+        // Falha FECHADA do modelo (Spec 05 §3.2): o registro é recusado com o motivo, e não
+        // silenciosamente trocado por um placeholder — o visitante escolhe outro codinome.
+        res.status(422).json({
+          error: 'callsign_rejected',
+          reason: remote.reason || 'Codinome recusado pela moderação.'
+        });
+        return;
+      }
+
+      if (remote.verdict === 'unavailable') {
+        // Falha ABERTA do transporte (Spec 08 §6.2): o Vertex está inalcançável, não em dúvida.
+        // A camada 1 local já aprovou; o estande não pode parar de receber visitantes por causa
+        // disso, mas o staff precisa saber se isso vira o dia inteiro sem moderação semântica.
+        console.warn(
+          `[Daemon] Moderação semântica (camada 2) indisponível para "${validation.sanitized}" — ` +
+          'seguindo só com a aprovação local (camada 1). Se isso persistir, o Vertex está inalcançável.'
+        );
+      }
+    }
+
     const canonicalCompany = sqliteBuffer.resolveCompany(pilot?.company_raw);
     const fullPilot = {
       ...pilot,

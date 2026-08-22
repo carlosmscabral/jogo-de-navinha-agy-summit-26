@@ -89,7 +89,7 @@ graph TD
     subgraph GCP [Camada C - Google Cloud]
         RUN[Cloud Run: API de ingestao]
         FS[(Cloud Firestore)]
-        VERTEX[Vertex AI: gemini-3.6-flash]
+        VERTEX[Vertex AI: gemini-3.7-flash]
     end
 
     KIOSK -->|HTTP e WS locais| BRIDGE
@@ -188,13 +188,13 @@ cache no próprio Firestore em vez de uma chamada ao bridge.
 - Regras do Firestore: escrita negada a todos os clientes; leitura pública apenas em `matches`,
   `pilots` e `company_rankings`. Isso satisfaz o critério da Spec 05 §5.
 
-### 6.2. Mapa de uso do `gemini-3.6-flash`
+### 6.2. Mapa de uso do `gemini-3.7-flash`
 
 | Uso | Onde | Bloqueante? | Observação |
 | :--- | :--- | :--- | :--- |
 | Moderação semântica de callsign (camada 2) | Cloud Run | Sim, com timeout | A camada 1 (regex local) já rodou; se o Vertex não responder, a camada 1 prevalece e o fluxo segue. |
 | Canonicalização de empresa | Cloud Run | **Não** | Ver abaixo. |
-| Modelo da Forja | O próprio AGY | — | O `gemini-3.6-flash` é o modelo padrão do agente Antigravity; fixar explicitamente na configuração do harness se a CLI permitir. |
+| Modelo da Forja | O próprio AGY | — | O `gemini-3.7-flash` é o modelo padrão do agente Antigravity; fixar explicitamente na configuração do harness se a CLI permitir. |
 | Scoring de qualidade de prompt (L1, opcional) | Cloud Run | Não | Reabilita o requisito perdido; ver Spec 10, Fase E. |
 
 **Sobre o timeout de 600ms da Spec 05 §2.1:** modelos Gemini 3.x têm *thinking* habilitado por padrão,
@@ -215,7 +215,7 @@ documentação vigente do Vertex no momento da implementação — a família 3.
 | Banco Firestore | **nomeado `jogo-navinha`** — não o `(default)` | Ver abaixo. |
 | Região do Firestore | `southamerica-east1` | Perto do evento; a latência que importa é a da escrita de ingestão e a do `onSnapshot` do telão. |
 | Região do Cloud Run | `southamerica-east1` | Mesma região do Firestore: a escrita de ingestão é o caminho quente. |
-| Região do Vertex AI | **a confirmar na implementação** — pode precisar de `us-central1` ou `global` | Independente das duas acima. |
+| Região do Vertex AI | **`global`** — decidido em 2026-08-22 | Independente das duas acima. |
 
 **Por que um banco nomeado e não o `(default)`.** A Spec 05 §6 termina as regras com
 `match /{document=**} { allow read, write: if false; }`. Um ruleset do Firestore é publicado **por
@@ -227,11 +227,12 @@ SDK precisa nomear o banco explicitamente ao instanciar — esquecer disso escre
 silêncio, que é o modo de falha a testar na Tarefa C2.
 
 **Por que a região do Vertex é independente.** Disponibilidade de modelo não segue disponibilidade de
-Firestore: `gemini-3.6-flash` pode não estar servido em `southamerica-east1`. Isso é aceitável porque
-nenhuma das duas chamadas de modelo está no caminho crítico de latência do visitante — a moderação L2
-tem timeout e recai na camada 1 (§6.2), e a canonicalização é assíncrona por desenho. A região do
-Vertex é uma variável de ambiente do Cloud Run, resolvida quando a Tarefa C4 for escrita, e não uma
-decisão a tomar agora.
+Firestore: `gemini-3.7-flash` não é servido em `southamerica-east1`, e usar a região **`global`**
+evita ter que reconfirmar cobertura regional a cada troca de modelo. Isso é aceitável porque nenhuma
+das duas chamadas de modelo está no caminho crítico de latência do visitante — a moderação L2 tem
+timeout e recai na camada 1 (§6.2), e a canonicalização é assíncrona por desenho. A região do Vertex é
+uma variável de ambiente do Cloud Run (`VERTEX_LOCATION`, default `global`), então trocar de região no
+futuro não exige um novo deploy de código.
 
 ---
 
@@ -266,7 +267,7 @@ Para um evento de 1 a 2 dias com ordem de 500 visitantes:
 
 - **Firestore:** ordem de milhares de escritas e leituras. Dentro ou muito próximo do nível gratuito.
 - **Cloud Run:** escala a zero fora do evento; alguns milhares de requisições. Centavos.
-- **Vertex AI (`gemini-3.6-flash`):** entrada a US$ 1,50/1M tokens e saída a US$ 7,50/1M. Com ≈2
+- **Vertex AI (`gemini-3.7-flash`):** entrada a US$ 1,50/1M tokens e saída a US$ 7,50/1M. Com ≈2
   chamadas curtas por visitante, o total do evento fica na casa de **menos de um dólar**.
 - **Contingência §7:** 1 VM por estação, custo dominante desse cenário.
 
@@ -292,7 +293,7 @@ Custo não é fator de decisão aqui; disponibilidade e risco operacional são.
 
 - [ ] Nenhuma credencial de service account ou chave de modelo reside na máquina do estande; apenas um
       token de ingestão de escopo único.
-- [ ] Todo consumo de Gemini ocorre via Vertex AI com `gemini-3.6-flash`; nenhuma referência a
+- [ ] Todo consumo de Gemini ocorre via Vertex AI com `gemini-3.7-flash`; nenhuma referência a
       `generativelanguage.googleapis.com` ou `GEMINI_API_KEY` existe no repositório.
 - [ ] Nenhum cliente escreve diretamente no Firestore; toda escrita passa pelo Cloud Run (Spec 05 §5).
 - [ ] Com o cabo de rede desconectado, um ciclo completo de visitante roda de ponta a ponta e o score
