@@ -314,6 +314,44 @@ jogo — nenhum processo do `agy`/MCP sobreviveu de fato.
 **Fecha o item:** trocar o comando no Bloco 7.2 por
 `ps -o pid,pgid,command -ax | grep -E 'agy|mcps/dist' | grep -v grep | grep -v node_modules`.
 
+### 4.9 A credencial local do AGY não se renova, e a falha é invisível
+
+Encontrado em 2026-08-22, na revisão de entrada da Fase C. **É o item mais grave desta seção** — não
+pela probabilidade, mas porque o sintoma não se anuncia.
+
+**O estado:** o repositório não configura credencial nenhuma para o `agy`. O
+`scripts/booth-terminal.sh:130-135` faz `exec agy` e herda o ambiente do shell; não há uma única
+referência a `GOOGLE_CLOUD_PROJECT`, `GOOGLE_APPLICATION_CREDENTIALS` ou `GOOGLE_GENAI_USE_VERTEXAI`
+em todo o projeto. Funciona hoje porque a máquina de desenvolvimento está autenticada de forma
+interativa.
+
+**A contradição nas specs:** a [Spec 06](./06_RELIABILITY_FAILOVER_AND_SECURITY_SPEC.md) §2.1.4 pede
+"ADC de **conta de serviço** com escopo mínimo"; a
+[Spec 08](./08_DEPLOYMENT_TOPOLOGY_AND_CLOUD_SPLIT.md) §6.1 proíbe "**nenhum arquivo de chave** na
+máquina do estande". Satisfazer as duas exige Workload Identity Federation ou impersonação — nenhuma
+planejada, e ambas precisam de uma credencial de usuário para começar. A contradição está aberta.
+
+**O modo de falha:** o token expira, ou a política da organização força reautenticação no meio do
+dia. O `agy` para de responder. O timeout de 15s da Tarefa A4 dispara. **Todo visitante a partir dali
+recebe preset de emergência.** O jogo continua perfeito, o placar continua enchendo, ninguém no
+estande percebe nada — e a Forja, que é a razão de o estande existir, está morta. É a pior combinação
+possível: alto impacto, zero sintoma visível.
+
+**Por que está adiado e não resolvido:** automatizar exige descobrir o que o `agy` de fato aceita
+como credencial e o que a política do projeto `vibe-cabral` permite. Nenhuma das duas coisas cabe
+antes de a Fase C fechar, e a resposta pode ser trivial assim que o hardware do estande for definido —
+numa máquina gerenciada, o problema pode simplesmente não existir.
+
+**O que entra no lugar** (Tarefa D1, [plano](./10_IMPLEMENTATION_PLAN.md)):
+
+1. O item 2 do `self_test.sh` passa a imprimir **quanto tempo falta** para a credencial expirar, não
+   só PASS/FAIL — uma credencial que vence às 14h passa no teste das 8h.
+2. Seção 6 do `RUNBOOK.md` com o procedimento manual de reautenticação, comandos completos.
+3. A linha "todo visitante recebe nave de preset → credencial do AGY expirada" no cartão de falhas de
+   uma página, porque quem está no balcão precisa conseguir ligar o sintoma à causa.
+
+**Reavaliar** quando o hardware do estande for confirmado, ou antes do Gate M4, o que vier primeiro.
+
 ---
 
 ## 5. O que **não** é lacuna (verificado, apesar da aparência)

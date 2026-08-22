@@ -104,6 +104,21 @@ Nenhum achado da Spec 00 pode ser silenciosamente perdido. Cada ID aparece **exa
 | **U6** | Teste de carga de 100 partidas | D4 |
 | **L1** | Qualidade do prompt influencia a nave | E1 |
 
+### Tarefas sem ID de auditoria
+
+Nem toda tarefa nasce da Spec 00. As de baixo vieram de revisões posteriores e ficam registradas aqui
+pelo mesmo motivo que a tabela acima existe: para que a origem de cada uma continue rastreável depois
+que a memória da conversa que a criou tiver evaporado.
+
+| Tarefa | Origem | Por que não é um ID de auditoria |
+| :--- | :--- | :--- |
+| **B3, B4, B7** | Spec 09 | Determinismo, harness e simulador são infraestrutura de teste, não defeito. |
+| **C0** | Análise do `duboc/gemini-com-pe` (achado 1) + Spec 05 §3.1 | `match_id` por `Date.now()` e o default `'Google'`: dois defeitos encontrados depois da auditoria. |
+| **C0b** | Revisão de entrada da Fase C, 2026-08-22 | Catálogo de empresas em arquivo e moderação do campo empresa (Spec 05 §3.1 e §3.3). |
+| **C6** | Spec 05 §7 | O telão sobre Firestore é entrega de escopo, não correção. |
+| **C7** | Revisão de entrada da Fase C, 2026-08-22 | Painel de administração, promovido da Tarefa E2 (opcional) para a Fase C. |
+| **D1** *(tarefa)* | Spec 08 §7 | Runbook. Não confundir com o **defeito** D1 da tabela acima — a colisão de nomes é infeliz e antiga. |
+
 ---
 
 ## Mapa de Arquivos
@@ -127,16 +142,21 @@ Nenhum achado da Spec 00 pode ser silenciosamente perdido. Cada ID aparece **exa
 | `packages/player-app/src/game/factories/SvgShipRenderer.ts` | Rasteriza `svg_path_data` em textura (D17). |
 | `packages/shared/src/game/synergies.ts` | Aplica a matriz de sinergias aos atributos (D15). Em `shared` porque a engine e o simulador precisam da mesma regra. |
 | `packages/shared/src/game/score-calculator.ts` | `ScoreCalculator` migrado do `player-app` para ser reutilizável pelo simulador (B7). |
-| `packages/shared/src/types/cloud.ts` | `MatchDocument`, `PilotDocument`, `CompanyRankingDocument` (U1). |
+| `packages/shared/src/types/cloud.ts` | `MatchDocument`, `PilotDocument`, `CompanyRankingDocument`, `CompanyCatalogDocument` e `SCHEMA_VERSION` (U1). **Declaração única** — nenhum app declara a sua cópia. |
+| `packages/player-app/src/match-id.test.ts` | Afirma que `match_id` é UUID e que dois no mesmo tick diferem (C0). |
+| `config/companies.json`, `config/companies.example.json` | Catálogo canônico de empresas, fora do código. Override por `BOOTH_COMPANIES_FILE` (C0b). |
 | `packages/daemon/src/services/remote-moderation.ts` | Cliente da moderação de camada 2, que falha aberto na rede (U2). |
 | `packages/leaderboard-app/src/firestore-source.ts` | Assinatura `onSnapshot` com queda para o bridge local. |
 | `packages/player-app/src/hooks/useIdleWatchdog.ts` | Watchdog anti-abandono por etapa (D11). |
 | `packages/sim/` | Pacote novo: simulador headless de balanceamento. |
 | `packages/cloud-api/` | Pacote novo: serviço Cloud Run de ingestão, moderação e canonicalização. |
+| `packages/cloud-api/src/admin.ts` | Rotas `/v1/admin/*`: busca e correção de partidas, catálogo, saúde (C7). |
+| `packages/admin-app/` | Pacote novo: painel de administração, atrás de IAP (C7). |
 | `scripts/lib/platform.sh` | Detecção de plataforma e caminhos comuns aos quatro scripts. |
 | `scripts/setup_monitors.sh`, `launch_kiosks.sh`, `reset_booth.sh`, `self_test.sh` | Operação do estande (U4, U5). |
 | `scripts/soak_matches.mjs` | Teste de carga de 100 partidas (U6). |
 | `firestore.rules`, `firestore.indexes.json` | Modelo de segurança e índices (U1). |
+| `firebase.json`, `.firebaserc.example` | Deploy das regras no banco **nomeado** `jogo-navinha` — `firebase.json` na forma em array (C2). |
 | `RUNBOOK.md` | Procedimento de operação e cartão de falhas de uma página. |
 
 **Modificados com maior peso:**
@@ -148,9 +168,11 @@ Nenhum achado da Spec 00 pode ser silenciosamente perdido. Cada ID aparece **exa
 | `packages/daemon/src/services/workspace-generator.ts` | Remoção do exemplo preenchido, regra anti-alucinação, fim do `run_agy.sh` órfão (D16, D10). |
 | `scripts/booth-terminal.sh` | `set -m` para isolar o process group do `agy`, `trap` de sinais (D4). |
 | `packages/player-app/src/game/scenes/MainGameScene.ts` | Constantes para `balance.ts`, RNG semeado, colisão de mísseis (B1, B3, D13). |
-| `packages/player-app/src/App.tsx` | Telemetria completa, endpoints por configuração, watchdogs (D5, D7, D11). |
+| `packages/player-app/src/App.tsx` | Telemetria completa, endpoints por configuração, watchdogs, `match_id` por UUID (D5, D7, D11, C0). |
 | `packages/leaderboard-app/src/App.tsx` | Fonte Firestore com selo de degradação, endpoints por configuração (D7). |
 | `packages/shared/src/types/ship.ts` | `MatchTelemetry` estendida e `ScoreBreakdown` nomeado (D5). |
+| `packages/daemon/src/services/sqlite-buffer.ts` | Catálogo lido de arquivo, moderação do campo empresa, fim do default `'Google'` (C0, C0b). |
+| `packages/shared/src/utils/company-normalizer.ts` | Entrada vazia deixa de devolver `'Google'` com confiança 1,0 (C0). |
 
 ---
 
@@ -3671,11 +3693,385 @@ Implementa a Topologia C da [Spec 08](./08_DEPLOYMENT_TOPOLOGY_AND_CLOUD_SPLIT.m
 [Spec 05](./05_LEADERBOARD_AND_CLOUD_SPEC.md) inteira. Fecha D7, U1, U2 e U3.
 
 A Fase A precisa estar pronta antes: sincronizar `telemetry: {}` para o Firestore não tem valor
-nenhum, e o dado perdido é irrecuperável depois do evento.
+nenhum, e o dado perdido é irrecuperável depois do evento. **Está** — as Fases A e B fecharam, com os
+Gates M0, M1 e M2, e a telemetria hoje chega completa.
+
+> **Revisão de entrada, 2026-08-22.** Antes de escrever código de nuvem, as Specs 05 e 08 foram
+> reconciliadas com a implementação real e a Fase C foi reescrita para absorver o resultado. O que
+> mudou em relação à versão original deste plano:
+>
+> | Mudança | Onde | Origem |
+> | :--- | :--- | :--- |
+> | Tarefa **C0**, nova, obrigatoriamente primeira | `App.tsx`, `sqlite-buffer.ts` | `match_id` por `Date.now()` colide entre estações; `resolveCompany('')` devolve `'Google'` |
+> | Banco Firestore **nomeado** `jogo-navinha`, não o `(default)` | C2 | Decisão de provisionamento, Spec 08 §6.3 |
+> | `schema_version: 1` em todo documento | C2 | Achado do `duboc/gemini-com-pe` |
+> | Helper de campo tipado para as queries | C2 | Idem — fecha o buraco de literal string que o TS não pega |
+> | O quinto arquivo com `localhost:3000` | C1 | `AttractScreen.tsx` nasceu depois deste plano |
+> | `pilots_count` não incrementava ao trocar de empresa | C3 | Defeito no código de exemplo do próprio plano |
+> | Falha de autenticação distinguida de falha de rede | C5 | Achado do `duboc/gemini-com-pe` |
+> | Tarefa **C0b**, nova | `config/companies.json`, `sqlite-buffer.ts` | O catálogo de empresas era código, e o campo empresa não tinha moderação nenhuma |
+> | Tarefa **C7**, nova | `packages/admin-app/`, `cloud-api/src/admin.ts` | Painel de administração, promovido da Tarefa E2 (opcional, Fase E) |
+> | Credencial local do `agy` registrada como risco aceito | D1, Spec 11 §4.9 | Nada no repositório configura, verifica ou renova a credencial do Vertex no estande |
+>
+> As três últimas linhas vieram das perguntas de operação de 2026-08-22 (cadastro de empresas,
+> painel de administração, renovação de credencial), não da revisão de código. As duas primeiras
+> viraram tarefa; a terceira foi deliberadamente **não** automatizada — ver a Tarefa D1.
+>
+> Três achados do `gemini-com-pe` foram avaliados e **rejeitados** para esta fase, com motivo:
+> fan-out por Pub/Sub (temos um consumidor só — a regra é dos próprios autores), polling de 1,5s no
+> telão (fica como plano B nomeado na Spec 05 §7), e o script Python de CI contra deriva de schema
+> (o compilador já fecha a classe inteira, exceto pelo buraco que o helper tipado da C2 tapa).
+> O `smoke-cloud.sh` deles é bom e pertence à **Tarefa D3**, não aqui.
+
+### Tarefa C0 — Dois defeitos de uma linha que ficam caros depois da C2
+
+Nenhum dos dois é de nuvem. Os dois se tornam irreversíveis no momento em que o primeiro documento é
+gravado no Firestore, e é por isso que abrem a fase em vez de serem corrigidos junto de outra coisa.
+
+**Arquivos:**
+- Modificar: `packages/player-app/src/App.tsx:114`
+- Modificar: `packages/shared/src/utils/company-normalizer.ts:87`
+- Modificar: `packages/daemon/src/services/sqlite-buffer.ts:222`
+- Modificar: `packages/shared/src/moderation.test.ts`
+- Modificar: `packages/daemon/src/services/sqlite-buffer.test.ts`
+- Criar: `packages/player-app/src/match-id.test.ts`
+
+**Interfaces:**
+- Nada novo. Muda o *valor* de `match_id` e o *default* de `resolveCompany`, ambos já tipados como
+  `string`.
+
+> **O default `'Google'` tem dois sítios, não um.** A revisão de entrada encontrou o primeiro
+> (`sqlite-buffer.ts:222`); a pergunta sobre o cadastro de empresas revelou o segundo,
+> `resolveCompanyFromCatalog` em `company-normalizer.ts:87`, que devolve `canonical: 'Google'` com
+> `confidence: 1.0` para entrada vazia. Corrigir só um deixa o outro alcançável — e o de
+> `company-normalizer.ts` é o mais grave dos dois, porque afirma confiança máxima num palpite.
+
+- [ ] **Passo 1: Escrever os dois testes**
+
+Criar `packages/player-app/src/match-id.test.ts` — vitest, como o resto do `player-app`:
+
+```ts
+import { describe, it, expect } from 'vitest';
+
+const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+describe('geração de match_id', () => {
+  it('produz UUID v4', () => {
+    expect(crypto.randomUUID()).toMatch(UUID_V4);
+  });
+
+  it('duas partidas terminadas no mesmo milissegundo têm IDs diferentes', () => {
+    const a = crypto.randomUUID();
+    const b = crypto.randomUUID();
+    expect(a).not.toEqual(b);
+  });
+
+  it('nunca colide em mil gerações', () => {
+    const ids = new Set(Array.from({ length: 1000 }, () => crypto.randomUUID()));
+    expect(ids.size).toBe(1000);
+  });
+});
+```
+
+Este teste é curto de propósito: ele documenta a invariante que a Spec 05 §4.1 exige, e falharia se
+alguém voltasse a usar timestamp. O que ele **não** faz é testar `crypto.randomUUID` em si.
+
+Acrescentar a `packages/daemon/src/services/sqlite-buffer.test.ts`:
+
+```ts
+it('não atribui a Google uma empresa vazia', () => {
+  assert.notEqual(buffer.resolveCompany(''), 'Google');
+  assert.notEqual(buffer.resolveCompany('   '), 'Google');
+  assert.equal(buffer.resolveCompany(''), 'Independente');
+});
+
+it('continua resolvendo os typos conhecidos', () => {
+  assert.equal(buffer.resolveCompany('Gooogle'), 'Google');
+});
+```
+
+E a `packages/shared/src/moderation.test.ts`, para o segundo sítio:
+
+```ts
+it('não devolve Google para entrada vazia, e não finge confiança', () => {
+  const r = resolveCompanyFromCatalog('', seedCatalog);
+  assert.strictEqual(r.canonical, 'Independente');
+  assert.strictEqual(r.matchedBy, 'fallback');
+  assert.ok(r.confidence < 1.0, 'entrada vazia não pode ter confiança máxima');
+});
+```
+
+- [ ] **Passo 2: Rodar e ver falhar**
+
+```bash
+npm run test --workspace=packages/daemon && npm run test --workspace=packages/shared
+```
+
+Esperado: os dois casos de empresa vazia **falham** com `'Google'`.
+
+- [ ] **Passo 3: Corrigir o `match_id`**
+
+Em `packages/player-app/src/App.tsx`, dentro de `handleMatchComplete`:
+
+```ts
+-      match_id: `match_${Date.now()}`,
++      // UUID, não timestamp: este valor é a PRIMARY KEY do SQLite e vira o ID do
++      // documento Firestore, onde a escrita é set() por ID. Duas estações que
++      // terminam no mesmo milissegundo sobrescreveriam uma à outra em silêncio.
++      // Spec 05 §4.1.
++      match_id: crypto.randomUUID(),
+```
+
+`crypto.randomUUID()` existe em todo browser servido por origem segura — e `http://localhost` conta
+como segura, que é como o kiosk roda depois da Tarefa C1.
+
+- [ ] **Passo 4: Corrigir o default de empresa vazia nos dois sítios**
+
+Em `packages/daemon/src/services/sqlite-buffer.ts:222`:
+
+```ts
+-    if (!raw) return 'Google';
++    // 'Independente', não 'Google': num evento do Google, o default errado infla
++    // o ranking corporativo do próprio anfitrião. Spec 05 §3.1.
++    if (!raw) return 'Independente';
+```
+
+E em `packages/shared/src/utils/company-normalizer.ts:83-91`:
+
+```ts
+   if (!rawTrimmed) {
+     return {
+       raw: '',
+-      canonical: 'Google',
+-      confidence: 1.0,
++      canonical: 'Independente',
++      confidence: 0,          // não há o que inferir de uma string vazia
+       matchedBy: 'fallback'
+     };
+   }
+```
+
+O formulário já exige empresa preenchida, então o caminho só é alcançável por chamada direta à API —
+mas o efeito, se alcançado, é exatamente o que ninguém quer explicar no telão. A `confidence: 1.0`
+original era pior que o nome errado: ela diria ao backfill da Tarefa C4 que não há nada a revisar.
+
+- [ ] **Passo 5: Rodar tudo e ver passar**
+
+```bash
+npm test
+```
+
+Esperado: a mesma falha única de sempre (`balance-gate.test.ts`, gate de dispersão de arquétipos,
+§2.1 da [Spec 11](./11_KNOWN_GAPS_AND_OPEN_ITEMS.md)) e nada mais.
+
+- [ ] **Passo 6: Commit**
+
+```bash
+git add packages/player-app/src packages/shared/src packages/daemon/src/services/sqlite-buffer.ts \
+        packages/daemon/src/services/sqlite-buffer.test.ts
+git commit -m "fix(match): gerar match_id como UUID e parar de atribuir empresa vazia ao anfitrião"
+```
+
+---
+
+### Tarefa C0b — Catálogo de empresas em arquivo, e o campo empresa moderado
+
+Duas lacunas que a revisão de entrada não pegou porque nenhuma das duas é de nuvem — vieram das
+perguntas de 2026-08-22 sobre cadastro.
+
+**Lacuna 1: o catálogo é código.** `seedCanonicalCompanies()` (`sqlite-buffer.ts:99`) tem 25 nomes
+literais em TypeScript. Pré-cadastrar as empresas reais do evento exige editar o fonte e rebuildar —
+o que ninguém vai querer fazer na véspera, e ninguém *pode* fazer no dia.
+
+**Lacuna 2: o campo empresa não passa por moderação nenhuma.** `resolveCompanyFromCatalog` faz
+fallback para o texto cru capitalizado quando nada casa — comportamento testado e deliberado
+(`moderation.test.ts:82`: `'startup do joao'` → `'Startup Do Joao'`), porque um visitante de uma
+empresa fora do catálogo tem que aparecer com o nome dela. O efeito colateral é que **qualquer texto
+digitado no campo empresa chega ao telão**. O callsign tem duas camadas de moderação; a empresa tem
+zero, e as duas aparecem lado a lado na mesma linha do placar.
+
+**Arquivos:**
+- Criar: `config/companies.json`
+- Criar: `config/companies.example.json`
+- Modificar: `packages/daemon/src/services/sqlite-buffer.ts` (`seedCanonicalCompanies`, `resolveCompany`)
+- Modificar: `packages/daemon/src/services/sqlite-buffer.test.ts`
+- Modificar: `packages/shared/src/moderation.test.ts`
+- Modificar: `packages/daemon/.env.example`
+
+**Interfaces:**
+- Produz: `loadCompanyCatalog(filePath?: string): string[]` — pura o bastante para ser testada com um
+  arquivo temporário, com a lista embutida como fallback se o arquivo não existir.
+- Consome: `validateCallsign` de `@jogo/shared`, já existente. **Nenhuma dependência nova, nenhuma
+  segunda lista de palavras** — uma segunda lista divergiria da primeira em uma semana.
+
+- [ ] **Passo 1: Escrever os testes**
+
+Em `packages/daemon/src/services/sqlite-buffer.test.ts`:
+
+```ts
+describe('catálogo de empresas', () => {
+  it('carrega do arquivo apontado por BOOTH_COMPANIES_FILE', () => {
+    const f = path.join(os.tmpdir(), `companies-${process.pid}.json`);
+    fs.writeFileSync(f, JSON.stringify({ companies: ['Acme Corp', 'Umbrella'] }));
+    assert.deepEqual(loadCompanyCatalog(f), ['Acme Corp', 'Umbrella']);
+    fs.unlinkSync(f);
+  });
+
+  it('cai na lista embutida quando o arquivo não existe, em vez de subir vazio', () => {
+    const catalog = loadCompanyCatalog('/caminho/que/nao/existe.json');
+    assert.ok(catalog.includes('Google'));
+    assert.ok(catalog.length >= 20);
+  });
+
+  it('recusa um arquivo malformado em vez de silenciar', () => {
+    const f = path.join(os.tmpdir(), `bad-${process.pid}.json`);
+    fs.writeFileSync(f, '{ isto não é json');
+    assert.throws(() => loadCompanyCatalog(f), /companies\.json/i);
+    fs.unlinkSync(f);
+  });
+});
+
+describe('moderação do campo empresa', () => {
+  it('não deixa texto ofensivo virar nome de empresa no telão', () => {
+    assert.equal(buffer.resolveCompany('PORRA LTDA'), 'Independente');
+    assert.equal(buffer.resolveCompany('p0rr4 tech'), 'Independente');
+  });
+
+  it('não afeta empresa desconhecida mas inofensiva', () => {
+    assert.equal(buffer.resolveCompany('Startup do João'), 'Startup Do João');
+  });
+
+  it('não afeta empresa do catálogo', () => {
+    assert.equal(buffer.resolveCompany('Gooogle Brasil'), 'Google');
+  });
+});
+```
+
+O segundo caso é o que impede a correção de virar um problema pior que o original: reprovar toda
+empresa fora do catálogo esvaziaria o placar corporativo de todo mundo que não trabalha nas 25 do
+seed.
+
+- [ ] **Passo 2: Rodar e ver falhar**
+
+```bash
+npm run test --workspace=packages/daemon
+```
+
+- [ ] **Passo 3: Criar o arquivo de catálogo**
+
+`config/companies.json` — a lista atual, extraída do fonte sem alteração, mais um comentário no
+`example`:
+
+```json
+{
+  "_comment": "Catálogo de empresas para auto-complete e normalização. Editar e reiniciar o daemon; não exige rebuild. Sobrescrever o caminho com BOOTH_COMPANIES_FILE.",
+  "companies": [
+    "Google", "Google Cloud", "Android", "YouTube", "Alphabet",
+    "Itaú", "Bradesco", "Nubank", "Mercado Livre", "Stone",
+    "Globo", "Embraer", "Petrobras", "Ambev", "Totvs",
+    "Votorantim", "Magazine Luiza", "iFood", "QuintoAndar", "C6 Bank",
+    "Accenture", "Deloitte", "PwC", "KPMG", "CI&T"
+  ]
+}
+```
+
+Copiar para `config/companies.example.json`. O `companies.json` **fica versionado** — é conteúdo do
+evento, não segredo, e versioná-lo é como se sabe qual lista rodou.
+
+- [ ] **Passo 4: Implementar o carregamento**
+
+```ts
+/**
+ * Catálogo de empresas para auto-complete e normalização.
+ * Arquivo em vez de literal no código para que a lista do evento possa ser
+ * trocada sem rebuild — ver Spec 05 §3.1.
+ */
+export function loadCompanyCatalog(filePath?: string): string[] {
+  const target = filePath
+    || process.env.BOOTH_COMPANIES_FILE
+    || path.join(packageRoot, '..', '..', 'config', 'companies.json');
+
+  if (!fs.existsSync(target)) {
+    console.warn(`[SQLiteBuffer] ${target} não encontrado; usando o catálogo embutido.`);
+    return [...BUILTIN_COMPANIES];
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(fs.readFileSync(target, 'utf8'));
+  } catch (e) {
+    // Malformado é diferente de ausente: ausente é uma máquina nova, malformado
+    // é alguém que editou e errou. Silenciar o segundo esconde o erro até o evento.
+    throw new Error(`[SQLiteBuffer] companies.json inválido em ${target}: ${(e as Error).message}`);
+  }
+  const list = (parsed as { companies?: unknown }).companies;
+  if (!Array.isArray(list) || list.some((c) => typeof c !== 'string')) {
+    throw new Error(`[SQLiteBuffer] companies.json em ${target} precisa de um array "companies" de strings.`);
+  }
+  return list as string[];
+}
+```
+
+`seedCanonicalCompanies()` passa a iterar sobre `loadCompanyCatalog()`. O `INSERT OR IGNORE` já
+existente torna a operação idempotente entre reinícios; nomes **removidos** do arquivo continuam na
+tabela, o que é o comportamento certo — uma empresa que já tem partidas não pode sumir do placar.
+
+- [ ] **Passo 5: Moderar o campo empresa**
+
+Em `resolveCompany`, **depois** da resolução e **antes** de devolver — a ordem importa, porque uma
+empresa do catálogo nunca deve ser reprovada por um falso positivo do filtro:
+
+```ts
+    const resolution = resolveCompanyFromCatalog(raw, catalog);
+
+    // Empresa que casou com o catálogo é confiável por construção: o catálogo é
+    // curado. Só o fallback — texto cru do visitante — precisa passar pelo filtro,
+    // porque é o único caminho em que texto arbitrário chega ao telão.
+    if (resolution.matchedBy === 'fallback') {
+      const check = validateCallsign(resolution.canonical);
+      if (!check.valid && check.reason === 'profanity') {
+        this.cacheAlias(raw, 'Independente');
+        return 'Independente';
+      }
+    }
+
+    this.cacheAlias(raw, resolution.canonical);
+    return resolution.canonical;
+```
+
+Reusar `validateCallsign` é deliberado: uma segunda lista de palavras divergiria da primeira. Só o
+motivo `profanity` reprova — os outros motivos (comprimento de 3 a 15, charset, repetição) são regras
+de callsign e reprovariam nomes de empresa legítimos como `Magazine Luiza` ou `CI&T`.
+
+> Isto **não** substitui a camada 2 da Tarefa C4. Fecha o buraco agora, com o filtro determinístico
+> que já existe e funciona offline. Se a C4 estender a moderação semântica ao campo empresa, ela entra
+> como camada 2 do mesmo caminho, com a mesma regra de falhar fechada.
+
+- [ ] **Passo 6: Rodar e ver passar**
+
+```bash
+npm test
+```
+
+- [ ] **Passo 7: Documentar para o operador**
+
+Uma linha em `packages/daemon/.env.example` (`BOOTH_COMPANIES_FILE`) e um parágrafo no
+`USER_GUIDE.md`: como pré-cadastrar as empresas do evento editando `config/companies.json` e
+reiniciando o daemon. Sem isso a funcionalidade existe e ninguém sabe.
+
+- [ ] **Passo 8: Commit**
+
+```bash
+git add config packages/daemon/src packages/shared/src/moderation.test.ts \
+        packages/daemon/.env.example USER_GUIDE.md
+git commit -m "feat(empresas): catálogo em arquivo editável e moderação do campo empresa"
+```
+
+---
 
 ### Tarefa C1 — [D7] Endereços por configuração, e o `player-app` servido pelo bridge
 
-`http://localhost:3000` está fixo em quatro arquivos. Enquanto estiver, nada pode ser hospedado. A
+`http://localhost:3000` está fixo em **cinco** arquivos, dez ocorrências. Enquanto estiver, nada pode
+ser hospedado. A
 [Spec 08](./08_DEPLOYMENT_TOPOLOGY_AND_CLOUD_SPLIT.md) §5 decide que o `player-app` é servido pelo
 próprio bridge — o que torna a origem local e elimina de uma vez a exposição às regras de Private
 Network Access do Chrome em modo kiosk.
@@ -3689,7 +4085,7 @@ Network Access do Chrome em modo kiosk.
 - Modificar: `packages/shared/src/index.ts`
 - Modificar: `packages/daemon/src/index.ts` (servir os estáticos)
 - Modificar: `packages/player-app/src/App.tsx`, `src/components/RegistrationForm.tsx`,
-  `src/components/HandoffTerminalScreen.tsx`
+  `src/components/HandoffTerminalScreen.tsx`, `src/components/AttractScreen.tsx`
 - Modificar: `packages/leaderboard-app/src/App.tsx`
 - Modificar: `package.json` da raiz
 
@@ -3800,12 +4196,27 @@ export const ENDPOINTS = resolveEndpoints(
 npm run test --workspace=packages/shared
 ```
 
-- [ ] **Passo 5: Trocar os literais nos quatro arquivos**
+- [ ] **Passo 5: Trocar os literais nos cinco arquivos**
 
 Cada `fetch('http://localhost:3000/api/…')` vira `fetch(\`${ENDPOINTS.bridgeBase}/api/…\`)`, e o
-`new WebSocket('ws://localhost:3000/pty')` vira `new WebSocket(ENDPOINTS.bridgeWsUrl)` — a Tarefa A8 já
-renomeou o caminho para `/events`. Preencher também o `API_BASE` que a Tarefa A7 deixou pendente no
+`new WebSocket('ws://localhost:3000/events')` vira `new WebSocket(ENDPOINTS.bridgeWsUrl)` — a Tarefa A8
+já renomeou o caminho para `/events`. Preencher também o `API_BASE` que a Tarefa A7 deixou pendente no
 envio da telemetria.
+
+A lista exata, verificada em 2026-08-22 — **dez ocorrências em cinco arquivos**:
+
+| Arquivo | Linhas | O que é |
+| :--- | :--- | :--- |
+| `packages/player-app/src/App.tsx` | 89, 128, 154 | `session/start`, `matches`, `session/reset` |
+| `packages/player-app/src/components/HandoffTerminalScreen.tsx` | 44, 69, 77 | WebSocket `/events`, `session/spec`, `session/activity` |
+| `packages/player-app/src/components/AttractScreen.tsx` | 63 | `api/leaderboard` |
+| `packages/player-app/src/components/RegistrationForm.tsx` | 19 | `api/companies?q=` |
+| `packages/leaderboard-app/src/App.tsx` | 42, 65 | `api/leaderboard`, WebSocket `/events` |
+
+> **O `AttractScreen.tsx` não estava na versão original desta tarefa** — o componente nasceu depois
+> que este plano foi escrito. Como o Passo 8 é um `grep` que precisa voltar vazio, a lista
+> desatualizada faria a própria tarefa reprovar no seu último passo. Confira o `grep` antes de
+> começar, não só depois: o repositório pode ter ganhado um sexto arquivo desde 2026-08-22.
 
 Criar `packages/player-app/.env.example`:
 
@@ -3894,11 +4305,20 @@ ser verificável, não afirmada.
 **Interfaces:**
 - Produz: `MatchDocument`, `PilotDocument`, `CompanyRankingDocument` — os três tipos do §4 da Spec 05,
   consumidos pela Tarefa C3 (escrita) e pela C6 (leitura).
+- Produz: `SCHEMA_VERSION` e `field<T>(name: keyof T): string`, consumidos pelas mesmas duas tarefas.
+- Produz: `DATABASE_ID = 'jogo-navinha'`, consumido por todo cliente Admin SDK.
 
 > **Dependência nova, justificada (Restrição Global 5):** `@firebase/rules-unit-testing` como
 > `devDependency` de `packages/cloud-api`. É a única forma de provar `PERMISSION_DENIED` sem um projeto
 > real, e o critério de aceitação da Spec 05 §8 exige exatamente essa prova. Exige o emulador do
-> Firestore (`firebase-tools`), instalado localmente e não versionado.
+> Firestore (`firebase-tools`), instalado localmente e não versionado, que por sua vez exige uma JRE
+> (`sudo apt install -y default-jre-headless`).
+
+> **O banco é `jogo-navinha`, nomeado, não o `(default)` — Spec 08 §6.3.** Consequências práticas que
+> aparecem em todos os passos abaixo: o `firebase.json` usa a forma em **array**, e todo cliente Admin
+> SDK precisa nomear o banco na construção. Esquecer o nome não dá erro: escreve no `(default)` de
+> `vibe-cabral`, em silêncio, junto dos dados de outro projeto. É por isso que o Passo 7 testa
+> exatamente esse esquecimento.
 
 - [ ] **Passo 1: Declarar os tipos**
 
@@ -3907,8 +4327,22 @@ Criar `packages/shared/src/types/cloud.ts` com os três documentos, campo a camp
 comentar isso no tipo, porque é a fonte clássica de confusão:
 
 ```ts
+import type { ScoreBreakdown, MatchTelemetry, ShipSpecification } from './ship.js';
+
+/** Banco Firestore nomeado. Nunca o (default). Spec 08 §6.3. */
+export const DATABASE_ID = 'jogo-navinha';
+
+/**
+ * Versão da forma dos documentos. Nasce em 1 e sobe quando um campo muda de
+ * significado ou some. Custa um inteiro por documento e evita ter que adivinhar,
+ * depois do evento, qual forma um documento tem. Spec 05 §4.1.
+ */
+export const SCHEMA_VERSION = 1;
+
 /** Documento em /matches/{match_id}. `match_id` é a chave: reenviar é idempotente. */
 export interface MatchDocument {
+  schema_version: number;
+  /** UUID v4. Nunca timestamp — duas estações colidiriam. Spec 05 §4.1. */
   match_id: string;
   pilot_id: string;
   callsign: string;
@@ -3926,7 +4360,37 @@ export interface MatchDocument {
 }
 ```
 
-Mais `PilotDocument` e `CompanyRankingDocument` conforme §4.2 e §4.3.
+`score_breakdown` e `telemetry` são **referenciados por tipo**, nunca copiados campo a campo:
+`ScoreBreakdown` e `MatchTelemetry` já mudaram duas vezes durante a Fase B, e uma cópia teria
+divergido em silêncio. Mais `PilotDocument` e `CompanyRankingDocument` conforme §4.2 e §4.3, ambos
+também com `schema_version`.
+
+**A regra que acompanha o arquivo:** nenhum outro pacote declara sua própria versão desses três tipos.
+`cloud-api` (escritor) e `leaderboard-app` (leitor) importam de `@jogo/shared`. É isso que faz o
+compilador — e não uma revisão humana — pegar deriva de schema. O Passo 7 tem o `grep` que verifica.
+
+- [ ] **Passo 1b: O helper de campo tipado**
+
+O compilador fecha a deriva de schema com uma exceção: nomes de campo passados como **string** em
+`.where('company_canonical', …)` e `.orderBy('final_score', …)` não são checados por tipo. Renomear
+um campo no tipo compila limpo e quebra a consulta em produção.
+
+```ts
+/**
+ * Nome de campo checado pelo compilador, para as consultas do Firestore.
+ * `orderBy(field<MatchDocument>('final_score'), 'desc')` quebra o build se o
+ * campo for renomeado; `orderBy('final_score', 'desc')` compila e falha no evento.
+ */
+export function field<T>(name: keyof T & string): string {
+  return name;
+}
+```
+
+Nove linhas fecham o único buraco que o sistema de tipos deixa aberto. A alternativa considerada e
+rejeitada foi portar o script Python de CI do `duboc/gemini-com-pe`, que varre os fontes procurando
+campos desconhecidos: ele existe lá porque eles têm TypeScript e Python escrevendo as mesmas coleções
+sem tipos compartilhados. Nós temos um escritor só, em TS. O helper pega o mesmo erro no editor, e não
+no CI.
 
 - [ ] **Passo 2: Escrever o teste das regras**
 
@@ -4032,16 +4496,68 @@ E `firestore.indexes.json` com os três índices compostos que as consultas da T
 `total_score` desc. Sem eles, a primeira consulta em produção falha com um link de "crie o índice" —
 que ninguém quer clicar durante o evento.
 
-- [ ] **Passo 5: Rodar e ver passar**
+- [ ] **Passo 5: Amarrar as regras ao banco nomeado**
+
+`firebase.json` precisa da **forma em array** — a forma em objeto publica no `(default)`, que é
+exatamente o que a Spec 08 §6.3 proíbe:
+
+```json
+{
+  "firestore": [
+    {
+      "database": "jogo-navinha",
+      "rules": "firestore.rules",
+      "indexes": "firestore.indexes.json"
+    }
+  ],
+  "emulators": {
+    "firestore": { "port": 8080 },
+    "ui": { "enabled": false }
+  }
+}
+```
+
+E `.firebaserc.example`:
+
+```json
+{ "projects": { "default": "vibe-cabral" } }
+```
+
+O `.firebaserc` real fica no `.gitignore` — ele nomeia o projeto de alguém, e o exemplo basta para
+qualquer um reproduzir.
+
+> **Publicar é `firebase deploy --only firestore:jogo-navinha`**, com o nome do banco. Sem o sufixo,
+> o comando publica no `(default)` e derruba o acesso ao que já existe em `vibe-cabral`. Está no
+> `README` da `cloud-api` e vale repetir aqui porque é irreversível na prática.
+
+- [ ] **Passo 6: Rodar e ver passar**
 
 ```bash
 npm run test --workspace=packages/cloud-api
 ```
 
-- [ ] **Passo 6: Commit**
+- [ ] **Passo 7: Os dois portões desta tarefa**
 
 ```bash
-git add firestore.rules firestore.indexes.json firebase.json .firebaserc.example \
+grep -rn "interface MatchDocument\|interface PilotDocument\|interface CompanyRankingDocument" packages/*/src
+```
+
+Esperado: **exatamente três linhas, todas em `packages/shared/src/types/cloud.ts`**. Qualquer outra é
+uma cópia local que vai divergir.
+
+```bash
+grep -rn "getFirestore()" packages/cloud-api/src
+```
+
+Esperado: **nenhuma saída**. Toda construção de cliente nomeia o banco —
+`getFirestore(app, DATABASE_ID)`. Um `getFirestore()` sem argumento escreve no `(default)` sem erro,
+sem log e sem sintoma até alguém abrir o console e ver os dados no lugar errado. Este `grep` é a única
+defesa barata contra isso, e por isso é um passo e não um comentário.
+
+- [ ] **Passo 8: Commit**
+
+```bash
+git add firestore.rules firestore.indexes.json firebase.json .firebaserc.example .gitignore \
         packages/cloud-api packages/shared/src/types/cloud.ts packages/shared/src/index.ts package.json
 git commit -m "feat(cloud): modelo de dados, regras e índices do Firestore com teste de negação de escrita"
 ```
@@ -4148,6 +4664,27 @@ describe('ingestBatch', () => {
     assert.equal(pilot.matches_played, 2);
   });
 
+  it('conta o piloto na empresa nova quando ele joga de novo por outra empresa', async () => {
+    await ingestBatch(testDb, [
+      matchFixture({ match_id: 'a', pilot_id: 'p1', final_score: 1000, company_canonical: 'Gogle' })
+    ]);
+    await ingestBatch(testDb, [
+      matchFixture({ match_id: 'b', pilot_id: 'p1', final_score: 1200, company_canonical: 'Google' })
+    ]);
+    const nova = (await testDb.collection('company_rankings').doc('Google').get()).data()!;
+    assert.equal(nova.pilots_count, 1, 'a empresa nova ficou com zero pilotos');
+  });
+
+  it('conta cada piloto uma vez só na mesma empresa, mesmo com várias partidas', async () => {
+    await ingestBatch(testDb, [
+      matchFixture({ match_id: 'a', pilot_id: 'p1', final_score: 1000, company_canonical: 'Google' }),
+      matchFixture({ match_id: 'b', pilot_id: 'p1', final_score: 2000, company_canonical: 'Google' })
+    ]);
+    const rank = (await testDb.collection('company_rankings').doc('Google').get()).data()!;
+    assert.equal(rank.pilots_count, 1);
+    assert.equal(rank.total_score, 3000);
+  });
+
   it('rejeita score fora da faixa plausível sem derrubar o lote', async () => {
     const r = await ingestBatch(testDb, [
       matchFixture({ match_id: 'ok', final_score: 12000 }),
@@ -4216,8 +4753,15 @@ async function ingestOne(db: Firestore, m: MatchDocument): Promise<void> {
     const companyRef = db.collection('company_rankings').doc(m.company_canonical);
     const [pilot, company] = await Promise.all([tx.get(pilotRef), tx.get(companyRef)]);
 
-    tx.set(matchRef, { ...m, created_at: FieldValue.serverTimestamp() });
+    // O piloto conta como novo PARA ESTA EMPRESA se nunca existiu, ou se existia
+    // registrado em outra. O caso do meio é real: alguém digita a empresa errada
+    // na primeira partida e certo na segunda, e a Tarefa C4 canonicaliza depois.
+    const pilotIsNewToCompany =
+      !pilot.exists || pilot.data()!.company_canonical !== m.company_canonical;
+
+    tx.set(matchRef, { ...m, schema_version: SCHEMA_VERSION, created_at: FieldValue.serverTimestamp() });
     tx.set(pilotRef, {
+      schema_version: SCHEMA_VERSION,
       pilot_id: m.pilot_id,
       callsign: m.callsign,
       company_canonical: m.company_canonical,
@@ -4226,9 +4770,10 @@ async function ingestOne(db: Firestore, m: MatchDocument): Promise<void> {
       matches_played: (pilot.exists ? pilot.data()!.matches_played : 0) + 1
     });
     tx.set(companyRef, {
+      schema_version: SCHEMA_VERSION,
       company_canonical: m.company_canonical,
       total_score: (company.exists ? company.data()!.total_score : 0) + m.final_score,
-      pilots_count: pilot.exists ? (company.data()?.pilots_count ?? 1) : (company.data()?.pilots_count ?? 0) + 1,
+      pilots_count: (company.exists ? company.data()!.pilots_count : 0) + (pilotIsNewToCompany ? 1 : 0),
       top_individual_score: Math.max(m.final_score, company.exists ? company.data()!.top_individual_score : 0),
       last_updated: FieldValue.serverTimestamp()
     });
@@ -4236,9 +4781,26 @@ async function ingestOne(db: Firestore, m: MatchDocument): Promise<void> {
 }
 ```
 
+> **O `pilots_count` desta versão corrige um defeito da versão original deste plano.** A expressão
+> anterior era
+> `pilot.exists ? (company.data()?.pilots_count ?? 1) : (company.data()?.pilots_count ?? 0) + 1`, que
+> lê "se o piloto já existe, mantenha a contagem da empresa". Isso está certo quando ele volta a jogar
+> pela **mesma** empresa e errado quando joga por **outra**: a empresa nova ganha o `total_score` dele
+> mas fica com `pilots_count` zero. Não é hipotético — é exatamente o que acontece quando alguém erra
+> o nome da empresa na primeira partida, e é o cenário que a canonicalização assíncrona da Tarefa C4
+> foi feita para produzir. A condição explícita `pilotIsNewToCompany` diz o que a regra é, em vez de
+> codificá-la num aninhamento de ternários.
+>
+> A imprecisão residual, aceita conscientemente: um piloto que troca de empresa continua contado na
+> antiga, porque decrementá-la exigiria uma segunda escrita transacional numa terceira coleção. Num
+> evento de dois dias, com o formulário exigindo empresa, isso é ruído; contar zero na empresa certa
+> é um bug visível no telão.
+
 A validação (`final_score` na faixa, `telemetry` presente, `ship_spec_snapshot` presente, `pilot_id`
-não vazio) roda **antes** da transação e alimenta `rejected` sem abortar o lote — uma partida corrompida
-não pode impedir as outras 49 de chegarem.
+não vazio, `match_id` no formato UUID) roda **antes** da transação e alimenta `rejected` sem abortar o
+lote — uma partida corrompida não pode impedir as outras 49 de chegarem. A checagem de formato do
+`match_id` é a Tarefa C0 defendida na fronteira: se algum cliente voltar a mandar `match_${Date.now()}`,
+aparece no log de rejeições em vez de virar uma colisão silenciosa.
 
 - [ ] **Passo 6: Rodar e ver passar**
 
@@ -4465,10 +5027,18 @@ São a metade construída de uma funcionalidade: o buffer offline só é um buff
 
 **Interfaces:**
 - Produz: `class CloudSyncService` com `start()`, `stop()`, `syncNow(): Promise<SyncOutcome>` e
-  `status(): { pending: number; lastAttempt: string | null; lastSuccess: string | null; consecutiveFailures: number }`.
+  `status(): { state: SyncState; pending: number; lastAttempt: string | null; lastSuccess: string | null; consecutiveFailures: number }`.
+- Produz: `type SyncState = 'ok' | 'retrying' | 'auth_failed' | 'disabled'`.
 - Produz: `GET /api/sync/status` no daemon — consumido pelo `self_test.sh` (Tarefa D3) e pelo painel de
   status do operador.
 - Consome: `POST /v1/matches` da Tarefa C3.
+
+> **`auth_failed` não é um estado a mais por completude.** Um `401`/`403` significa que o token de
+> escopo único expirou ou foi rotacionado, e **nenhum retry vai resolver** — o backoff só cresce até o
+> teto de 5 minutos, em silêncio, enquanto a fila acumula e o telão para de receber partidas. As duas
+> situações exigem ações opostas do staff: "sem rede" é esperar, "token inválido" é trocar o token. Um
+> estado só as torna indistinguíveis exatamente quando distingui-las importa. O achado é do
+> `duboc/gemini-com-pe`, onde o análogo é uma URL assinada com TTL de 600s.
 
 - [ ] **Passo 1: Escrever o teste**
 
@@ -4524,11 +5094,65 @@ describe('CloudSyncService', () => {
     const sync = new CloudSyncService(fakeBufferWith(['m1']), { base: null, token: null, fetchImpl: async () => { throw new Error('não deveria chamar'); } });
     assert.equal((await sync.syncNow()).status, 'disabled');
   });
+
+  it('distingue token inválido de falha de rede', async () => {
+    const buffer = fakeBufferWith(['m1']);
+    const sync = new CloudSyncService(buffer, {
+      base: 'https://api', token: 'expirado',
+      fetchImpl: async () => new Response('', { status: 401 })
+    });
+
+    const outcome = await sync.syncNow();
+
+    assert.equal(outcome.status, 'auth_failed');
+    assert.equal(sync.status().state, 'auth_failed', 'o estado precisa ser visível no /api/sync/status');
+    assert.deepEqual(buffer.markedSynced, [], 'nada pode ser marcado como sincronizado');
+  });
+
+  it('não deixa o estado auth_failed grudado depois que o token é corrigido', async () => {
+    const buffer = fakeBufferWith(['m1']);
+    let token = 'expirado';
+    const sync = new CloudSyncService(buffer, {
+      base: 'https://api',
+      token: () => token,
+      fetchImpl: async (_u, init: any) =>
+        init.headers.Authorization === 'Bearer bom'
+          ? okJson({ accepted: ['m1'], rejected: [] })
+          : new Response('', { status: 401 })
+    });
+
+    await sync.syncNow();
+    assert.equal(sync.status().state, 'auth_failed');
+
+    token = 'bom';                       // o operador trocou o token e reiniciou nada
+    await sync.syncNow();
+
+    assert.equal(sync.status().state, 'ok');
+    assert.deepEqual(buffer.markedSynced, ['m1']);
+  });
+
+  it('continua tentando mesmo em auth_failed, com o backoff no teto', async () => {
+    let chamadas = 0;
+    const sync = new CloudSyncService(fakeBufferWith(['m1']), {
+      base: 'https://api', token: 'x',
+      fetchImpl: async () => { chamadas++; return new Response('', { status: 403 }); }
+    });
+    await sync.syncNow();
+    await sync.syncNow();
+    assert.equal(chamadas, 2, 'auth_failed não pode desligar o worker: o token pode ser corrigido');
+  });
 });
 ```
 
-O último caso é o modo em que o projeto roda hoje e vai rodar em todo desenvolvimento local: sem
-nuvem configurada, o daemon precisa funcionar exatamente como antes.
+O caso da nuvem não configurada é o modo em que o projeto roda hoje e vai rodar em todo
+desenvolvimento local: sem nuvem configurada, o daemon precisa funcionar exatamente como antes.
+
+Os dois últimos casos definem a semântica de `auth_failed`, que é sutil: ele **não** para o worker e
+**não** é permanente. Parar seria pior que o problema — o operador troca o token no Secret Manager, o
+daemon relê, e a fila tem que drenar sozinha. O que `auth_failed` faz é (a) travar o backoff no teto,
+porque tentativas rápidas não vão ajudar, e (b) aparecer no `status()` como um estado que exige ação
+humana. É por isso que o `token` na opção é uma função e não uma string: uma string capturada no
+construtor congelaria o token expirado para sempre.
 
 - [ ] **Passo 2: Rodar e ver falhar**
 
@@ -4553,6 +5177,21 @@ Backoff exponencial com jitter, base 2s, teto 5 minutos:
 ```
 
 O `jitter()` é injetável para o teste ser determinístico (default `Math.random`).
+
+A classificação da resposta, que é o que produz o estado:
+
+```ts
+  private classify(res: Response | null, erro: unknown): SyncState {
+    if (erro) return 'retrying';                    // rede, DNS, timeout: transitório
+    if (res!.status === 401 || res!.status === 403) return 'auth_failed';
+    if (res!.ok) return 'ok';
+    return 'retrying';                              // 5xx e o resto: o servidor volta
+  }
+```
+
+Em `auth_failed`, `backoffMsFor` devolve direto `MAX_BACKOFF_MS`: o worker continua tentando a cada 5
+minutos — porque o token pode ser corrigido a qualquer momento sem reiniciar nada — mas para de
+desperdiçar tentativas rápidas num erro que nenhuma delas resolve.
 
 - [ ] **Passo 4: Rodar e ver passar**
 
@@ -4679,6 +5318,154 @@ git commit -m "feat(placar): assinar o Firestore por onSnapshot com queda autom�
 
 ---
 
+### Tarefa C7 — Painel de administração
+
+Promovido da Tarefa E2 (opcional, Fase E) para cá em 2026-08-22. O motivo é de custo, não de escopo:
+o painel reusa o Firestore, o Cloud Run, os tipos de `@jogo/shared` e o modelo de autenticação que as
+Tarefas C2 e C3 acabaram de construir. Construí-lo na Fase E significaria reabrir todos os quatro.
+
+Também é onde mora a resposta operacional para duas coisas que hoje não têm nenhuma: **ver e corrigir
+scores** e **gerenciar o catálogo de empresas** sem editar um arquivo por SSH no meio do evento.
+
+**Arquivos:**
+- Criar: `packages/admin-app/` (Vite + React, mesmo padrão do `leaderboard-app`)
+- Criar: `packages/cloud-api/src/admin.ts`, `packages/cloud-api/src/admin.test.ts`
+- Modificar: `packages/cloud-api/src/index.ts` (montar `/v1/admin/*`)
+- Modificar: `firestore.rules` (a coleção `companies`)
+- Modificar: `packages/shared/src/types/cloud.ts` (`CompanyCatalogDocument`)
+
+**Interfaces:**
+- Produz: `GET /v1/admin/matches?q=&company=&limit=` — busca por callsign ou empresa.
+- Produz: `PATCH /v1/admin/matches/{match_id}` — corrige `callsign`/`company_canonical` ou marca
+  `voided: true`, **sempre recalculando os agregados na mesma transação**.
+- Produz: `GET|PUT /v1/admin/companies` — o catálogo canônico, agora também no Firestore.
+- Produz: `GET /v1/admin/health` — fila de sync por estação, rejeições recentes, taxa de preset de
+  emergência.
+- Consome: tudo da Tarefa C3.
+
+> **Autenticação: IAP na frente do Cloud Run, não uma senha.** O painel escreve no banco de produção
+> durante um evento público. Uma senha em variável de ambiente é a solução que parece mais simples e
+> é a que vaza — ela precisa ser digitada num navegador, no estande, na frente de visitantes. O IAP
+> resolve com a conta Google de quem opera, sem nenhum segredo novo no sistema, e é configuração de
+> deploy em vez de código. **O token de ingestão da Tarefa C3 não serve aqui**: ele é de escopo único
+> e vive na máquina do estande, exatamente a máquina que não pode ter privilégio administrativo.
+
+> **`voided` em vez de `DELETE`.** Anular marca e exclui dos agregados; apagar destrói a evidência de
+> que a partida existiu. Num evento onde alguém pode contestar uma pontuação, a diferença importa —
+> e restaurar um documento apagado do Firestore não é uma operação que se faça com o estande aberto.
+
+- [ ] **Passo 1: Escrever o teste da correção com recálculo**
+
+Criar `packages/cloud-api/src/admin.test.ts`. O caso central é o que torna o painel perigoso se
+implementado ingenuamente — corrigir a empresa de uma partida **tem** que mexer em dois agregados:
+
+```ts
+describe('PATCH /v1/admin/matches/:id', () => {
+  beforeEach(async () => { await clearFirestore(); });
+
+  it('mover uma partida de empresa acerta os dois agregados', async () => {
+    await ingestBatch(testDb, [
+      matchFixture({ match_id: 'm1', pilot_id: 'p1', final_score: 1000, company_canonical: 'Gogle' })
+    ]);
+
+    await patchMatch(testDb, 'm1', { company_canonical: 'Google' });
+
+    const errada = await testDb.collection('company_rankings').doc('Gogle').get();
+    const certa = (await testDb.collection('company_rankings').doc('Google').get()).data()!;
+    assert.equal(errada.data()?.total_score ?? 0, 0, 'a empresa errada ficou com o score');
+    assert.equal(certa.total_score, 1000);
+    assert.equal(certa.pilots_count, 1);
+  });
+
+  it('anular uma partida a tira do agregado e do placar, sem apagá-la', async () => {
+    await ingestBatch(testDb, [
+      matchFixture({ match_id: 'm1', final_score: 1000, company_canonical: 'Google' }),
+      matchFixture({ match_id: 'm2', pilot_id: 'p2', final_score: 300, company_canonical: 'Google' })
+    ]);
+
+    await patchMatch(testDb, 'm1', { voided: true });
+
+    const rank = (await testDb.collection('company_rankings').doc('Google').get()).data()!;
+    assert.equal(rank.total_score, 300);
+    assert.equal(rank.top_individual_score, 300, 'o recorde precisa cair junto');
+    const doc = await testDb.collection('matches').doc('m1').get();
+    assert.ok(doc.exists, 'anular não apaga');
+    assert.equal(doc.data()!.voided, true);
+  });
+
+  it('anular duas vezes não desconta duas vezes', async () => {
+    await ingestBatch(testDb, [matchFixture({ match_id: 'm1', final_score: 1000, company_canonical: 'Google' })]);
+    await patchMatch(testDb, 'm1', { voided: true });
+    await patchMatch(testDb, 'm1', { voided: true });
+    const rank = (await testDb.collection('company_rankings').doc('Google').get()).data()!;
+    assert.equal(rank.total_score, 0);
+  });
+
+  it('recusa uma correção que deixaria o score fora da faixa plausível', async () => {
+    await ingestBatch(testDb, [matchFixture({ match_id: 'm1', final_score: 1000 })]);
+    await assert.rejects(() => patchMatch(testDb, 'm1', { final_score: 9_000_000 }), /score/i);
+  });
+});
+```
+
+O terceiro caso é o mesmo raciocínio da idempotência da C3, aplicado ao caminho inverso: o operador
+vai clicar duas vezes.
+
+> **`top_individual_score` é o campo que não sobrevive a uma anulação por decremento.** `total_score`
+> e `pilots_count` dá para ajustar aritmeticamente; um máximo, não — anular o recordista exige
+> descobrir quem é o segundo. Por isso `patchMatch` **recalcula os agregados da empresa afetada
+> varrendo as partidas dela**, dentro da transação, em vez de aplicar deltas. A Spec 05 §4.3 proíbe
+> recálculo por varredura no caminho de **ingestão**, que é quente e roda 500 vezes; o caminho
+> administrativo é frio, roda um punhado de vezes no evento inteiro, e é o único lugar onde a varredura
+> é a implementação correta.
+
+- [ ] **Passo 2: Rodar e ver falhar**
+
+```bash
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 npm run test --workspace=packages/cloud-api
+```
+
+- [ ] **Passo 3: Implementar `admin.ts`**
+
+`patchMatch(db, matchId, changes)` numa transação: lê a partida, aplica as mudanças validadas, e
+recalcula do zero os agregados de **toda** empresa afetada — a antiga e a nova, quando a empresa muda.
+`listMatches` usa o helper `field<MatchDocument>(...)` da Tarefa C2 em toda ordenação e filtro.
+
+O catálogo de empresas ganha um documento `companies/catalog` no Firestore, com `PUT` pelo painel. O
+daemon continua lendo `config/companies.json` (Tarefa C0b) como fonte local e offline; o Firestore é
+a cópia que o painel edita, e a reconciliação entre as duas é **manual e explícita** — um botão
+"exportar para o estande" que gera o JSON. Sincronizar as duas automaticamente criaria um segundo
+canal nuvem→estande, que a Spec 05 §5 evita de propósito.
+
+- [ ] **Passo 4: O app**
+
+`packages/admin-app`, quatro telas e nada mais: **Partidas** (tabela com busca, editar, anular),
+**Empresas** (lista editável, exportar JSON), **Saúde** (fila de sync por estação, rejeições, taxa de
+preset de emergência) e **Rankings** (só leitura, para conferir o efeito de uma correção).
+
+Sem tema neon, sem animação: é ferramenta de operador, e legibilidade sob pressa vale mais que
+estética. Reusa `@jogo/shared` e o `ENDPOINTS` da Tarefa C1.
+
+- [ ] **Passo 5: Regras e deploy**
+
+Em `firestore.rules`, `companies` entra como **leitura pública** (o estande pode querer buscá-la) e
+escrita negada, como as outras três. O painel escreve pelo Admin SDK, como todo o resto.
+
+Servir o `admin-app` pelo **mesmo** container Cloud Run da API, sob `/admin`, atrás do IAP. Um
+serviço a menos para provisionar, e o IAP protege a rota inteira de uma vez.
+
+- [ ] **Passo 6: Rodar e ver passar**
+
+- [ ] **Passo 7: Commit**
+
+```bash
+git add packages/admin-app packages/cloud-api/src firestore.rules \
+        packages/shared/src/types/cloud.ts package.json
+git commit -m "feat(admin): painel de operação com correção de partidas e catálogo de empresas"
+```
+
+---
+
 > ### Gate M3 — nuvem, no Mac, com o Wi-Fi na mão
 >
 > ```bash
@@ -4699,6 +5486,18 @@ git commit -m "feat(placar): assinar o Firestore por onSnapshot com queda autom�
 > - Tentar `db.collection('matches').doc('x').set({…})` pelo console do navegador retorna
 >   `PERMISSION_DENIED`.
 > - Um callsign ofensivo é recusado **pela API**, não só pelo formulário. `SKILLER` é aceito.
+> - **Um nome de empresa ofensivo não chega ao telão** — vira `Independente` (Tarefa C0b). `Startup do
+>   João`, que também não está no catálogo, aparece normalmente.
+> - **O auto-complete devolve as empresas do `config/companies.json`.** Acrescente uma empresa ao
+>   arquivo, reinicie o daemon, e confirme que ela aparece na digitação — sem rebuild.
+> - **Todo documento gravado tem `schema_version: 1`** e um `match_id` em formato UUID.
+> - **O banco `(default)` de `vibe-cabral` continua sem nenhuma coleção nossa.** Conferir no console
+>   depois da primeira gravação real; é a única forma de pegar um `getFirestore()` sem o nome do banco.
+> - **Simule o token expirado:** troque `BOOTH_INGEST_TOKEN` por lixo com partidas pendentes.
+>   `GET /api/sync/status` mostra `state: "auth_failed"`, e **não** `retrying`. Corrija o token e
+>   confirme que a fila drena sozinha, sem reiniciar o daemon.
+> - **No painel de admin:** mova uma partida de empresa e confirme que os dois agregados acertam;
+>   anule uma partida do recordista e confirme que `top_individual_score` cai para o segundo colocado.
 > - A verificação de 10 minutos da [Spec 08](./08_DEPLOYMENT_TOPOLOGY_AND_CLOUD_SPLIT.md) §5: abrir o
 >   `leaderboard-app` hospedado, forçar a queda para o bridge local e **registrar a versão exata do
 >   Chrome** no resultado. Se o Chrome bloquear a chamada à rede local, o fallback passa a ser um
@@ -4737,11 +5536,49 @@ Conteúdo, sem nenhuma seção vaga:
 | Tela 1 congelada | `Ctrl+Shift+F12`. Se o foco estiver na Tela 2, `./scripts/reset_booth.sh`. |
 | Placar parado | Olhar o selo: `LOCAL` é degradação esperada; `SEM SINAL` pede verificar a rede. |
 | Fila de pendentes crescendo | `curl -s localhost:3000/api/sync/status`. Normal offline; avisar se passar de 50. |
+| `sync/status` diz `auth_failed` | **Não é a rede.** O token de ingestão expirou ou foi rotacionado. Trocar `BOOTH_INGEST_TOKEN` e aguardar até 5min — a fila drena sozinha, sem reiniciar. |
+| **Todo visitante recebe nave de preset** | Credencial do AGY expirada. Ver §6 do runbook: reautenticar e reiniciar o supervisor. |
 | Nada responde | `npm run kill:daemon && npm run start:daemon`, depois `./scripts/self_test.sh`. |
 
 4. **Encerramento:** conferir `pending: 0`, rodar o `self_test.sh` uma última vez e **exportar o
    SQLite** — é a cópia de segurança dos dados do dia.
 5. **Contatos e escalonamento.**
+6. **Reautenticação do AGY** — ver o quadro abaixo. Procedimento manual, exato, com os comandos
+   completos, porque quem vai executá-lo está com o estande aberto.
+
+> **Risco conhecido e aceito em 2026-08-22: a credencial local do AGY não se renova sozinha.**
+>
+> O repositório não configura credencial nenhuma para o `agy`. O `booth-terminal.sh:130-135` faz
+> `exec agy` e herda o ambiente do shell — nenhuma referência a `GOOGLE_CLOUD_PROJECT`,
+> `GOOGLE_APPLICATION_CREDENTIALS` ou `GOOGLE_GENAI_USE_VERTEXAI` existe no projeto. Funciona hoje
+> porque a máquina de desenvolvimento está autenticada.
+>
+> As duas specs também se contradizem: a [Spec 06](./06_RELIABILITY_FAILOVER_AND_SECURITY_SPEC.md)
+> §2.1.4 pede "ADC de **conta de serviço** com escopo mínimo", e a
+> [Spec 08](./08_DEPLOYMENT_TOPOLOGY_AND_CLOUD_SPLIT.md) §6.1 proíbe "**nenhum arquivo de chave** na
+> máquina do estande". As duas juntas só são satisfeitas por Workload Identity Federation ou
+> impersonação — nenhuma das quais está planejada, e ambas precisam de uma credencial de usuário para
+> começar.
+>
+> **O modo de falha é silencioso e total.** Token expira ou a política da organização força reauth no
+> meio do dia; o `agy` para de responder; o timeout de 15s da Tarefa A4 dispara; **todo visitante a
+> partir dali recebe preset de emergência**. O jogo continua funcionando perfeitamente — o que morre é
+> a Forja, que é a razão de o estande existir. Ninguém percebe olhando a tela.
+>
+> **Decisão: registrar, não automatizar** (2026-08-22). A automação exige descobrir o que o `agy` de
+> fato aceita e o que a política do projeto permite, e isso não cabe antes da Fase C fechar. O que
+> entra no lugar:
+>
+> 1. O item 2 do `self_test.sh` (§3.6 da Spec 06) já checa a validade da credencial na abertura. Ele
+>    passa a imprimir **quanto tempo falta** para expirar, não só PASS/FAIL — uma credencial que vence
+>    às 14h passa no teste das 8h.
+> 2. Esta seção do runbook, com o procedimento manual de reautenticação.
+> 3. A entrada correspondente na [Spec 11](./11_KNOWN_GAPS_AND_OPEN_ITEMS.md) §4, para não desaparecer.
+> 4. O sintoma "todo visitante recebe nave de preset" no cartão de falhas — porque a falha não se
+>    anuncia, e quem estiver no balcão precisa saber ligar o sintoma à causa.
+>
+> Reavaliar se o hardware do estande for definido antes do evento: numa máquina gerenciada, a resposta
+> pode ser trivial.
 
 - [ ] **Passo 1: Escrever o `RUNBOOK.md`** com as cinco seções acima, sem remissões a documentos que o
       staff não vai ler no meio do evento. Números concretos, comandos completos, sem "verifique se
@@ -5199,15 +6036,20 @@ e teste; `EnergySlidersBuilder.tsx`; `workspace-generator.ts`; `balance.ts` (a f
 
 ---
 
-### Tarefa E2 — Painel de administração (opcional)
+### ~~Tarefa E2 — Painel de administração (opcional)~~ → **promovida à Tarefa C7**
 
-Milestone 3 do `USER_GUIDE`. Naturalmente remoto, atrás de autenticação, em Cloud Run: contagem de
-sessões por hora, fila de sincronização, últimos erros de validação de spec, taxa de uso de preset de
-emergência e um botão de reset remoto por estação.
+Movida para a Fase C em 2026-08-22. O argumento original desta entrada era que o painel "só faz
+sentido com mais de uma estação", porque o `self_test.sh` e o `GET /api/sync/status` cobririam a mesma
+necessidade mais barato. Isso continua verdade para a parte de **monitoramento** — e é falso para as
+duas necessidades que apareceram depois: **ver e corrigir scores** e **gerenciar o catálogo de
+empresas**. Nenhum script de estande faz nenhuma das duas, e as duas valem com uma estação só.
 
-**Só faz sentido com mais de uma estação.** Com uma estação única, o `self_test.sh` e o
-`GET /api/sync/status` cobrem a mesma necessidade a um custo muito menor. Decidir depois de saber
-quantas estações o evento terá — e registrar a decisão aqui.
+O custo também mudou de sinal: o painel reusa o Firestore, o Cloud Run, os tipos compartilhados e o
+modelo de autenticação que as Tarefas C2 e C3 constroem. Feito na Fase C, é incremental; feito aqui,
+seria reabrir quatro tarefas fechadas. O escopo completo está na **Tarefa C7**.
+
+O único item da lista original que **não** migrou é o **botão de reset remoto por estação**, que
+depende dos watchdogs da Tarefa D2 e continua condicionado a existir mais de uma estação.
 
 ---
 
@@ -5228,6 +6070,37 @@ B3), e `balance.ts` (B1 cria, A3 passa a interpolar via B2).
 A Fase C depende de credenciais de GCP e da criação do projeto — **encaminhe isso durante a Fase A**,
 porque o tempo de provisionamento não é tempo de engenharia e não deveria bloquear ninguém.
 
+### Ordem dentro da Fase C (revisada em 2026-08-22)
+
+```
+C0  →  C0b  →  C1  →  C2  →  C3  →  C4  →  C5  →  C6  →  C7  →  Gate M3
+```
+
+Onde a ordem é obrigatória, e por quê:
+
+- **C0 antes da C2, sem exceção.** Depois da C2 o `match_id` está gravado no Firestore como ID de
+  documento, e trocá-lo deixa de ser uma linha e vira uma migração. É o mesmo tipo de acoplamento que
+  "A antes de C", em escala menor.
+- **C2 antes da C3.** A C3 escreve os tipos e o banco que a C2 define.
+- **C3 antes da C5.** O worker consome `POST /v1/matches`.
+- **C7 depois da C3.** O painel reusa a transação de agregados; escrevê-lo antes duplicaria a lógica.
+
+Onde a ordem é conveniência, e pode ser trocada:
+
+- **C0b** pode ir a qualquer momento antes do Gate M3 — não toca em nada de nuvem. Está no começo
+  porque é barata e porque o catálogo de empresas do evento é a coisa que mais provavelmente vai
+  chegar atrasada de fora.
+- **C4** é a única tarefa que exige o Vertex funcionando. Se a região ou o modelo demorarem a
+  resolver, ela pode escorregar para depois da C6 sem bloquear nada: a moderação camada 1 e a
+  canonicalização local já funcionam sem ela.
+- **C6 e C7** são independentes entre si e podem ir em paralelo — uma é leitura por `onSnapshot`, a
+  outra é escrita administrativa pela API.
+
+**Pré-requisito de ferramenta — resolvido em 2026-08-22:** as Tarefas C2, C3 e C7 testam contra o
+emulador do Firestore, que precisa de uma JRE. Instalada e confirmada: `default-jre-headless`,
+OpenJDK 21.0.11. Numa máquina nova, `sudo apt install -y default-jre-headless`; sem ela, três tarefas
+ficam sem como rodar seus testes.
+
 ---
 
 ## Critérios de Conclusão
@@ -5237,8 +6110,10 @@ O plano está completo quando os oito itens da Definition of Done da
 
 - [ ] Os 32 IDs da [Spec 00](./00_AUDIT_AND_DRIFT_REPORT.md) estão fechados, cada um pela tarefa
       indicada na tabela de alocação.
-- [ ] `npm test` na raiz cobre `shared`, `mcps`, `daemon`, `player-app`, `leaderboard-app`, `sim` e
-      `cloud-api`, e **falha** quando um deles falha.
+- [ ] As tarefas sem ID de auditoria (C0, C0b, C6, C7 e as da Fase B vindas da Spec 09) estão
+      fechadas, cada uma com a origem registrada na tabela da seção anterior.
+- [ ] `npm test` na raiz cobre `shared`, `mcps`, `daemon`, `player-app`, `leaderboard-app`, `sim`,
+      `cloud-api` e `admin-app`, e **falha** quando um deles falha.
 - [ ] `grep -rn "localhost:3000" packages/*/src` não retorna nada.
 - [ ] `grep -rniE "GEMINI_API_KEY|generativelanguage|@google/generative-ai"` retorna apenas as linhas
       que proíbem esses termos.

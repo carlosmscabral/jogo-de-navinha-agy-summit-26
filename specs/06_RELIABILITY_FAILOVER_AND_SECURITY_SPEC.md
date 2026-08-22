@@ -105,6 +105,14 @@ Medidas concretas, em ordem de importância:
 4. **Credenciais.** A máquina do estande autentica no Vertex AI por ADC de conta de serviço com escopo
    mínimo, e não guarda nenhuma chave do Admin SDK. Ver
    [Spec 08](./08_DEPLOYMENT_TOPOLOGY_AND_CLOUD_SPLIT.md) §6.
+
+   > **Contradição conhecida, registrada em 2026-08-22.** "ADC de conta de serviço" pressupõe um
+   > arquivo de chave na máquina do estande, e a Spec 08 §6.1 proíbe exatamente isso. A forma correta
+   > é ADC de **usuário** (`gcloud auth application-default login`), que não deixa chave de conta de
+   > serviço em disco — mas expira, e hoje nada no repositório configura, verifica ou renova essa
+   > credencial. O risco e as mitigações aceitas estão em
+   > [Spec 11](./11_KNOWN_GAPS_AND_OPEN_ITEMS.md) §4.9; a decisão de 2026-08-22 foi registrar e não
+   > automatizar.
 5. **Higiene de sessão.** O reset deve apagar **todo** o conteúdo de `/tmp/booth_session`, não apenas
    `ship_spec.json` e `mcp_audit.log`: o `GEMINI.md` do visitante anterior contém nome e empresa e hoje
    permanece legível até o próximo start.

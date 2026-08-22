@@ -1,6 +1,7 @@
 # Spec 08: Topologia de Implantação — Divisão Local vs. Google Cloud
 
-> **Status:** ESPECIFICAÇÃO NOVA — decisão arquitetural
+> **Status:** DECISÕES DE PROVISIONAMENTO FECHADAS — 2026-08-22 (revisão de entrada da Fase C).
+> Projeto, banco e regiões concretos estão na §6.3.
 > **Objetivo:** Decidir o que roda na máquina do estande e o que roda em GCP, sob a restrição de que o
 > hardware do evento **não está confirmado** e pode ser um Chromebook simples. Define o modelo de
 > credenciais, o consumo de Gemini via Vertex AI, o comportamento sob queda de rede e a contingência
@@ -206,6 +207,32 @@ Os parâmetros exatos da API (valores de `thinking_level`, regiões suportadas) 
 documentação vigente do Vertex no momento da implementação — a família 3.x removeu
 `temperature`/`top_p`/`top_k` e substituiu `thinking_budget` por `thinking_level`.
 
+### 6.3. Recursos concretos — decidido em 2026-08-22
+
+| Recurso | Valor | Por quê |
+| :--- | :--- | :--- |
+| Projeto GCP | `vibe-cabral` | Já existe, já tem as 6 APIs necessárias habilitadas e ADC configurada. Não há razão para criar outro. |
+| Banco Firestore | **nomeado `jogo-navinha`** — não o `(default)` | Ver abaixo. |
+| Região do Firestore | `southamerica-east1` | Perto do evento; a latência que importa é a da escrita de ingestão e a do `onSnapshot` do telão. |
+| Região do Cloud Run | `southamerica-east1` | Mesma região do Firestore: a escrita de ingestão é o caminho quente. |
+| Região do Vertex AI | **a confirmar na implementação** — pode precisar de `us-central1` ou `global` | Independente das duas acima. |
+
+**Por que um banco nomeado e não o `(default)`.** A Spec 05 §6 termina as regras com
+`match /{document=**} { allow read, write: if false; }`. Um ruleset do Firestore é publicado **por
+banco**, e `vibe-cabral` já hospeda outras coisas no `(default)` — publicar esse catch-all lá
+derrubaria o acesso delas. Um banco nomeado tem ruleset próprio e isola o blast radius por completo.
+O custo é operacional e pequeno: o `firebase.json` precisa da forma em array
+(`"firestore": [{ "database": "jogo-navinha", "rules": ..., "indexes": ... }]`), e todo cliente Admin
+SDK precisa nomear o banco explicitamente ao instanciar — esquecer disso escreve no `(default)` em
+silêncio, que é o modo de falha a testar na Tarefa C2.
+
+**Por que a região do Vertex é independente.** Disponibilidade de modelo não segue disponibilidade de
+Firestore: `gemini-3.6-flash` pode não estar servido em `southamerica-east1`. Isso é aceitável porque
+nenhuma das duas chamadas de modelo está no caminho crítico de latência do visitante — a moderação L2
+tem timeout e recai na camada 1 (§6.2), e a canonicalização é assíncrona por desenho. A região do
+Vertex é uma variável de ambiente do Cloud Run, resolvida quando a Tarefa C4 for escrita, e não uma
+decisão a tomar agora.
+
 ---
 
 ## 7. Contingência: se o hardware for um Chromebook simples
@@ -253,7 +280,8 @@ Custo não é fator de decisão aqui; disponibilidade e risco operacional são.
 | :--- | :--- |
 | Wi-Fi cai antes da partida | Registro, forja e jogo funcionam normalmente. Moderação recai na camada regex local; empresa usa o catálogo SQLite. |
 | Wi-Fi cai durante a partida | Sem impacto. Score grava no SQLite com `synced_to_cloud = 0`. |
-| Wi-Fi cai com fila de pendentes | Worker de sincronização (U3) reenvia com backoff exponencial. `match_id` é a chave primária, então o reenvio é idempotente. |
+| Wi-Fi cai com fila de pendentes | Worker de sincronização (U3) reenvia com backoff exponencial. `match_id` é o ID do documento, e o pre-read transacional da Spec 05 §4.3 é o que impede o agregado de contar em dobro no reenvio. |
+| Token de ingestão expirado ou rotacionado | **Não é falha de rede** e não se resolve com retry: o worker marca `auth_failed` e `GET /api/sync/status` expõe isso distinguível de "sem sinal" (Spec 05 §5). Ação do staff é trocar o token, não esperar. |
 | Firestore inacessível para a TV | Leaderboard exibe o último snapshot e sinaliza estado degradado. |
 | Cloud Run fora do ar | Idêntico à queda de Wi-Fi: buffer local absorve. |
 | **AGY falha ou trava** | Timeout de 15s (D2) injeta preset de emergência. Não é uma falha de rede — é a razão pela qual o AGY fica local. |
@@ -271,3 +299,6 @@ Custo não é fator de decisão aqui; disponibilidade e risco operacional são.
       aparece no Firestore em até 60s após a reconexão, sem duplicação.
 - [ ] O `player-app` é servido pelo bridge local e não depende de nenhum dev server no dia do evento.
 - [ ] O endereço de cada serviço vem de configuração, não de literal no código (fecha D7).
+- [ ] Toda escrita do Admin SDK nomeia o banco `jogo-navinha` explicitamente; o `(default)` de
+      `vibe-cabral` permanece intocado, verificável por ele continuar vazio de coleções nossas.
+- [ ] As regras publicadas valem para o banco `jogo-navinha` e para nenhum outro.
