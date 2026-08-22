@@ -1,0 +1,29 @@
+rules_version = '2';
+
+// Modelo de segurança da Spec 05 §6: leitura pública das três coleções do
+// placar, escrita negada a todo cliente. A única escrita do sistema vem do
+// Cloud Run com o Admin SDK, que ignora estas regras por definição.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /matches/{matchId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /pilots/{pilotId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /company_rankings/{company} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Nada mais existe. Uma coleção nova precisa ser declarada aqui de propósito.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
