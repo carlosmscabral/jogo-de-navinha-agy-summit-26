@@ -354,6 +354,45 @@ numa máquina gerenciada, o problema pode simplesmente não existir.
 
 ---
 
+### 4.10 `@google-cloud/vertexai` está descontinuada desde 24/06/2025, remoção anunciada para 24/06/2026
+
+Encontrado em 2026-08-22, durante a implementação da Tarefa C4 — o próprio pacote imprime o aviso ao
+instanciar `VertexAI`.
+
+**O estado:** a Restrição Global 1 do [plano](./10_IMPLEMENTATION_PLAN.md) nomeia
+`@google-cloud/vertexai` especificamente como a biblioteca a usar, e a Tarefa C4 a implementou como
+pedido — não havia alternativa dentro do escopo daquela tarefa. O pacote recomenda, na própria
+mensagem de depreciação, migrar para um SDK sucessor unificado da Google para Vertex AI (o mesmo que
+a nota interna deste projeto já cogitava desde antes da Fase C: "`@google/genai` com `vertexai: true`,
+ou `@google-cloud/vertexai`").
+
+**Por que importa agora e não é só dívida técnica distante:** a data de remoção anunciada,
+24/06/2026, já passou em relação à data desta revisão (2026-08-22). Isso não significa
+necessariamente que o pacote parou de funcionar — os testes da Tarefa C4 usam um cliente injetado e
+nunca chamam o Vertex de verdade, então **ninguém verificou contra a API real** se `generateContent`
+ainda responde por essa biblioteca. É uma lacuna de verificação, não uma prova de que funciona.
+
+**Por que está adiado e não resolvido:** migrar de SDK é uma tarefa própria — troca de import, de
+forma de instanciar o cliente e possivelmente de forma de declarar `responseSchema` — não uma linha
+dentro da C4. Fazer isso agora arriscaria introduzir uma regressão não coberta pelos testes injetados
+que já existem, numa parte do sistema (moderação de callsign) que **falha fechada** por desenho: um
+SDK quebrado bloquearia registro de visitante, não apenas degradaria uma métrica.
+
+**O que entra no lugar:**
+
+1. **Antes do evento:** rodar um teste manual de ponta a ponta contra um projeto GCP real —
+   `POST /v1/moderate` com um callsign real, observando a resposta do Vertex de verdade — para
+   confirmar que a biblioteca ainda responde apesar da janela de remoção anunciada ter passado. Isto é
+   trabalho do operador, não de um worktree de desenvolvimento (nenhum ambiente de implementação tem
+   um projeto GCP real ou Docker instalado).
+2. **Pós-evento ou antes do próximo, o que vier primeiro:** migrar para o SDK sucessor, como item de
+   roadmap — não bloqueador do Summit.
+
+**Reavaliar** antes de qualquer verificação de ponta a ponta contra o projeto GCP real, e de novo
+antes do próximo evento que reusar este código.
+
+---
+
 ## 5. O que **não** é lacuna (verificado, apesar da aparência)
 
 Registrado para que ninguém "conserte" de novo o que já foi investigado:

@@ -4853,6 +4853,13 @@ depois.
 > **Vertex AI / Gemini Enterprise Agent Platform**, modelo `gemini-3.7-flash`, autenticação por ADC ou
 > service account. Nada de `GEMINI_API_KEY`, nada de `generativelanguage.googleapis.com`, nada de
 > `@google/generative-ai`. A biblioteca é `@google-cloud/vertexai`.
+>
+> **Achado durante a implementação, 2026-08-22:** `@google-cloud/vertexai` está descontinuada pelo
+> próprio publicador (aviso impresso ao instanciar `VertexAI`) desde 24/06/2025, com remoção anunciada
+> para 24/06/2026 — já passada nesta data. Usada mesmo assim porque é o que esta restrição nomeia, e
+> nenhum teste desta tarefa chama o Vertex de verdade para confirmar se ainda responde. Ver
+> [Spec 11](./11_KNOWN_GAPS_AND_OPEN_ITEMS.md) §4.10 para o registro completo e o que fazer antes do
+> evento.
 
 **Arquivos:**
 - Criar: `packages/cloud-api/src/vertex.ts`
