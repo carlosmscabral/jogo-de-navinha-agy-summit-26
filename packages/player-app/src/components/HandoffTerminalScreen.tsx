@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Terminal, Copy, Check, Rocket, Cpu, Sparkles, AlertCircle, RefreshCw, Flame, Shield, Gauge, Layers, Play, CheckCircle2, Activity } from 'lucide-react';
 import { PilotInfo, EnergySliders, McpServerName, SubagentName, ShipSpecification, FALLBACK_PRESETS } from '@jogo/shared';
+import { ENDPOINTS } from '../config.js';
 
 interface HandoffTerminalScreenProps {
   pilot: PilotInfo;
@@ -41,7 +42,7 @@ export function HandoffTerminalScreen({
     let pollInterval: any = null;
 
     try {
-      ws = new WebSocket('ws://localhost:3000/events');
+      ws = new WebSocket(ENDPOINTS.bridgeWsUrl);
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
@@ -66,7 +67,7 @@ export function HandoffTerminalScreen({
     // Polling fallback every 600ms
     pollInterval = setInterval(async () => {
       try {
-        const res = await fetch('http://localhost:3000/api/session/spec');
+        const res = await fetch(`${ENDPOINTS.bridgeBase}/api/session/spec`);
         if (res.ok) {
           const data = await res.json();
           if (data.ready && data.spec) {
@@ -74,7 +75,7 @@ export function HandoffTerminalScreen({
           }
         }
 
-        const actRes = await fetch('http://localhost:3000/api/session/activity');
+        const actRes = await fetch(`${ENDPOINTS.bridgeBase}/api/session/activity`);
         if (actRes.ok) {
           const actData = await actRes.json();
           if (actData.activity && Array.isArray(actData.activity) && actData.activity.length > 0) {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Building2, ShieldCheck, ChevronRight, AlertCircle, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { PilotInfo, validateCallsign } from '@jogo/shared';
+import { ENDPOINTS } from '../config.js';
 
 interface RegistrationFormProps {
   onRegister: (pilot: PilotInfo) => void;
@@ -16,7 +17,7 @@ export function RegistrationForm({ onRegister, onBack }: RegistrationFormProps) 
 
   useEffect(() => {
     if (companyRaw.trim().length > 0) {
-      fetch(`http://localhost:3000/api/companies?q=${encodeURIComponent(companyRaw)}`)
+      fetch(`${ENDPOINTS.bridgeBase}/api/companies?q=${encodeURIComponent(companyRaw)}`)
         .then((res) => res.json())
         .then((data) => {
           if (data.companies) setCompanySuggestions(data.companies);

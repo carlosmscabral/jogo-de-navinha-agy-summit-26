@@ -17,7 +17,7 @@
     "gen:schema": "npm run gen:schema --workspace=packages/shared",
     "sim:balance": "npm run build:shared && npm run start --workspace=packages/sim",
     "kill:daemon": "lsof -ti :3000 | xargs kill -9 2>/dev/null || true",
-    "start:daemon": "npm run kill:daemon && npm run build:shared && npm run build --workspace=packages/daemon && npm run start --workspace=packages/daemon",
+    "start:daemon": "npm run kill:daemon && npm run build:shared && npm run build --workspace=packages/daemon && npm run build --workspace=packages/player-app && npm run start --workspace=packages/daemon",
     "start:player": "npm run build:shared && npm run dev --workspace=packages/player-app",
     "start:leaderboard": "npm run build:shared && npm run dev --workspace=packages/leaderboard-app",
     "dev:player": "npm run build:shared && npm run dev --workspace=packages/player-app",

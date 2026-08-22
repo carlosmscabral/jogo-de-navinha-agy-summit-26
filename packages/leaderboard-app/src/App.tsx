@@ -5,6 +5,7 @@ import { CompanyDominance, CompanyRankEntry } from './components/CompanyDominanc
 import { LiveTickerFeed, RecentMatchEntry } from './components/LiveTickerFeed.js';
 import { RecordCelebrationModal } from './components/RecordCelebrationModal.js';
 import { AttractQrCode } from './components/AttractQrCode.js';
+import { ENDPOINTS } from './config.js';
 
 interface LeaderboardState {
   topPilots: TopPilotEntry[];
@@ -39,7 +40,7 @@ export function App() {
   // Fetch initial leaderboard & polling fallback
   const fetchLeaderboard = async () => {
     try {
-      const res = await fetch('http://localhost:3000/api/leaderboard');
+      const res = await fetch(`${ENDPOINTS.bridgeBase}/api/leaderboard`);
       if (res.ok) {
         const json = await res.json();
         setData(json);
@@ -62,7 +63,7 @@ export function App() {
 
     const connect = () => {
       try {
-        ws = new WebSocket('ws://localhost:3000/events');
+        ws = new WebSocket(ENDPOINTS.bridgeWsUrl);
 
         ws.onopen = () => {
           console.log('[Leaderboard WS] Connected to Daemon');

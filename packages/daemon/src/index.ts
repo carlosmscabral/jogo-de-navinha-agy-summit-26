@@ -389,6 +389,23 @@ app.post('/api/session/reset', (req, res) => {
   }
 });
 
+// --- Estáticos do player-app (Spec 08 §5) ---
+// Servir o app pelo próprio bridge torna a origem local e elimina a exposição
+// às regras de Private Network Access do Chrome em modo kiosk.
+const playerAppDist =
+  process.env.BOOTH_PLAYER_APP_DIST || path.resolve(__dirname, '../../player-app/dist');
+
+if (fs.existsSync(path.join(playerAppDist, 'index.html'))) {
+  app.use(express.static(playerAppDist));
+  app.get(/^\/(?!api\/|events).*/, (_req, res) => {
+    res.sendFile(path.join(playerAppDist, 'index.html'));
+  });
+  console.log(`[Local Bridge Daemon] Serving player-app from ${playerAppDist}`);
+} else {
+  console.warn(`[Local Bridge Daemon] player-app build not found at ${playerAppDist}. ` +
+    `Run "npm run build --workspace=packages/player-app" before the event.`);
+}
+
 // --- WebSocket Event Broadcast ---
 
 wss.on('connection', (ws) => {

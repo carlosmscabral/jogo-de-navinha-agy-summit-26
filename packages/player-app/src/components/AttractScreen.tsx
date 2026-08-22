@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Rocket, Trophy, Sparkles, Zap, Shield, Play, Terminal, ChevronRight } from 'lucide-react';
 import { audioManager } from '../game/audio/AudioManager.js';
+import { ENDPOINTS } from '../config.js';
 
 interface AttractScreenProps {
   onStart: () => void;
@@ -59,8 +60,7 @@ export function AttractScreen({ onStart }: AttractScreenProps) {
 
     const fetchLeaderboard = async () => {
       try {
-        // TODO(C1): configuração
-        const res = await fetch('http://localhost:3000/api/leaderboard');
+        const res = await fetch(`${ENDPOINTS.bridgeBase}/api/leaderboard`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (!cancelled) {

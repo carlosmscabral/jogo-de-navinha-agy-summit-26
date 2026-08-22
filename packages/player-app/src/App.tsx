@@ -9,6 +9,7 @@ import { EnergySlidersBuilder } from './components/EnergySlidersBuilder.js';
 import { HandoffTerminalScreen } from './components/HandoffTerminalScreen.js';
 import { DebriefScreen } from './components/DebriefScreen.js';
 import { Volume2, VolumeX, RotateCcw } from 'lucide-react';
+import { ENDPOINTS } from './config.js';
 
 type AppStage = 'ATTRACT' | 'REGISTER' | 'INSTRUCTIONS' | 'BUILDER' | 'HANDOFF' | 'GAMEPLAY' | 'DEBRIEF';
 
@@ -86,7 +87,7 @@ export function App() {
 
     try {
       // Call Local Daemon to prepare workspace /tmp/booth_session
-      const res = await fetch('http://localhost:3000/api/session/start', {
+      const res = await fetch(`${ENDPOINTS.bridgeBase}/api/session/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -109,7 +110,6 @@ export function App() {
   };
 
   const handleMatchComplete = (result: MatchCompleteData) => {
-    // TODO(C1): configuração
     const matchRecord: MatchRecord & { victory: boolean; breakdown: any } = {
       // UUID, não timestamp: este valor é a PRIMARY KEY do SQLite e vira o ID do
       // documento Firestore, onde a escrita é set() por ID. Duas estações que
@@ -129,7 +129,7 @@ export function App() {
 
     setLastMatch(matchRecord);
 
-    fetch(`http://localhost:3000/api/matches`, {
+    fetch(`${ENDPOINTS.bridgeBase}/api/matches`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(matchRecord)
@@ -155,7 +155,7 @@ export function App() {
       gameInstanceRef.current = null;
     }
     audioManager.stopMusic();
-    fetch('http://localhost:3000/api/session/reset', { method: 'POST' }).catch(() => {});
+    fetch(`${ENDPOINTS.bridgeBase}/api/session/reset`, { method: 'POST' }).catch(() => {});
     setPilotId(crypto.randomUUID());
     setSessionStartError(null);
     setStage('ATTRACT');
