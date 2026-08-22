@@ -111,7 +111,11 @@ export function App() {
   const handleMatchComplete = (result: MatchCompleteData) => {
     // TODO(C1): configuração
     const matchRecord: MatchRecord & { victory: boolean; breakdown: any } = {
-      match_id: `match_${Date.now()}`,
+      // UUID, não timestamp: este valor é a PRIMARY KEY do SQLite e vira o ID do
+      // documento Firestore, onde a escrita é set() por ID. Duas estações que
+      // terminam no mesmo milissegundo sobrescreveriam uma à outra em silêncio.
+      // Spec 05 §4.1.
+      match_id: crypto.randomUUID(),
       pilot_id: pilotId,
       callsign: pilot.callsign,
       company_canonical: pilot.company_canonical,

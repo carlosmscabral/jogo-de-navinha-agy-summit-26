@@ -84,8 +84,8 @@ export function resolveCompanyFromCatalog(
   if (!rawTrimmed) {
     return {
       raw: '',
-      canonical: 'Google',
-      confidence: 1.0,
+      canonical: 'Independente',
+      confidence: 0,          // não há o que inferir de uma string vazia
       matchedBy: 'fallback'
     };
   }

@@ -66,4 +66,18 @@ describe('SQLiteBufferService', () => {
     assert.equal(pending[0].ship_spec_snapshot.pilot.callsign, 'NOVA');
     db.close();
   });
+
+  it('não atribui a Google uma empresa vazia', () => {
+    const db = new SQLiteBufferService(tempDb());
+    assert.notEqual(db.resolveCompany(''), 'Google');
+    assert.notEqual(db.resolveCompany('   '), 'Google');
+    assert.equal(db.resolveCompany(''), 'Independente');
+    db.close();
+  });
+
+  it('continua resolvendo os typos conhecidos', () => {
+    const db = new SQLiteBufferService(tempDb());
+    assert.equal(db.resolveCompany('Gooogle'), 'Google');
+    db.close();
+  });
 });

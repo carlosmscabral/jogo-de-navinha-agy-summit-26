@@ -219,7 +219,9 @@ export class SQLiteBufferService {
 
   resolveCompany(rawInput: string): string {
     const raw = (rawInput || '').trim();
-    if (!raw) return 'Google';
+    // 'Independente', não 'Google': num evento do Google, o default errado infla
+    // o ranking corporativo do próprio anfitrião. Spec 05 §3.1.
+    if (!raw) return 'Independente';
 
     // 1. Check cached alias in SQLite
     const aliasStmt = this.db.prepare('SELECT canonical_name FROM company_aliases WHERE raw_input = ?');

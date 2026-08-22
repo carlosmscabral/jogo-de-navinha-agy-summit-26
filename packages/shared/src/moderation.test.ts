@@ -84,4 +84,11 @@ describe('Proactive Company Normalizer & Fuzzy Matcher', () => {
     assert.strictEqual(r.canonical, 'Startup Do Joao');
     assert.strictEqual(r.matchedBy, 'fallback');
   });
+
+  it('não devolve Google para entrada vazia, e não finge confiança', () => {
+    const r = resolveCompanyFromCatalog('', seedCatalog);
+    assert.strictEqual(r.canonical, 'Independente');
+    assert.strictEqual(r.matchedBy, 'fallback');
+    assert.ok(r.confidence < 1.0, 'entrada vazia não pode ter confiança máxima');
+  });
 });
