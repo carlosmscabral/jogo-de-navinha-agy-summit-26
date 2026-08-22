@@ -43,11 +43,11 @@ app.use('/v1', (req: Request, res: Response, next: NextFunction) => {
 app.post('/v1/matches', async (req: Request, res: Response) => {
   const body = req.body as { matches?: unknown };
   if (!Array.isArray(body?.matches)) {
-    res.status(400).json({ error: 'corpo deve ser { matches: MatchDocument[] }' });
+    res.status(400).json({ error: 'body must be { matches: MatchDocument[] }' });
     return;
   }
   if (body.matches.length > MAX_BATCH_SIZE) {
-    res.status(400).json({ error: `lote maior que o limite de ${MAX_BATCH_SIZE} partidas` });
+    res.status(400).json({ error: `batch exceeds the limit of ${MAX_BATCH_SIZE} matches` });
     return;
   }
 
@@ -58,7 +58,7 @@ app.post('/v1/matches', async (req: Request, res: Response) => {
 /* c8 ignore start -- bootstrap real de processo, não exercitado por teste unitário */
 if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => {
-    console.log(`cloud-api ouvindo na porta ${PORT}`);
+    console.log(`cloud-api listening on port ${PORT}`);
   });
 }
 /* c8 ignore stop */

@@ -31,13 +31,13 @@ export interface IngestResult {
  * pelo cliente (Tarefa C0) ou deveria vir com uma revisão dos fixtures de teste.
  */
 function validate(m: MatchDocument): string | null {
-  if (!m.pilot_id) return 'pilot_id vazio';
-  if (!m.match_id) return 'match_id vazio';
+  if (!m.pilot_id) return 'empty pilot_id';
+  if (!m.match_id) return 'empty match_id';
   if (typeof m.final_score !== 'number' || m.final_score < 0 || m.final_score > MAX_PLAUSIBLE_SCORE) {
-    return `final_score fora da faixa plausível (0-${MAX_PLAUSIBLE_SCORE}): ${m.final_score}`;
+    return `final_score out of plausible range (0-${MAX_PLAUSIBLE_SCORE}): ${m.final_score}`;
   }
-  if (!m.telemetry) return 'telemetry ausente';
-  if (!m.ship_spec_snapshot) return 'ship_spec_snapshot ausente';
+  if (!m.telemetry) return 'missing telemetry';
+  if (!m.ship_spec_snapshot) return 'missing ship_spec_snapshot';
   return null;
 }
 
