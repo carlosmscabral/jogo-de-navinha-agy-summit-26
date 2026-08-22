@@ -44,6 +44,7 @@ function normalizeLeetSpeak(input: string): string {
 export interface CallsignValidationResult {
   isValid: boolean;
   reason?: string;
+  reasonCode?: 'empty' | 'too_short' | 'too_long' | 'invalid_chars' | 'repetitive' | 'profanity';
   sanitized: string;
 }
 
@@ -54,6 +55,7 @@ export function validateCallsign(rawCallsign: string): CallsignValidationResult 
     return {
       isValid: false,
       reason: 'O Callsign não pode estar em branco.',
+      reasonCode: 'empty',
       sanitized: 'PILOTO_001'
     };
   }
@@ -62,6 +64,7 @@ export function validateCallsign(rawCallsign: string): CallsignValidationResult 
     return {
       isValid: false,
       reason: 'O Callsign deve ter pelo menos 3 caracteres.',
+      reasonCode: 'too_short',
       sanitized: trimmed.toUpperCase()
     };
   }
@@ -70,6 +73,7 @@ export function validateCallsign(rawCallsign: string): CallsignValidationResult 
     return {
       isValid: false,
       reason: 'O Callsign deve ter no máximo 15 caracteres.',
+      reasonCode: 'too_long',
       sanitized: trimmed.slice(0, 15).toUpperCase()
     };
   }
@@ -80,6 +84,7 @@ export function validateCallsign(rawCallsign: string): CallsignValidationResult 
     return {
       isValid: false,
       reason: 'Caracteres especiais não permitidos (use apenas letras, números e traço).',
+      reasonCode: 'invalid_chars',
       sanitized: trimmed.replace(/[^A-Za-z0-9 _-]/g, '').toUpperCase().slice(0, 15) || 'PILOTO_001'
     };
   }
@@ -90,6 +95,7 @@ export function validateCallsign(rawCallsign: string): CallsignValidationResult 
     return {
       isValid: false,
       reason: 'Por favor, escolha um codinome identificável para o telão.',
+      reasonCode: 'repetitive',
       sanitized: trimmed.toUpperCase()
     };
   }
@@ -104,6 +110,7 @@ export function validateCallsign(rawCallsign: string): CallsignValidationResult 
       return {
         isValid: false,
         reason: 'Termo impróprio ou não permitido no evento.',
+        reasonCode: 'profanity',
         sanitized: `PILOTO_${Math.floor(100 + Math.random() * 900)}`
       };
     }
@@ -113,6 +120,7 @@ export function validateCallsign(rawCallsign: string): CallsignValidationResult 
       return {
         isValid: false,
         reason: 'Termo impróprio ou não permitido no evento.',
+        reasonCode: 'profanity',
         sanitized: `PILOTO_${Math.floor(100 + Math.random() * 900)}`
       };
     }

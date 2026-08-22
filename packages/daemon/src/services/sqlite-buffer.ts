@@ -18,12 +18,6 @@ const BUILTIN_COMPANIES = [
   'Accenture', 'Deloitte', 'PwC', 'KPMG', 'CI&T'
 ];
 
-// Mensagem exata emitida por validateCallsign (packages/shared/src/utils/moderation.ts)
-// quando a reprovação é por palavrão. Não há lá um código de motivo separado (tipo
-// 'profanity') — os outros motivos (comprimento, charset, repetição) têm textos próprios,
-// então comparar a string isola o caso de palavrão sem duplicar o filtro aqui.
-const PROFANITY_REASON = 'Termo impróprio ou não permitido no evento.';
-
 /**
  * Catálogo de empresas para auto-complete e normalização.
  * Arquivo em vez de literal no código para que a lista do evento possa ser
@@ -283,7 +277,7 @@ export class SQLiteBufferService {
     // porque é o único caminho em que texto arbitrário chega ao telão.
     if (resolution.matchedBy === 'fallback') {
       const check = validateCallsign(resolution.canonical);
-      if (!check.isValid && check.reason === PROFANITY_REASON) {
+      if (!check.isValid && check.reasonCode === 'profanity') {
         this.cacheAlias(raw, 'Independente');
         return 'Independente';
       }

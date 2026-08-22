@@ -41,6 +41,18 @@ describe('Moderation & Profanity Filter', () => {
     const r1 = validateCallsign('AAAAAAA');
     assert.strictEqual(r1.isValid, false);
   });
+
+  it('exposes a stable reasonCode discriminator, distinct from the free-text reason', () => {
+    const profane = validateCallsign('PORRA');
+    assert.strictEqual(profane.reasonCode, 'profanity');
+
+    // Um consumidor que precisa agir só sobre palavrão (ex.: SQLiteBufferService.resolveCompany
+    // moderando o campo empresa) não pode confundir isto com outros motivos de reprovação —
+    // este é o teste que teria pego a lacuna original da Tarefa C0b.
+    const tooShort = validateCallsign('AB');
+    assert.notStrictEqual(tooShort.reasonCode, 'profanity');
+    assert.strictEqual(tooShort.reasonCode, 'too_short');
+  });
 });
 
 describe('Proactive Company Normalizer & Fuzzy Matcher', () => {
