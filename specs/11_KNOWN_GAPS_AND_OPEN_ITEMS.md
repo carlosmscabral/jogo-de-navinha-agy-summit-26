@@ -1,7 +1,8 @@
 # 11 — Lacunas Conhecidas e Itens em Aberto
 
-**Estado em 2026-08-16, após o merge das Fases A e B de
-[`10_IMPLEMENTATION_PLAN.md`](./10_IMPLEMENTATION_PLAN.md) e o fechamento do §2.2.**
+**Estado em 2026-08-22, após o merge das Fases A e B de
+[`10_IMPLEMENTATION_PLAN.md`](./10_IMPLEMENTATION_PLAN.md), o fechamento do §2.2 e o fechamento dos
+Gates M1 e M2 no [plano de teste manual](./12_MANUAL_TEST_PLAN_MAC.md).**
 
 Este documento existe para que nada que está quebrado, não verificado ou deliberadamente adiado
 fique só na cabeça de quem implementou. Ele é a lista honesta do que **não** está pronto. Cada item
@@ -17,7 +18,7 @@ conviver com ele.
 | Fase | Escopo | Estado |
 |------|--------|--------|
 | **A** | Correções de integração, harness `agy`, daemon, failover, segurança (D1-D6, D8-D10, P1, P8) | Implementada e revisada. Gate **M0** fechado. |
-| **B** | Balanceamento medido, `balance.ts`, simulador headless, modo de desenvolvimento isolado, sinergias reais (Spec 09 inteira) | Implementada e revisada. Gates **M1** e **M2** **em aberto** — ver §4. |
+| **B** | Balanceamento medido, `balance.ts`, simulador headless, modo de desenvolvimento isolado, sinergias reais (Spec 09 inteira) | Implementada e revisada. Gates **M1** e **M2** **fechados** em 2026-08-22 — ver §3. |
 | **C** | Nuvem: Firestore, Cloud Run, Vertex AI (D7, U1-U3) | **Não iniciada.** |
 | **D** | Ensaio operacional do estande, soak, cronometragem do ciclo | **Não iniciada.** Gates M3, M4 e M5 em aberto. |
 | **E** | Opcional, só depois de M0-M5 fechados | **Não iniciada.** |
@@ -29,7 +30,7 @@ real → voo → debriefing. O que falta na Fase C é a persistência em nuvem; 
 
 ## 2. Verificações automatizadas que não passam
 
-`npm test` na raiz roda 159 testes. **158 passam, 1 falha.** A exceção é conhecida, rastreada aqui, e
+`npm test` na raiz roda 185 testes. **184 passam, 1 falha.** A exceção é conhecida, rastreada aqui, e
 não é intermitente — falha de forma determinística, sempre pelo mesmo motivo. O item pulado do §2.2
 **fechou em 2026-08-16**; ficou registrado abaixo porque a maneira como fechou é o que dá peso ao
 §2.1.
@@ -148,26 +149,47 @@ em `BALANCE`, na engine de combate ou em `combat-model.ts`, recapture — proced
 ## 3. Verificação que nenhuma máquina fez
 
 Tudo abaixo exige um humano com um Mac, um navegador real e o `agy` autenticado. Nada disso é
-verificável em CI, e nada disso foi feito ainda.
+verificável em CI. **M0, M1 e M2 foram executados à mão e estão fechados**; M3-M5 dependem de fases
+que não começaram.
 
 | Gate | Depende de | O que prova | Estado |
 |------|-----------|-------------|--------|
 | **M0** | Fase A | Build limpo, testes executam e aparecem por nome | ✅ fechado |
-| **M1** | Fase B | Engine sobe offline; a dificuldade prevista pelo simulador é a que a partida transmite (5 partidas à mão) | ⬜ **aberto** |
-| **M2** | Fases A + B | Ciclo completo com `agy` real; failover; portão de auditoria; latência do handoff < 500ms; limpeza de processos | ⬜ **aberto** |
+| **M1** | Fase B | Engine sobe offline; a dificuldade prevista pelo simulador é a que a partida transmite (5 partidas à mão) | ✅ **fechado em 2026-08-22** |
+| **M2** | Fases A + B | Ciclo completo com `agy` real; failover; portão de auditoria; latência do handoff < 500ms; limpeza de processos | ✅ **fechado em 2026-08-22** |
 | **M3** | Fase C | Score chega ao Firestore; nada se perde com o Wi-Fi caindo | ⬜ aberto (fase não iniciada) |
 | **M4** | Fase D | Ciclo de visitante em 2m00s-2m45s, 20 ciclos sem processo órfão | ⬜ aberto (fase não iniciada) |
 | **M5** | Fase D | 100 partidas consecutivas, memória e processos estáveis | ⬜ aberto (fase não iniciada) |
 
-M1 e M2 são executáveis **hoje** — o roteiro está em
-[`12_MANUAL_TEST_PLAN_MAC.md`](./12_MANUAL_TEST_PLAN_MAC.md).
+**Como M1 e M2 fecharam** (roteiro em
+[`12_MANUAL_TEST_PLAN_MAC.md`](./12_MANUAL_TEST_PLAN_MAC.md)):
+
+- **M1** (Blocos 2 e 4) — o Bloco 4 foi rodado várias vezes ao longo do ajuste de dificuldade do
+  boss e revalidado no fim, em 2026-08-22, com uma partida de cada preset real: `interceptor`
+  (vitória, 62.436 pontos), `striker` (não chegou ao boss) e `vanguard` (`boss_damage_dealt: 698` de
+  800). O balanceamento medido bate com o espalhamento previsto pelo simulador no §2.1 — inclusive o
+  `striker` como âncora inferior.
+- **M2** (Blocos 5, 6 e 7) — o ciclo completo com `agy` real fechou em 2026-08-16; as falhas
+  provocadas do Bloco 6 e a higiene de processos do Bloco 7, em 2026-08-18; a latência do handoff
+  (item 5.14) foi reconfirmada em 2026-08-22. O Bloco 6.2 (spec válida sem auditoria) foi o mais
+  disputado: a aprovação só valeu depois de provar, pelo `callsign` e pela linha de log do
+  `triggerFallback`, que a nave que voou era a do fallback e **não** a spec não auditada.
+
+**Defeitos encontrados por esses gates, todos corrigidos antes do fechamento:** a densidade de
+projéteis do boss nas três fases (mais o erro de escala de 0,8× no harness de dev, que invalidava
+qualquer julgamento de dificuldade anterior a ele), as armas secundárias que não perseguiam alvo nem
+davam retorno ao jogador, o orçamento dos sliders de energia que deixava passar uma nave de 107 PU, e
+o temporizador de silêncio do daemon, que nunca era armado no início da sessão e depois media a coisa
+errada. Os dois achados que **não** foram corrigidos estão registrados no §4.7 e no §4.8.
 
 ---
 
 ## 4. Achados de código adiados de propósito
 
-Todos foram encontrados em revisão, avaliados e conscientemente adiados. Nenhum é bloqueador para o
-evento; todos são reais.
+Encontrados em revisão de código (4.1 a 4.6) ou nos testes manuais dos Gates M1 e M2 (4.7 e 4.8),
+avaliados e conscientemente adiados. Nenhum é bloqueador para o evento; todos são reais. Os que já
+foram corrigidos ficam aqui riscados, com o que mudou — apagar a entrada esconderia o histórico de
+por que o defeito existiu.
 
 ### 4.1 `WeaponSystem` reescreve `spread_angle` (graus × radianos)
 
@@ -190,11 +212,19 @@ mais fechado do que o número na spec sugere), mas é uma divergência entre con
 Nenhum dos dois foi escopo de nenhuma tarefa da Fase B; ficam registrados para uma futura passada de
 tuning.
 
-### 4.3 HUD rotula a secundária como "MÍSSEIS" sempre
+### 4.3 ~~HUD rotula a secundária como "MÍSSEIS" sempre~~ **CORRIGIDO em 2026-08-22**
 
-[`packages/player-app/src/game/scenes/MainGameScene.ts`](../packages/player-app/src/game/scenes/MainGameScene.ts)
+[`packages/player-app/src/game/scenes/MainGameScene.ts:34-36`](../packages/player-app/src/game/scenes/MainGameScene.ts)
 
-Visivelmente errado para builds com `emp_burst`. Cosmético, mas o visitante vê.
+Era visivelmente errado para builds com `emp_burst` — cosmético, mas o visitante via. O rótulo agora
+sai de um mapa por `SecondaryWeaponType` (`homing_missiles` → "MÍSSEIS", `emp_burst` → "EMP", `none`
+→ "SEM SECUNDÁRIA") alimentado pelo tipo que `getSecondaryStatus` devolve.
+
+O item deixou de ser cosmético no meio do Bloco 4: um jogador com `emp_burst` apertava SHIFT, via um
+anel de EMP onde o HUD prometia um míssil, e concluía que a arma não tinha disparado. O rótulo errado
+estava mascarando o diagnóstico dos defeitos reais da secundária — que também foram corrigidos na
+mesma passada (mísseis que não perseguiam alvo, teto de dano único engolindo a faixa de 60-150, e EMP
+sem áudio nem retorno visual).
 
 ### 4.4 `aggregateWinRate` é média não ponderada
 
@@ -236,6 +266,54 @@ código.
   acionamento (3 no `vulcan_spread`) e os handlers de colisão da primária contam os acertos; a
   secundária fica de fora de propósito. Ver [Spec 09 §5.6](./09_GAME_BALANCE_AND_DEV_MODE.md).
 
+### 4.7 `/api/session/reset` não avisa os clientes web conectados
+
+[`packages/daemon/src/index.ts`](../packages/daemon/src/index.ts) (handler de `POST /api/session/reset`)
+
+O endpoint limpa o estado do daemon, mata o grupo de processos do `agy`/MCPs e apaga o conteúdo de
+`/tmp/booth_session` — mas nunca chama `broadcast(...)`. Nenhuma mensagem chega aos clientes web
+conectados. A Tela 1 só volta visualmente para a tela de registro quando o reset é disparado pelo
+próprio atalho de teclado daquela aba (`Ctrl+Shift+F12` em `App.tsx`, cujo `handleReset()` chama o
+mesmo endpoint **e** reseta o estado local do React como uma segunda ação independente). Um reset
+disparado de qualquer outro jeito — `curl` direto, um futuro watchdog automático, um painel de
+operador num segundo dispositivo — limpa o backend corretamente, mas deixa a Tela 1 travada na tela
+do visitante anterior.
+
+**Achado:** 2026-08-18, durante o Bloco 7 (higiene de processos) do
+[`12_MANUAL_TEST_PLAN_MAC.md`](./12_MANUAL_TEST_PLAN_MAC.md) — um reset via `curl` limpou o processo
+e o Terminal 3 corretamente, mas a tela de pré-voo continuou parada na Tela 1.
+
+**Risco no evento:** baixo hoje, porque o mecanismo de reset real é exatamente esse atalho de
+teclado, operado por um humano sentado na Tela 1. Vira risco real assim que qualquer reset deixar de
+vir daquela aba específica — por exemplo, os watchdogs anti-abandono já cogitados para a Tarefa D2.
+
+**Fecha o item:** o handler de `/api/session/reset` passa a `broadcast()` um evento (ex.:
+`EVENT_SESSION_RESET`), e a Tela 1 escuta esse evento no WebSocket e chama a mesma lógica de reset
+local que `handleReset()` já tem, sem depender de ser ela a origem do reset.
+
+### 4.8 O comando de checagem de processo do Bloco 7.2 dá falso positivo neste repositório
+
+[`12_MANUAL_TEST_PLAN_MAC.md`](./12_MANUAL_TEST_PLAN_MAC.md) (Bloco 7.2) — não é defeito de código.
+
+```bash
+ps -o pid,pgid,command -ax | grep -E 'agy|mcps/dist' | grep -v grep
+```
+
+Esse grep bate em qualquer processo cujo caminho contenha a substring "agy" em qualquer lugar —
+inclusive no **nome da própria pasta do projeto**, `jogo-de-navinha-agy-summit-26`. Na prática isso
+apareceu como falso positivo dos processos do Vite/esbuild do player-app (invocados por caminho
+absoluto via `node_modules/.bin`), que não têm nenhuma relação com o CLI `agy` real nem com os
+servidores MCP. Confirmado como falso positivo cruzando com o log do daemon e o callsign exibido no
+jogo — nenhum processo do `agy`/MCP sobreviveu de fato.
+
+**Achado:** 2026-08-18, primeira execução literal do comando do 7.2.
+
+**Risco:** nenhum ao sistema — risco é só um testador ler um reset limpo como falha de processo
+órfão.
+
+**Fecha o item:** trocar o comando no Bloco 7.2 por
+`ps -o pid,pgid,command -ax | grep -E 'agy|mcps/dist' | grep -v grep | grep -v node_modules`.
+
 ---
 
 ## 5. O que **não** é lacuna (verificado, apesar da aparência)
@@ -261,6 +339,6 @@ Registrado para que ninguém "conserte" de novo o que já foi investigado:
 ## 6. Referências
 
 - [`10_IMPLEMENTATION_PLAN.md`](./10_IMPLEMENTATION_PLAN.md) — plano por fases e definição dos gates
-- [`12_MANUAL_TEST_PLAN_MAC.md`](./12_MANUAL_TEST_PLAN_MAC.md) — roteiro que fecha M1 e M2
+- [`12_MANUAL_TEST_PLAN_MAC.md`](./12_MANUAL_TEST_PLAN_MAC.md) — roteiro que fechou M1 e M2
 - [`09_GAME_BALANCE_AND_DEV_MODE.md`](./09_GAME_BALANCE_AND_DEV_MODE.md) — banda de vitória, portão, modo dev
 - [`packages/sim/fixtures/README.md`](../packages/sim/fixtures/README.md) — procedimento de captura da conformidade
