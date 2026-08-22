@@ -1,0 +1,10 @@
+{
+  "_comment": "Catálogo de empresas para auto-complete e normalização. Editar e reiniciar o daemon; não exige rebuild. Sobrescrever o caminho com BOOTH_COMPANIES_FILE.",
+  "companies": [
+    "Google", "Google Cloud", "Android", "YouTube", "Alphabet",
+    "Itaú", "Bradesco", "Nubank", "Mercado Livre", "Stone",
+    "Globo", "Embraer", "Petrobras", "Ambev", "Totvs",
+    "Votorantim", "Magazine Luiza", "iFood", "QuintoAndar", "C6 Bank",
+    "Accenture", "Deloitte", "PwC", "KPMG", "CI&T"
+  ]
+}

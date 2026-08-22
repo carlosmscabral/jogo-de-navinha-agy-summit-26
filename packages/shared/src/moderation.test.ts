@@ -80,6 +80,10 @@ describe('Proactive Company Normalizer & Fuzzy Matcher', () => {
   });
 
   it('should fallback cleanly to capitalized raw name for unknown companies', () => {
+    // Deliberado: um visitante de uma empresa fora do catálogo tem que aparecer com o
+    // nome dela, não com um erro. A moderação do texto cru (Tarefa C0b) fica a cargo de
+    // quem consome este resultado — SQLiteBufferService.resolveCompany, em
+    // packages/daemon/src/services/sqlite-buffer.ts — não desta função pura.
     const r = resolveCompanyFromCatalog('startup do joao', seedCatalog);
     assert.strictEqual(r.canonical, 'Startup Do Joao');
     assert.strictEqual(r.matchedBy, 'fallback');

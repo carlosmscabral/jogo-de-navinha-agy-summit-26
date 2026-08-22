@@ -2,7 +2,56 @@ import Database from 'better-sqlite3';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MatchRecord, calculateSimilarity, resolveCompanyFromCatalog } from '@jogo/shared';
+import { MatchRecord, calculateSimilarity, resolveCompanyFromCatalog, validateCallsign } from '@jogo/shared';
+
+// dist/services/ -> dist/ -> raiz do pacote daemon (mesmo cálculo de SQLiteBufferService.defaultDbPath)
+const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+// Catálogo embutido de último recurso: usado só se config/companies.json não existir
+// (build antigo, máquina nova) ou BOOTH_COMPANIES_FILE apontar para um caminho ausente.
+// A fonte de verdade operacional é o arquivo — ver loadCompanyCatalog.
+const BUILTIN_COMPANIES = [
+  'Google', 'Google Cloud', 'Android', 'YouTube', 'Alphabet',
+  'Itaú', 'Bradesco', 'Nubank', 'Mercado Livre', 'Stone',
+  'Globo', 'Embraer', 'Petrobras', 'Ambev', 'Totvs',
+  'Votorantim', 'Magazine Luiza', 'iFood', 'QuintoAndar', 'C6 Bank',
+  'Accenture', 'Deloitte', 'PwC', 'KPMG', 'CI&T'
+];
+
+// Mensagem exata emitida por validateCallsign (packages/shared/src/utils/moderation.ts)
+// quando a reprovação é por palavrão. Não há lá um código de motivo separado (tipo
+// 'profanity') — os outros motivos (comprimento, charset, repetição) têm textos próprios,
+// então comparar a string isola o caso de palavrão sem duplicar o filtro aqui.
+const PROFANITY_REASON = 'Termo impróprio ou não permitido no evento.';
+
+/**
+ * Catálogo de empresas para auto-complete e normalização.
+ * Arquivo em vez de literal no código para que a lista do evento possa ser
+ * trocada sem rebuild — ver Spec 05 §3.1.
+ */
+export function loadCompanyCatalog(filePath?: string): string[] {
+  const target = filePath
+    || process.env.BOOTH_COMPANIES_FILE
+    || path.join(packageRoot, '..', '..', 'config', 'companies.json');
+
+  if (!fs.existsSync(target)) {
+    console.warn(`[SQLiteBuffer] ${target} não encontrado; usando o catálogo embutido.`);
+    return [...BUILTIN_COMPANIES];
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(fs.readFileSync(target, 'utf8'));
+  } catch (e) {
+    // Malformado é diferente de ausente: ausente é uma máquina nova, malformado
+    // é alguém que editou e errou. Silenciar o segundo esconde o erro até o evento.
+    throw new Error(`[SQLiteBuffer] companies.json inválido em ${target}: ${(e as Error).message}`);
+  }
+  const list = (parsed as { companies?: unknown }).companies;
+  if (!Array.isArray(list) || list.some((c) => typeof c !== 'string')) {
+    throw new Error(`[SQLiteBuffer] companies.json em ${target} precisa de um array "companies" de strings.`);
+  }
+  return list as string[];
+}
 
 export interface CompanyMatch {
   raw: string;
@@ -97,14 +146,11 @@ export class SQLiteBufferService {
     `);
   }
 
+  // INSERT OR IGNORE torna isto idempotente entre reinícios. Empresas removidas do
+  // arquivo continuam na tabela de propósito — uma empresa que já tem partidas não
+  // pode sumir do placar.
   private seedCanonicalCompanies(): void {
-    const seeds = [
-      'Google', 'Google Cloud', 'Android', 'YouTube', 'Alphabet',
-      'Itaú', 'Bradesco', 'Nubank', 'Mercado Livre', 'Stone',
-      'Globo', 'Embraer', 'Petrobras', 'Ambev', 'Totvs',
-      'Votorantim', 'Magazine Luiza', 'iFood', 'QuintoAndar', 'C6 Bank',
-      'Accenture', 'Deloitte', 'PwC', 'KPMG', 'CI&T'
-    ];
+    const seeds = loadCompanyCatalog();
 
     const insert = this.db.prepare('INSERT OR IGNORE INTO canonical_companies (name) VALUES (?)');
     const insertMany = this.db.transaction((names: string[]) => {
@@ -231,6 +277,17 @@ export class SQLiteBufferService {
     // 2. Proactive multi-layer resolution (exact, suffix stripping, containment, Levenshtein fuzzy)
     const catalog = this.getCanonicalList();
     const resolution = resolveCompanyFromCatalog(raw, catalog);
+
+    // Empresa que casou com o catálogo é confiável por construção: o catálogo é
+    // curado. Só o fallback — texto cru do visitante — precisa passar pelo filtro,
+    // porque é o único caminho em que texto arbitrário chega ao telão.
+    if (resolution.matchedBy === 'fallback') {
+      const check = validateCallsign(resolution.canonical);
+      if (!check.isValid && check.reason === PROFANITY_REASON) {
+        this.cacheAlias(raw, 'Independente');
+        return 'Independente';
+      }
+    }
 
     // 3. Cache the resolved alias
     this.cacheAlias(raw, resolution.canonical);

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { SQLiteBufferService } from './sqlite-buffer.js';
+import { SQLiteBufferService, loadCompanyCatalog } from './sqlite-buffer.js';
 
 function tempDb(): string {
   return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'booth-db-')), 'booth.sqlite');
@@ -79,5 +79,48 @@ describe('SQLiteBufferService', () => {
     const db = new SQLiteBufferService(tempDb());
     assert.equal(db.resolveCompany('Gooogle'), 'Google');
     db.close();
+  });
+});
+
+describe('catálogo de empresas', () => {
+  it('carrega do arquivo apontado por BOOTH_COMPANIES_FILE', () => {
+    const f = path.join(os.tmpdir(), `companies-${process.pid}.json`);
+    fs.writeFileSync(f, JSON.stringify({ companies: ['Acme Corp', 'Umbrella'] }));
+    assert.deepEqual(loadCompanyCatalog(f), ['Acme Corp', 'Umbrella']);
+    fs.unlinkSync(f);
+  });
+
+  it('cai na lista embutida quando o arquivo não existe, em vez de subir vazio', () => {
+    const catalog = loadCompanyCatalog('/caminho/que/nao/existe.json');
+    assert.ok(catalog.includes('Google'));
+    assert.ok(catalog.length >= 20);
+  });
+
+  it('recusa um arquivo malformado em vez de silenciar', () => {
+    const f = path.join(os.tmpdir(), `bad-${process.pid}.json`);
+    fs.writeFileSync(f, '{ isto não é json');
+    assert.throws(() => loadCompanyCatalog(f), /companies\.json/i);
+    fs.unlinkSync(f);
+  });
+});
+
+describe('moderação do campo empresa', () => {
+  it('não deixa texto ofensivo virar nome de empresa no telão', () => {
+    const buffer = new SQLiteBufferService(tempDb());
+    assert.equal(buffer.resolveCompany('PORRA LTDA'), 'Independente');
+    assert.equal(buffer.resolveCompany('p0rr4 tech'), 'Independente');
+    buffer.close();
+  });
+
+  it('não afeta empresa desconhecida mas inofensiva', () => {
+    const buffer = new SQLiteBufferService(tempDb());
+    assert.equal(buffer.resolveCompany('Startup do João'), 'Startup Do João');
+    buffer.close();
+  });
+
+  it('não afeta empresa do catálogo', () => {
+    const buffer = new SQLiteBufferService(tempDb());
+    assert.equal(buffer.resolveCompany('Gooogle Brasil'), 'Google');
+    buffer.close();
   });
 });

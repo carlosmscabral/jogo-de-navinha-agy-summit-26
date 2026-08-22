@@ -152,6 +152,15 @@ O buffer local fica em `packages/daemon/data/booth_buffer.sqlite`. Para usar out
 `BOOTH_DB_PATH`. Para popular o placar com pilotos fictícios **em desenvolvimento**, defina
 `BOOTH_SEED_DEMO=1` — nunca no dia do evento.
 
+### 4. Pré-cadastrar as empresas do evento:
+
+O catálogo de empresas (usado no auto-complete do cadastro e na normalização do campo empresa
+para o placar) vem de `config/companies.json`, não de código. Para atualizar a lista para um
+evento específico, edite esse arquivo (mesmo formato de `config/companies.example.json`, um array
+`companies` de strings) e reinicie o daemon — **não é preciso rebuildar**. Para usar um arquivo em
+outro caminho, defina `BOOTH_COMPANIES_FILE`. Empresas removidas do arquivo continuam aparecendo no
+placar se já tiverem partidas registradas; o arquivo só afeta o pré-cadastro, não apaga histórico.
+
 ---
 
 ## 🗺️ 6. Planejamento e Próximos Passos (Roadmap Técnico)
