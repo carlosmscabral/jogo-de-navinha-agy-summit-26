@@ -1,0 +1,8 @@
+node_modules
+dist
+*.tsbuildinfo
+.env
+.env.*
+*.test.ts
+src/test-helpers.ts
+README.md

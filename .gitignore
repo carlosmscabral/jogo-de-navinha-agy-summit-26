@@ -41,6 +41,10 @@ lerna-debug.log*
 # Diagnostic output from `npm run sim:balance` (Task B7), regenerated on every run
 sim-results.json
 
+# Cópia local de @jogo/shared para o contexto de build do Docker (Tarefa C3) —
+# gerada por `npm run vendor:shared --workspace=packages/cloud-api`, nunca commitada.
+packages/cloud-api/vendor/
+
 # Firebase — .firebaserc names a real project (vibe-cabral); .firebaserc.example is the template
 .firebaserc
 firebase-debug.log
