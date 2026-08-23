@@ -1,8 +1,11 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { FieldValue } from 'firebase-admin/firestore';
+import { SCHEMA_VERSION } from '@jogo/shared';
 import {
   resolveCompanies,
   runCanonicalizationSweep,
+  correctMatchCompany,
   listAliasesSince,
   type CanonicalizeRequestItem
 } from './canonicalize.js';
@@ -143,6 +146,51 @@ describe('runCanonicalizationSweep (Firestore emulator)', () => {
     const generate = async () => { called = true; return '[]'; };
     await runCanonicalizationSweep(testDb, generate, CATALOG, 0.85);
     assert.equal(called, false);
+  });
+
+  // Revisão final Fase C — Importante 6: uma partida anulada nunca pode voltar a somar em
+  // nenhum agregado, nem por uma correção de canonicalização em segundo plano.
+  it('correctMatchCompany não mexe em nada quando a partida está anulada (voided)', async () => {
+    await ingestBatch(testDb, [
+      matchFixture({
+        match_id: 'm5',
+        pilot_id: 'p5',
+        final_score: 900,
+        company_canonical: 'Gogle',
+        needs_company_review: true
+      })
+    ]);
+    await testDb.collection('matches').doc('m5').update({ voided: true });
+
+    await correctMatchCompany(testDb, 'm5', 'Google', 0.95);
+
+    const match = (await testDb.collection('matches').doc('m5').get()).data()!;
+    assert.equal(match.company_canonical, 'Gogle', 'partida anulada não deve ser corrigida');
+    assert.equal(match.needs_company_review, true, 'a marca não é tocada pelo no-op');
+
+    const newCompany = await testDb.collection('company_rankings').doc('Google').get();
+    assert.equal(newCompany.exists, false, 'nenhum agregado novo pode nascer de uma correção pulada');
+  });
+
+  // Importante 6: `schema_version` deve vir da constante, não do campo (possivelmente
+  // ausente) da partida legada — escrever `undefined` explicitamente faria o Admin SDK lançar.
+  it('usa a constante SCHEMA_VERSION ao gravar o novo agregado, não o campo da partida', async () => {
+    await ingestBatch(testDb, [
+      matchFixture({
+        match_id: 'm6',
+        pilot_id: 'p6',
+        final_score: 300,
+        company_canonical: 'Gogle',
+        needs_company_review: true
+      })
+    ]);
+    // Simula uma partida legada sem schema_version.
+    await testDb.collection('matches').doc('m6').update({ schema_version: FieldValue.delete() });
+
+    await correctMatchCompany(testDb, 'm6', 'Google', 0.95);
+
+    const right = (await testDb.collection('company_rankings').doc('Google').get()).data()!;
+    assert.equal(right.schema_version, SCHEMA_VERSION);
   });
 });
 

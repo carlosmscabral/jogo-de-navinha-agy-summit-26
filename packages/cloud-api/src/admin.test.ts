@@ -74,6 +74,56 @@ describe('PATCH /v1/admin/matches/:id', () => {
     assert.equal(rank.total_score, 2000);
     assert.equal(rank.top_individual_score, 1500);
   });
+
+  // Revisão final Fase C — Importante 6: uma correção manual de empresa não pode ser
+  // sobrescrita depois por uma varredura de canonicalização que ainda veja a marca antiga.
+  it('corrigir a empresa de uma partida limpa needs_company_review', async () => {
+    await ingestBatch(testDb, [
+      matchFixture({
+        match_id: 'm1',
+        pilot_id: 'p1',
+        final_score: 1000,
+        company_canonical: 'Gogle',
+        needs_company_review: true
+      })
+    ]);
+    await patchMatch(testDb, 'm1', { company_canonical: 'Google' });
+    const doc = await testDb.collection('matches').doc('m1').get();
+    assert.equal(doc.data()!.needs_company_review, undefined);
+  });
+
+  // Revisão final Fase C — Importante 7: `patchMatch` recalculava `company_rankings`
+  // corretamente, mas nunca tocava `pilots/{pilot_id}` — anular a melhor partida de um
+  // piloto deixava `best_score`/`matches_played` desatualizados para sempre.
+  it('anular a melhor partida do piloto recalcula pilots/{id}.best_score e matches_played', async () => {
+    await ingestBatch(testDb, [
+      matchFixture({ match_id: 'm1', pilot_id: 'p1', final_score: 1000, company_canonical: 'Google' }),
+      matchFixture({ match_id: 'm2', pilot_id: 'p1', final_score: 400, company_canonical: 'Google' })
+    ]);
+    await patchMatch(testDb, 'm1', { voided: true });
+    const pilot = (await testDb.collection('pilots').doc('p1').get()).data()!;
+    assert.equal(pilot.best_score, 400, 'o melhor score cai para o próximo colocado');
+    assert.equal(pilot.matches_played, 1, 'a partida anulada não conta mais');
+  });
+
+  it('anular a única partida do piloto zera best_score e matches_played', async () => {
+    await ingestBatch(testDb, [matchFixture({ match_id: 'm1', pilot_id: 'p1', final_score: 1000 })]);
+    await patchMatch(testDb, 'm1', { voided: true });
+    const pilot = (await testDb.collection('pilots').doc('p1').get()).data()!;
+    assert.equal(pilot.best_score, 0);
+    assert.equal(pilot.matches_played, 0);
+  });
+
+  it('corrigir o final_score da melhor partida do piloto atualiza pilots/{id}.best_score', async () => {
+    await ingestBatch(testDb, [
+      matchFixture({ match_id: 'm1', pilot_id: 'p1', final_score: 1000 }),
+      matchFixture({ match_id: 'm2', pilot_id: 'p1', final_score: 400 })
+    ]);
+    await patchMatch(testDb, 'm1', { final_score: 250 });
+    const pilot = (await testDb.collection('pilots').doc('p1').get()).data()!;
+    assert.equal(pilot.best_score, 400, 'o segundo colocado vira o novo melhor score');
+    assert.equal(pilot.matches_played, 2);
+  });
 });
 
 describe('listMatches', () => {
@@ -95,6 +145,18 @@ describe('listMatches', () => {
     ]);
     const found = await listMatches(testDb, { company: 'Nubank' });
     assert.deepEqual(found.map((m: MatchDocument) => m.match_id), ['m2']);
+  });
+
+  // Revisão final Fase C — Crítico 2: `ingestOne` grava `created_at` via
+  // `FieldValue.serverTimestamp()`, então o documento devolvido pelo emulador AQUI já é um
+  // `Timestamp` real, não uma string ISO de fixture — exatamente o caso que os testes
+  // antigos (todos com fixtures de string) nunca cobriam.
+  it('devolve created_at como string ISO válida, não o Timestamp cru do Firestore', async () => {
+    await ingestBatch(testDb, [matchFixture({ match_id: 'm1' })]);
+    const found = await listMatches(testDb, {});
+    assert.equal(found.length, 1);
+    assert.equal(typeof found[0].created_at, 'string');
+    assert.equal(Number.isNaN(Date.parse(found[0].created_at)), false, 'created_at precisa ser parseável');
   });
 });
 

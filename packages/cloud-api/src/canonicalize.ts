@@ -17,7 +17,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FieldValue, type Firestore } from 'firebase-admin/firestore';
-import { type MatchDocument, type CompanyRankingDocument } from '@jogo/shared';
+import { SCHEMA_VERSION, type MatchDocument, type CompanyRankingDocument } from '@jogo/shared';
 import { generateJson } from './vertex.js';
 
 export type GenerateFn = (prompt: string) => Promise<string>;
@@ -182,6 +182,13 @@ export async function correctMatchCompany(
     if (!matchSnap.exists) return;
 
     const match = matchSnap.data() as MatchDocument;
+    // Revisão final Fase C — Importante 6: uma partida anulada (`patchMatch`, Tarefa C7) nunca
+    // pode voltar a somar em nenhum agregado. Hoje `needs_company_review` não é setado por
+    // nenhum caminho real (Spec 11 §4.11), então este `if` é preventivo — mas o dia em que
+    // §4.11 for corrigido e as duas coisas puderem coexistir na mesma partida, sem esta
+    // checagem uma varredura de canonicalização desfaria silenciosamente a anulação de um
+    // operador, somando de volta o `final_score` de uma partida que ele explicitamente excluiu.
+    if (match.voided) return;
     if (!match.needs_company_review) return; // já resolvida por outra varredura — idempotente
 
     const oldCompany = match.company_canonical;
@@ -218,7 +225,10 @@ export async function correctMatchCompany(
     }
 
     tx.set(newCompanyRef, {
-      schema_version: match.schema_version,
+      // Importante 6: a constante, não `match.schema_version` — uma partida legada sem esse
+      // campo faria isto gravar `undefined`, que o Admin SDK rejeita, e todo o resto do
+      // código (`ingest.ts`, `admin.ts`) já escreve agregados usando esta mesma constante.
+      schema_version: SCHEMA_VERSION,
       company_canonical: newCompany,
       total_score: (newData?.total_score ?? 0) + match.final_score,
       pilots_count: (newData?.pilots_count ?? 0) + (pilotStillPointsAtOldCompany ? 1 : 0),

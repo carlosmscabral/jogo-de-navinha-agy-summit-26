@@ -1,26 +1,4 @@
 {
-  "indexes": [
-    {
-      "collectionGroup": "matches",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "final_score", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "matches",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "created_at", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "company_rankings",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "total_score", "order": "DESCENDING" }
-      ]
-    }
-  ],
+  "indexes": [],
   "fieldOverrides": []
 }

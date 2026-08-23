@@ -25,7 +25,8 @@ import {
   SCHEMA_VERSION,
   field,
   type MatchDocument,
-  type CompanyCatalogDocument
+  type CompanyCatalogDocument,
+  type MatchCorrection
 } from '@jogo/shared';
 import { MAX_PLAUSIBLE_SCORE } from './ingest.js';
 
@@ -33,15 +34,31 @@ import { MAX_PLAUSIBLE_SCORE } from './ingest.js';
 // PATCH /v1/admin/matches/:id
 // ---------------------------------------------------------------------------
 
-/** Campos que uma correção manual pode tocar. Tudo opcional: o operador manda só o que muda. */
-export interface MatchCorrection {
-  callsign?: string;
-  company_canonical?: string;
-  final_score?: number;
-  voided?: boolean;
-}
+export type { MatchCorrection };
 
 type StoredMatch = MatchDocument;
+
+/**
+ * Crítico 2 (revisão final Fase C): `created_at` é gravado como `FieldValue.serverTimestamp()`
+ * (`ingest.ts`), então todo documento lido de volta do Firestore carrega um `Timestamp` do
+ * Admin SDK aqui, não a string ISO que o tipo `MatchDocument.created_at` promete. Sem esta
+ * conversão, `listMatches` devolvia o `Timestamp` cru na resposta HTTP — que serializa como
+ * `{ _seconds, _nanoseconds }` — e `MatchesScreen.tsx` (admin-app) quebrava ao tentar
+ * renderizar isso como filho do React ("Objects are not valid as a React child"), tela
+ * branca no painel principal. Detecta via `.toDate` (todo `Timestamp` do Admin SDK expõe
+ * esse método) em vez de checar a classe exata, para não acoplar a um import específico.
+ */
+function toIsoTimestamp(value: unknown): string {
+  if (value && typeof (value as { toDate?: unknown }).toDate === 'function') {
+    return (value as { toDate: () => Date }).toDate().toISOString();
+  }
+  return typeof value === 'string' ? value : new Date(0).toISOString();
+}
+
+/** Normaliza um documento cru do Firestore para o contrato ISO-string de `MatchDocument`. */
+function normalizeMatchDocForRead(raw: MatchDocument): MatchDocument {
+  return { ...raw, created_at: toIsoTimestamp(raw.created_at) };
+}
 
 interface CompanyAggregate {
   total_score: number;
@@ -82,6 +99,40 @@ function recalcAggregate(
   };
 }
 
+interface PilotAggregate {
+  best_score: number;
+  matches_played: number;
+}
+
+/**
+ * Revisão final Fase C — Importante 7: espelha `recalcAggregate` acima, mas para
+ * `pilots/{pilot_id}` em vez de `company_rankings/{company}`. `patchMatch` nunca troca o
+ * `pilot_id` de uma partida (não é um campo de `MatchCorrection`), então só o piloto DONO
+ * da partida em edição é afetado — sem o cenário "duas consultas, dois lados" que
+ * `recalcAggregate` precisa tratar para empresa. Sem isto, anular ou corrigir o
+ * `final_score` da melhor partida de um piloto deixava `pilots/{id}.best_score` e
+ * `.matches_played` desatualizados para sempre (só `ingestOne`, no caminho de ingestão,
+ * escrevia esses dois campos).
+ */
+function recalcPilotAggregate(
+  rawDocs: StoredMatch[],
+  patchedMatchId: string,
+  patchedMatch: StoredMatch
+): PilotAggregate {
+  const docs: StoredMatch[] = [];
+  for (const d of rawDocs) {
+    if (d.match_id === patchedMatchId) continue; // versão pré-correção; substituída abaixo
+    docs.push(d);
+  }
+  docs.push(patchedMatch); // pilot_id nunca muda via patchMatch — sempre pertence a este piloto
+
+  const active = docs.filter((d) => !d.voided);
+  return {
+    best_score: active.reduce((max, d) => Math.max(max, d.final_score), 0),
+    matches_played: active.length
+  };
+}
+
 function validateCorrection(current: StoredMatch, changes: MatchCorrection): void {
   if (changes.final_score !== undefined) {
     const s = changes.final_score;
@@ -116,11 +167,17 @@ export async function patchMatch(db: Firestore, matchId: string, changes: MatchC
     validateCorrection(current, changes);
 
     const patchedMatch: StoredMatch = { ...current, ...changes };
+    // Importante 6: uma correção manual de empresa não pode ser sobrescrita depois por uma
+    // varredura de canonicalização em segundo plano (Tarefa C4) que ainda enxergue a marca
+    // antiga e "corrija de volta" para o palpite original do modelo.
+    if (changes.company_canonical !== undefined) {
+      delete patchedMatch.needs_company_review;
+    }
     const oldCompany = current.company_canonical;
     const newCompany = patchedMatch.company_canonical;
     const affectedCompanies = Array.from(new Set([oldCompany, newCompany]));
 
-    // Todas as leituras (as duas consultas por empresa, no máximo) vêm antes de
+    // Todas as leituras (as consultas por empresa e a consulta pelo piloto) vêm antes de
     // qualquer escrita — regra de transação do Firestore.
     const companyDocs = new Map<string, StoredMatch[]>();
     for (const company of affectedCompanies) {
@@ -129,6 +186,22 @@ export async function patchMatch(db: Firestore, matchId: string, changes: MatchC
       companyDocs.set(company, snap.docs.map((d) => d.data() as StoredMatch));
     }
 
+    // Importante 7: `pilot_id` nunca muda via `MatchCorrection` — só o piloto dono desta
+    // partida pode ser afetado por ela.
+    const pilotId = current.pilot_id;
+    const pilotMatchesQuery: Query = db.collection('matches').where(field<MatchDocument>('pilot_id'), '==', pilotId);
+    const pilotMatchesSnap = await tx.get(pilotMatchesQuery);
+    const pilotMatches = pilotMatchesSnap.docs.map((d) => d.data() as StoredMatch);
+    const pilotRef = db.collection('pilots').doc(pilotId);
+    const pilotSnap = await tx.get(pilotRef);
+
+    // Minor 10 (revisão final Fase C): considerado apagar (`tx.delete`) o documento de uma
+    // empresa cujo agregado recalculado zerou (0 partidas ativas), em vez de deixar um
+    // documento zerado. Decidido NÃO fazer isso: `admin.test.ts`'s "anular duas vezes não
+    // desconta duas vezes" (dado verbatim pelo plano) lê `company_rankings/Google` com `!`
+    // logo depois de anular a única partida da empresa — esperando um documento zerado, não
+    // ausente. Apagar aqui quebraria esse teste sem ganho funcional real (um zero-valorado é
+    // inofensivo, como o revisor já observou); manter o `set` incondicional de baixo.
     for (const company of affectedCompanies) {
       const agg = recalcAggregate(company, companyDocs.get(company)!, matchId, patchedMatch);
       const companyRef = db.collection('company_rankings').doc(company);
@@ -141,6 +214,18 @@ export async function patchMatch(db: Firestore, matchId: string, changes: MatchC
         last_updated: FieldValue.serverTimestamp()
       });
     }
+
+    const pilotAgg = recalcPilotAggregate(pilotMatches, matchId, patchedMatch);
+    if (pilotSnap.exists) {
+      tx.set(
+        pilotRef,
+        { best_score: pilotAgg.best_score, matches_played: pilotAgg.matches_played },
+        { merge: true }
+      );
+    }
+    // Se o documento do piloto não existir (não deveria acontecer — `ingestOne` sempre cria
+    // um — não inventamos um aqui: faltariam `callsign`/`company_canonical`/`created_at`
+    // reais para um `set` completo, e um `patchMatch` não é o lugar de suprir isso.
 
     tx.set(matchRef, { ...patchedMatch, schema_version: SCHEMA_VERSION });
   });
@@ -174,7 +259,7 @@ export async function listMatches(db: Firestore, params: ListMatchesParams): Pro
     .orderBy(field<MatchDocument>('created_at'), 'desc')
     .limit(LIST_MATCHES_SCAN_WINDOW)
     .get();
-  let docs = snap.docs.map((d) => d.data() as MatchDocument);
+  let docs = snap.docs.map((d) => normalizeMatchDocForRead(d.data() as MatchDocument));
 
   if (params.company) {
     docs = docs.filter((m) => m.company_canonical === params.company);
