@@ -164,4 +164,53 @@ describe('CloudSyncService', () => {
     await sync.syncNow();
     assert.equal(chamadas, 2, 'auth_failed não pode desligar o worker: o token pode ser corrigido');
   });
+
+  it('não deixa uma leitura corrompida do buffer virar uma promise rejeitada', async () => {
+    // Simula o que SQLiteBufferService.getPendingMatches() faz de verdade com uma linha cujo
+    // telemetry_json/ship_spec_json está corrompido: JSON.parse lança de forma síncrona ali
+    // dentro. `void cloudSync.syncNow()` (fire-and-forget, em index.ts e em start()) não tem
+    // `.catch()` -- se essa exceção virasse uma rejeição da Promise, seria um unhandledRejection,
+    // que derruba o processo Node inteiro por padrão (>= 15). syncNow() precisa absorver isso e
+    // resolver normalmente, como faria com uma falha de rede.
+    const brokenBuffer: SyncBuffer = {
+      getPendingMatches(): PendingMatch[] {
+        throw new Error('malformed telemetry_json for row m1');
+      },
+      markMatchSynced(): void {
+        throw new Error('não deveria ser chamado -- nada foi lido do buffer');
+      },
+      countPending(): number {
+        return 1;
+      }
+    };
+    const sync = new CloudSyncService(brokenBuffer, {
+      base: 'https://api', token: 't',
+      fetchImpl: async () => { throw new Error('não deveria chamar a rede'); }
+    });
+
+    const outcome = await sync.syncNow();
+
+    assert.equal(outcome.status, 'failed');
+    assert.equal(sync.status().state, 'retrying', 'uma leitura corrompida é transitória, não auth_failed nem disabled');
+    assert.equal(sync.status().consecutiveFailures, 1);
+  });
+
+  it('não deixa uma falha ao marcar sincronizado virar uma promise rejeitada, depois de a nuvem já ter aceitado', async () => {
+    const buffer = fakeBufferWith(['m1']);
+    let attempts = 0;
+    buffer.markMatchSynced = () => {
+      attempts++;
+      throw new Error('disco cheio ao gravar synced_to_cloud');
+    };
+    const sync = new CloudSyncService(buffer, {
+      base: 'https://api', token: 't',
+      fetchImpl: async () => okJson({ accepted: ['m1'], rejected: [] })
+    });
+
+    const outcome = await sync.syncNow();
+
+    assert.equal(attempts, 1, 'markMatchSynced precisa ter sido de fato chamado (e falhado)');
+    assert.equal(outcome.status, 'ok', 'a rede funcionou -- uma falha de gravação local não é um erro de sync');
+    assert.deepEqual(buffer.markedSynced, [], 'a gravação falhou, então nada pode constar como marcado no duplo');
+  });
 });

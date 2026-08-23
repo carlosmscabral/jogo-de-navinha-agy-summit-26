@@ -125,7 +125,26 @@ export class CloudSyncService {
       return { status: 'disabled' };
     }
 
-    const pending = this.buffer.getPendingMatches();
+    // A leitura do buffer local pode lançar de forma síncrona -- o caso real é
+    // SQLiteBufferService.getPendingMatches() rodando JSON.parse em telemetry_json/ship_spec_json
+    // de uma linha corrompida. Sem este try/catch, essa exceção vira uma rejeição da Promise
+    // devolvida por syncNow(), e os dois pontos que chamam syncNow() em modo fire-and-forget
+    // (`void cloudSync.syncNow()` em index.ts, e `void this.syncNow().finally(...)` em start()
+    // logo abaixo -- `.finally()` não suprime rejeição) não têm `.catch()`. Uma promise rejeitada
+    // sem handler é um unhandledRejection, que em Node >= 15 derruba o processo inteiro por
+    // padrão -- trocando "o buffer não drena" por "o daemon do estande caiu", exatamente o oposto
+    // do que este worker existe para resolver. Tratado aqui como uma falha transitória igual a
+    // uma falha de rede: um problema de dado numa linha não significa que a nuvem não vai aceitar
+    // as outras no próximo ciclo.
+    let pending: PendingMatch[];
+    try {
+      pending = this.buffer.getPendingMatches();
+    } catch {
+      this.lastAttempt = new Date().toISOString();
+      this.state = 'retrying';
+      this.consecutiveFailures += 1;
+      return { status: 'failed' };
+    }
     this.lastAttempt = new Date().toISOString();
 
     if (pending.length === 0) {
@@ -192,7 +211,16 @@ export class CloudSyncService {
       : [];
 
     for (const matchId of accepted) {
-      this.buffer.markMatchSynced(matchId);
+      try {
+        this.buffer.markMatchSynced(matchId);
+      } catch {
+        // Mesma lógica de proteção contra unhandledRejection acima, aplicada ao outro lado do
+        // buffer: a nuvem já aceitou o lote (a rede funcionou -- isto não é um 'retrying'), então
+        // uma falha ao GRAVAR o bit local de "sincronizado" não pode derrubar o worker nem
+        // desclassificar um sync que teve sucesso. Pior caso: esta partida específica continua
+        // pendente e é reenviada no próximo ciclo -- inofensivo, porque `POST /v1/matches` (Tarefa
+        // C3) é idempotente por match_id.
+      }
     }
 
     return { status: 'ok', accepted, rejected };
