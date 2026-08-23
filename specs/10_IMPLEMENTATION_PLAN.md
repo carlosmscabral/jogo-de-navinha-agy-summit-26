@@ -5492,6 +5492,11 @@ git commit -m "feat(admin): painel de operação com correção de partidas e ca
 > - Uma partida concluída aparece no telão em menos de 1s.
 > - No Firestore, `telemetry` e `ship_spec_snapshot` estão **preenchidos**, e o mesmo `pilot_id` liga o
 >   registro à partida.
+> - **Abra um documento `matches/{id}` real e confira os 13 campos de `MatchDocument`, não só os
+>   dois de cima.** `score_breakdown`, `company_raw` e `company_confidence` são gravados hoje pelo
+>   caminho local (Fase A) e **não** chegam ao Firestore — Spec 11 §4.11. Se este item falhar, é o
+>   sinal de que a Tarefa C8 (ou a extensão da C3/C7 que a §4.11 propõe) precisa acontecer antes do
+>   evento, não depois.
 > - **Desligue o Wi-Fi no meio de uma partida.** O jogo não trava, o debrief aparece normalmente, e
 >   `GET /api/sync/status` mostra `pending: 1`.
 > - **Religue.** Em menos de 60s o registro aparece no Firestore, **uma única vez**. Repita o envio

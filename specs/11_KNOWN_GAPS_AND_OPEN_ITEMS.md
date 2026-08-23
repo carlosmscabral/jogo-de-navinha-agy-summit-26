@@ -422,15 +422,25 @@ Arquivos da Tarefa C5, e forçar essa mudança ali teria misturado uma correçã
 anteriores dentro de uma tarefa que só deveria drenar o buffer existente.
 
 **O que fazer:** uma tarefa própria — candidata a **Tarefa C8** ou a uma extensão pequena da C3/C7 —
-que (1) acrescenta `company_raw`, `company_confidence` e `needs_company_review` a `MatchRecord` e à
-tabela `local_matches` (com migração, já que o banco pode ter partidas do ensaio manual da Fase B);
-(2) faz o `App.tsx` enviar `company_raw` (o texto que o visitante digitou, sem normalizar) junto com o
-`company_canonical` já resolvido; (3) faz a resposta de `resolveCompany` no daemon devolver a
-confiança, não só o nome canônico, para popular `company_confidence`. Sem isso, a Tarefa C4 é código
-morto tecnicamente correto.
+que (1) acrescenta `company_raw`, `company_confidence`, `needs_company_review` **e `score_breakdown`**
+a `MatchRecord` e à tabela `local_matches` (com migração, já que o banco pode ter partidas do ensaio
+manual da Fase B); (2) faz o `App.tsx` enviar `company_raw` (o texto que o visitante digitou, sem
+normalizar) e `score_breakdown` (já calculado no cliente, hoje descartado antes de chegar a
+`saveMatch`) junto com o `company_canonical` já resolvido; (3) faz a resposta de `resolveCompany` no
+daemon devolver a confiança, não só o nome canônico, para popular `company_confidence`. Sem isso, a
+Tarefa C4 é código morto tecnicamente correto — **e, mais grave, todo documento gravado durante o
+evento fica permanentemente sem `score_breakdown`**, um campo não-opcional de `MatchDocument` (Spec 05
+§4.1), não só sem os três campos de canonicalização.
 
-**Reavaliar antes do Gate M3** — é o gate que testa a sincronização ponta a ponta, e é onde esta
-lacuna teria sido descoberta de qualquer forma, só que depois do código já estar todo escrito.
+> **Correção, revisão final da Fase C, 2026-08-22:** a frase anterior — "é o gate que testa a
+> sincronização ponta a ponta, e é onde esta lacuna teria sido descoberta de qualquer forma" — estava
+> errada. O checklist do Gate M3 (Spec 10, Tarefa C7) verifica apenas que `telemetry` e
+> `ship_spec_snapshot` chegam preenchidos; não verifica `score_breakdown`, `company_raw` nem
+> `company_confidence`. Como está escrito hoje, o M3 **não** pegaria esta lacuna. Um item novo foi
+> acrescentado ao checklist do M3 exatamente para fechar isso — ver Tarefa C7 em
+> [10_IMPLEMENTATION_PLAN.md](./10_IMPLEMENTATION_PLAN.md).
+
+**Reavaliar antes do Gate M3.**
 
 ---
 
