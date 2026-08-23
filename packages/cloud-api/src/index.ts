@@ -42,6 +42,24 @@ const BOOTH_INGEST_TOKEN = process.env.BOOTH_INGEST_TOKEN;
 const MODERATION_L2_TIMEOUT_MS = Number(process.env.MODERATION_L2_TIMEOUT_MS) || 1500;
 const COMPANY_CATALOG = loadCompanyCatalog();
 
+// Revisão final Fase C — Crítico 4: falhar JÁ NA SUBIDA, não só na primeira chamada real de
+// moderação, quando falta a variável de que `vertex.ts` depende (`requireEnv('GOOGLE_CLOUD_PROJECT')`).
+// Sem isto, a primeira pista de que a variável está ausente seria TODO visitante do evento sendo
+// recusado com `block` — `moderation-l2.ts` agora distingue "infraestrutura quebrada" (`unavailable`,
+// fail-open no daemon) de "o modelo respondeu em dúvida" (`block`, fail-closed de verdade), mas um
+// serviço que nunca sobe corretamente é preferível a um que sobe e falha fechado silenciosamente
+// para todo mundo. `NODE_ENV !== 'test'` mesma guarda que o bloco de `app.listen` mais abaixo usa;
+// nenhum teste deste pacote importa este módulo, então isto nunca roda em `npm test`.
+if (process.env.NODE_ENV !== 'test' && !process.env.GOOGLE_CLOUD_PROJECT) {
+  console.error(
+    '[cloud-api] GOOGLE_CLOUD_PROJECT is not set. Layer-2 moderation and canonicalization ' +
+      '(Vertex AI, Task C4) will fail for EVERY visitor as soon as the first registration ' +
+      'comes in. Configure the variable before starting the service — see .env.example and ' +
+      'the README ("Variáveis de ambiente" section).'
+  );
+  process.exit(1);
+}
+
 // Sem argumentos: usa Application Default Credentials. No Cloud Run isso é a identidade
 // da service account do serviço; não existe (nem deve existir) arquivo de chave aqui.
 const firebaseApp = initializeApp();

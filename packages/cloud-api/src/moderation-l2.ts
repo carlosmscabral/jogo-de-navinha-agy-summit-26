@@ -18,13 +18,26 @@
  * (`packages/daemon/src/services/remote-moderation.ts`), que devolve
  * "unavailable" (e deixa o registro seguir) quando o Vertex está inalcançável —
  * lá o cenário é "o estande está offline", não "o modelo respondeu em dúvida".
+ *
+ * Revisão final Fase C — Crítico 4: a regra de ouro acima tinha um furo. `generate` pode
+ * lançar por dois motivos bem diferentes: (a) o modelo respondeu, mas em timeout ou em
+ * forma inesperada — aí "block" é exatamente certo, é dúvida genuína sobre o veredito; ou
+ * (b) a chamada NUNCA chegou a um julgamento do modelo — `GOOGLE_CLOUD_PROJECT` ausente,
+ * IAM errado, cota estourada, DNS falhando, HTTP não-2xx do Vertex. (b) não é "o modelo
+ * achou o nome inseguro", é "nossa infraestrutura está quebrada" — tratar os dois como
+ * `block` faz QUALQUER problema de configuração do Vertex bloquear TODO cadastro do evento,
+ * indistinguível de o modelo reprovar todo mundo. `verdict: 'unavailable'` cobre só o caso
+ * (b); quem chama esta função (a rota `/v1/moderate` em `index.ts`) devolve isso ao daemon,
+ * que já trata "unavailable" como fail-open (camada 1 local basta) — ver
+ * `remote-moderation.ts`. Timeout e forma inesperada continuam `block`: o modelo respondeu
+ * ou está em voo, só não com confiança suficiente.
  */
 import { generateJson } from './vertex.js';
 
 export type GenerateFn = (prompt: string) => Promise<string>;
 
 export interface ModerationVerdict {
-  verdict: 'allow' | 'block';
+  verdict: 'allow' | 'block' | 'unavailable';
   reason?: string;
 }
 
@@ -75,23 +88,42 @@ export async function moderateCallsign(
 ): Promise<ModerationVerdict> {
   const prompt = buildModerationPrompt(callsign);
 
+  // Três desfechos possíveis da corrida abaixo, cada um com uma tag própria — é isso que
+  // permite distinguir "o timeout venceu" de "generate() lançou antes de qualquer resposta"
+  // sem depender de inspecionar a mensagem do erro (ver Crítico 4 no comentário do topo).
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error('moderation-l2: timeout do modelo')), timeoutMs);
+  const timeoutRace = new Promise<{ kind: 'timeout' }>((resolve) => {
+    timer = setTimeout(() => resolve({ kind: 'timeout' }), timeoutMs);
   });
+  const generateRace = generate(prompt).then(
+    (raw): { kind: 'ok'; raw: string } => ({ kind: 'ok', raw }),
+    (err): { kind: 'error'; err: unknown } => ({ kind: 'error', err })
+  );
 
-  let raw: string;
-  try {
-    raw = await Promise.race([generate(prompt), timeout]);
-  } catch {
+  const outcome = await Promise.race([generateRace, timeoutRace]);
+  clearTimeout(timer);
+
+  if (outcome.kind === 'timeout') {
+    // O modelo pode até responder depois disto — só não a tempo. Dúvida genuína sobre o
+    // veredito, não infraestrutura quebrada: falha fechada de verdade (Spec 05 §3.2).
     return {
       verdict: 'block',
       reason: 'moderação semântica não respondeu a tempo — falha fechada (Spec 05 §3.2)'
     };
-  } finally {
-    clearTimeout(timer);
   }
 
+  if (outcome.kind === 'error') {
+    // generate() nunca chegou a produzir uma resposta do modelo — erro de cliente/config
+    // (ex.: GOOGLE_CLOUD_PROJECT ausente), transporte, ou HTTP não-2xx do Vertex. Isto não é
+    // "o modelo achou o nome inseguro"; é "a infraestrutura de moderação está fora do ar".
+    const message = outcome.err instanceof Error ? outcome.err.message : String(outcome.err);
+    return {
+      verdict: 'unavailable',
+      reason: `moderação semântica indisponível (falha de infraestrutura, não do modelo): ${message}`
+    };
+  }
+
+  const raw = outcome.raw;
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
