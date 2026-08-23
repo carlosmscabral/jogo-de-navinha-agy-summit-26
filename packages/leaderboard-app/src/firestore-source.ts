@@ -3,14 +3,20 @@
  * primary path, the local bridge (fetch + WebSocket) as the safety net.
  * Spec 05 §7.2 — a frozen scoreboard is worse than one a few seconds behind.
  *
- * This file has two clearly separated halves:
- *   1. Pure logic (`mergeLeaderboardState`, `pickSource`) — no Firestore, no
- *      network, no timers. Unit-tested directly in `leaderboard-source.test.ts`.
- *   2. Side-effecting plumbing (`subscribeToLeaderboard` and below) — the three
- *      `onSnapshot` listeners, the bridge fetch/WebSocket fallback (moved here
- *      from `App.tsx`, not duplicated), and the timers that decide when to
- *      switch between them. Exercised manually against the Firestore emulator
- *      (see task report), not by the unit tests.
+ * This file has three clearly separated sections:
+ *   1. Pure logic (`mergeLeaderboardState`, `applyAccurateCounts`, `pickSource`)
+ *      — no Firestore, no network, no timers. Unit-tested directly in
+ *      `leaderboard-source.test.ts`.
+ *   2. `subscribeWithRetry` — a generic capped-exponential-backoff retry
+ *      wrapper around any `onSnapshot`-shaped subscription. Deliberately
+ *      Firestore-agnostic so it's unit-tested with fake timers and a fake
+ *      `subscribe` function, no emulator involved.
+ *   3. Side-effecting plumbing (`subscribeToLeaderboard` and below) — the
+ *      three `onSnapshot` listeners (wrapped in `subscribeWithRetry`), the
+ *      periodic exact-count refresh (`getCountFromServer`), and the bridge
+ *      fetch/WebSocket fallback (moved here from `App.tsx`, not duplicated).
+ *      Exercised manually against the Firestore emulator (see task report),
+ *      not by the unit tests.
  */
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import {
@@ -20,8 +26,10 @@ import {
   orderBy,
   limit,
   onSnapshot,
+  getCountFromServer,
   type Firestore,
-  type Unsubscribe
+  type QuerySnapshot,
+  type DocumentData
 } from 'firebase/firestore';
 import { DATABASE_ID, field, type MatchDocument, type CompanyRankingDocument } from '@jogo/shared';
 import type { TopPilotEntry } from './components/HallOfFame.js';
@@ -116,6 +124,34 @@ export function mergeLeaderboardState(
   };
 }
 
+export interface AccurateCounts {
+  total_matches: number;
+  total_pilots: number;
+}
+
+/**
+ * Overrides only the aggregate counters in `state.stats` with exact counts
+ * (see `refreshCounts` below, backed by `getCountFromServer`). `top_score` is
+ * left untouched — it comes from the "top by score" query itself and is
+ * exact regardless of collection size. `total_matches`/`total_pilots`, by
+ * contrast, are what `mergeLeaderboardState` can only *estimate* from the
+ * ≤22 documents its two windowed match queries see: once an event has more
+ * matches than that, the windowed estimate stops reflecting reality and can
+ * even move up and down as different matches enter/leave the windows — worse
+ * than a stable, if briefly stale, exact number on a public display. Pure;
+ * used by `subscribeToLeaderboard` and unit-tested directly.
+ */
+export function applyAccurateCounts(state: LeaderboardState, counts: AccurateCounts): LeaderboardState {
+  return {
+    ...state,
+    stats: {
+      ...state.stats,
+      total_matches: counts.total_matches,
+      total_pilots: counts.total_pilots
+    }
+  };
+}
+
 export type SourceEvent =
   | 'CLOUD_SNAPSHOT'
   | 'CLOUD_TIMEOUT'
@@ -147,10 +183,69 @@ export function pickSource(current: SourceStatus, event: SourceEvent): SourceSta
 }
 
 // ---------------------------------------------------------------------------
+// Generic retry wrapper — uses timers, but is Firestore-agnostic. Tested with
+// fake timers and a fake `subscribe` function, no emulator involved.
+// ---------------------------------------------------------------------------
+
+export interface RetryableSubscriptionOptions<T> {
+  /** Mirrors the shape of `onSnapshot`: starts a subscription, returns its unsubscribe function. */
+  subscribe: (onNext: (value: T) => void, onError: (err: unknown) => void) => () => void;
+  onNext: (value: T) => void;
+  /** Called on every failed attempt, in addition to the automatic retry this function schedules. */
+  onError: (err: unknown) => void;
+  baseDelayMs?: number;
+  maxDelayMs?: number;
+}
+
+/**
+ * Wraps a Firestore-style subscription (`onSnapshot`) with capped exponential
+ * backoff retry. Firestore's `onSnapshot` error callback fires for permanent
+ * failures (e.g. a security-rules permission hiccup) — and once it does, the
+ * SDK will never call that listener again on its own. Without this wrapper,
+ * "automatic recovery to the cloud" would silently stop working after any
+ * such error until a manual page reload. Deliberately generic (no Firestore
+ * import in this function) so it's unit-testable without an emulator.
+ */
+export function subscribeWithRetry<T>(options: RetryableSubscriptionOptions<T>): () => void {
+  const baseDelayMs = options.baseDelayMs ?? 2000;
+  const maxDelayMs = options.maxDelayMs ?? 30000;
+  let stopped = false;
+  let unsubscribeCurrent: (() => void) | null = null;
+  let retryHandle: ReturnType<typeof setTimeout> | null = null;
+  let consecutiveFailures = 0;
+
+  function start() {
+    if (stopped) return;
+    unsubscribeCurrent = options.subscribe(
+      (value) => {
+        consecutiveFailures = 0;
+        options.onNext(value);
+      },
+      (err) => {
+        options.onError(err);
+        if (stopped) return;
+        const delay = Math.min(baseDelayMs * 2 ** consecutiveFailures, maxDelayMs);
+        consecutiveFailures += 1;
+        retryHandle = setTimeout(start, delay);
+      }
+    );
+  }
+
+  start();
+
+  return () => {
+    stopped = true;
+    if (retryHandle) clearTimeout(retryHandle);
+    if (unsubscribeCurrent) unsubscribeCurrent();
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Side-effecting plumbing — Firestore onSnapshot + local bridge fallback.
 // ---------------------------------------------------------------------------
 
 const CLOUD_WATCHDOG_MS = 5000;
+const COUNT_REFRESH_MS = 15000;
 
 let cachedApp: FirebaseApp | null = null;
 let cachedDb: Firestore | null = null;
@@ -275,7 +370,9 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
   let matchesByScore: MatchDocument[] = [];
   let matchesByRecency: MatchDocument[] = [];
   let rankings: CompanyRankingDocument[] = [];
+  let latestCounts: AccurateCounts | null = null;
   let watchdogHandle: ReturnType<typeof setTimeout> | null = null;
+  let countsIntervalHandle: ReturnType<typeof setInterval> | null = null;
   let localUnsubscribe: (() => void) | null = null;
   let recencyInitialized = false;
 
@@ -292,7 +389,37 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
     const merged = new Map<string, MatchDocument>();
     for (const m of matchesByScore) merged.set(m.match_id, m);
     for (const m of matchesByRecency) merged.set(m.match_id, m);
-    handlers.onData(mergeLeaderboardState(Array.from(merged.values()), rankings));
+    let state = mergeLeaderboardState(Array.from(merged.values()), rankings);
+    if (latestCounts) {
+      state = applyAccurateCounts(state, latestCounts);
+    }
+    handlers.onData(state);
+  }
+
+  /**
+   * Exact `total_matches`/`total_pilots` via `getCountFromServer`, run on its
+   * own timer independent of the (much chattier) per-document listeners —
+   * once per mount and then every `COUNT_REFRESH_MS`. A single aggregation
+   * read per collection is cheap; 15s keeps a live public display close to
+   * real-time without hammering Firestore on every match/company update.
+   * Failures are logged and skipped — the next tick tries again, and the
+   * three onSnapshot listeners remain the authority on source health, so a
+   * transient count-fetch failure doesn't flip the NUVEM/LOCAL badge.
+   */
+  async function refreshCounts(firestoreDb: Firestore) {
+    try {
+      const [matchesCount, pilotsCount] = await Promise.all([
+        getCountFromServer(collection(firestoreDb, 'matches')),
+        getCountFromServer(collection(firestoreDb, 'pilots'))
+      ]);
+      latestCounts = {
+        total_matches: matchesCount.data().count,
+        total_pilots: pilotsCount.data().count
+      };
+      emitMerged();
+    } catch (err) {
+      console.warn('[leaderboard-source] Failed to refresh exact stats counts from Firestore', err);
+    }
   }
 
   function armWatchdog() {
@@ -331,7 +458,7 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
   }
 
   const db = getFirestoreDb();
-  const unsubscribers: Unsubscribe[] = [];
+  const unsubscribers: (() => void)[] = [];
 
   if (db) {
     armWatchdog();
@@ -356,14 +483,14 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
       limit(TOP_PILOTS_LIMIT)
     );
     unsubscribers.push(
-      onSnapshot(
-        topByScoreQuery,
-        (snap) => {
+      subscribeWithRetry<QuerySnapshot<DocumentData>>({
+        subscribe: (onNext, onError) => onSnapshot(topByScoreQuery, onNext, onError),
+        onNext: (snap) => {
           matchesByScore = snap.docs.map((d) => d.data() as MatchDocument);
           onCloudSuccess();
         },
-        onCloudError('matches-by-score')
-      )
+        onError: onCloudError('matches-by-score')
+      })
     );
 
     const topByRecencyQuery = query(
@@ -372,9 +499,18 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
       limit(RECENT_MATCHES_LIMIT)
     );
     unsubscribers.push(
-      onSnapshot(
-        topByRecencyQuery,
-        (snap) => {
+      subscribeWithRetry<QuerySnapshot<DocumentData>>({
+        subscribe: (onNext, onError) => {
+          // Every (re)subscription — including retries after a permanent
+          // error — starts a brand new Firestore listener whose FIRST
+          // snapshot lists all currently-existing docs as "added". Resetting
+          // this here (not just once at mount) stops a post-error
+          // resubscription from replaying the celebration modal for matches
+          // that already existed before the hiccup.
+          recencyInitialized = false;
+          return onSnapshot(topByRecencyQuery, onNext, onError);
+        },
+        onNext: (snap) => {
           matchesByRecency = snap.docs.map((d) => d.data() as MatchDocument);
           // Skip the initial snapshot (pre-existing docs) so the celebration
           // modal only fires for matches that arrive while the telão is up.
@@ -395,8 +531,8 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
           recencyInitialized = true;
           onCloudSuccess();
         },
-        onCloudError('matches-by-recency')
-      )
+        onError: onCloudError('matches-by-recency')
+      })
     );
 
     const rankingsQuery = query(
@@ -405,15 +541,18 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
       limit(TOP_COMPANIES_LIMIT)
     );
     unsubscribers.push(
-      onSnapshot(
-        rankingsQuery,
-        (snap) => {
+      subscribeWithRetry<QuerySnapshot<DocumentData>>({
+        subscribe: (onNext, onError) => onSnapshot(rankingsQuery, onNext, onError),
+        onNext: (snap) => {
           rankings = snap.docs.map((d) => d.data() as CompanyRankingDocument);
           onCloudSuccess();
         },
-        onCloudError('company-rankings')
-      )
+        onError: onCloudError('company-rankings')
+      })
     );
+
+    refreshCounts(db);
+    countsIntervalHandle = setInterval(() => refreshCounts(db), COUNT_REFRESH_MS);
   } else {
     console.warn('[leaderboard-source] Firebase project id not configured, using local bridge only');
     startLocalFallback();
@@ -421,6 +560,7 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
 
   return () => {
     clearWatchdog();
+    if (countsIntervalHandle) clearInterval(countsIntervalHandle);
     stopLocalFallback();
     unsubscribers.forEach((unsub) => unsub());
   };

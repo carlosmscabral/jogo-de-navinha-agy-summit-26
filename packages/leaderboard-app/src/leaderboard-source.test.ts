@@ -1,5 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { mergeLeaderboardState, pickSource } from './firestore-source.js';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import {
+  mergeLeaderboardState,
+  pickSource,
+  applyAccurateCounts,
+  subscribeWithRetry,
+  type SourceStatus
+} from './firestore-source.js';
 import type { MatchDocument, CompanyRankingDocument } from '@jogo/shared';
 
 function makeMatch(overrides: Partial<MatchDocument> = {}): MatchDocument {
@@ -152,5 +158,195 @@ describe('pickSource', () => {
 
   it('ignora uma falha local tardia depois que a nuvem já assumiu', () => {
     expect(pickSource('cloud', 'LOCAL_FAILURE')).toBe('cloud');
+  });
+});
+
+describe('applyAccurateCounts', () => {
+  it('substitui total_matches e total_pilots, preservando o resto do estado intacto', () => {
+    const base = mergeLeaderboardState(
+      [makeMatch({ match_id: 'a', pilot_id: 'p1', final_score: 500 })],
+      [makeRanking({ company_canonical: 'ACME', total_score: 500 })]
+    );
+
+    const result = applyAccurateCounts(base, { total_matches: 240, total_pilots: 87 });
+
+    expect(result.stats.total_matches).toBe(240);
+    expect(result.stats.total_pilots).toBe(87);
+    // top_score comes from the exact "top by score" query, not the estimate — untouched.
+    expect(result.stats.top_score).toBe(base.stats.top_score);
+    expect(result.topPilots).toEqual(base.topPilots);
+    expect(result.companyRankings).toEqual(base.companyRankings);
+    expect(result.recentMatches).toEqual(base.recentMatches);
+  });
+
+  it('funciona mesmo sobre um estado vazio', () => {
+    const base = mergeLeaderboardState([], []);
+    const result = applyAccurateCounts(base, { total_matches: 1000, total_pilots: 300 });
+    expect(result.stats).toEqual({ total_matches: 1000, total_pilots: 300, top_score: 0 });
+  });
+});
+
+describe('subscribeWithRetry', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('entrega dados normalmente quando a assinatura nunca falha', () => {
+    const onNext = vi.fn();
+    subscribeWithRetry<number>({
+      subscribe: (next) => {
+        next(1);
+        return () => {};
+      },
+      onNext,
+      onError: vi.fn()
+    });
+    expect(onNext).toHaveBeenCalledWith(1);
+  });
+
+  it('depois de um erro permanente do onSnapshot, tenta de novo após o backoff e volta a entregar dados — sem intervenção do chamador', () => {
+    let attempts = 0;
+    const onNext = vi.fn();
+    const onError = vi.fn();
+
+    subscribeWithRetry<number>({
+      subscribe: (next, err) => {
+        attempts += 1;
+        if (attempts === 1) {
+          err(new Error('permission hiccup'));
+        } else {
+          next(42);
+        }
+        return () => {};
+      },
+      onNext,
+      onError,
+      baseDelayMs: 1000,
+      maxDelayMs: 4000
+    });
+
+    // Primeira tentativa falha; nada foi entregue ainda.
+    expect(attempts).toBe(1);
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onNext).not.toHaveBeenCalled();
+
+    // O wrapper reagenda sozinho, sem o chamador fazer nada.
+    vi.advanceTimersByTime(1000);
+
+    expect(attempts).toBe(2);
+    expect(onNext).toHaveBeenCalledWith(42);
+  });
+
+  it('dobra o backoff a cada falha consecutiva, até o teto de maxDelayMs', () => {
+    let attempts = 0;
+    subscribeWithRetry<number>({
+      subscribe: (_next, err) => {
+        attempts += 1;
+        err(new Error('still broken'));
+        return () => {};
+      },
+      onNext: vi.fn(),
+      onError: vi.fn(),
+      baseDelayMs: 1000,
+      maxDelayMs: 3000
+    });
+
+    expect(attempts).toBe(1);
+    vi.advanceTimersByTime(1000); // 2ª tentativa: delay base (1000ms)
+    expect(attempts).toBe(2);
+    vi.advanceTimersByTime(2000); // 3ª tentativa: delay dobrado (2000ms)
+    expect(attempts).toBe(3);
+    vi.advanceTimersByTime(3000); // 4ª tentativa: teto de 3000ms (dobraria para 4000)
+    expect(attempts).toBe(4);
+  });
+
+  it('para de tentar de novo depois que o cancelamento é chamado', () => {
+    let attempts = 0;
+    const unsubscribe = subscribeWithRetry<number>({
+      subscribe: (_next, err) => {
+        attempts += 1;
+        err(new Error('boom'));
+        return () => {};
+      },
+      onNext: vi.fn(),
+      onError: vi.fn(),
+      baseDelayMs: 1000
+    });
+
+    expect(attempts).toBe(1);
+    unsubscribe();
+    vi.advanceTimersByTime(60_000);
+    expect(attempts).toBe(1);
+  });
+
+  it('reseta o backoff depois de uma entrega bem-sucedida: uma falha subsequente na mesma inscrição tenta de novo no delay base', () => {
+    let subscribeCalls = 0;
+    let capturedErr: ((e: unknown) => void) | null = null;
+    const onNext = vi.fn();
+
+    subscribeWithRetry<number>({
+      subscribe: (next, err) => {
+        subscribeCalls += 1;
+        capturedErr = err;
+        next(subscribeCalls); // toda (re)inscrição, aqui, entrega com sucesso de cara
+        return () => {};
+      },
+      onNext,
+      onError: vi.fn(),
+      baseDelayMs: 1000,
+      maxDelayMs: 8000
+    });
+
+    expect(subscribeCalls).toBe(1);
+    expect(onNext).toHaveBeenCalledWith(1);
+
+    // A MESMA inscrição, já bem-sucedida, mais tarde chama seu callback de
+    // erro — comportamento real do onSnapshot: um erro pode vir depois de
+    // vários snapshots bem-sucedidos na mesma inscrição, não só na primeira
+    // tentativa.
+    capturedErr!(new Error('later permanent error'));
+
+    // Se o backoff não tivesse sido resetado por aquele sucesso anterior, o
+    // próximo retry só dispararia depois de mais que baseDelayMs. Como foi
+    // resetado, baseDelayMs (1000ms) já é suficiente.
+    vi.advanceTimersByTime(1000);
+    expect(subscribeCalls).toBe(2);
+  });
+
+  it('recupera a fonte sozinho para "cloud" depois de um erro permanente do onSnapshot, sem o chamador fazer nada', () => {
+    let status: SourceStatus = 'offline';
+    let callCount = 0;
+
+    subscribeWithRetry<string>({
+      subscribe: (next, err) => {
+        callCount += 1;
+        if (callCount === 1) {
+          err(new Error('permission-denied'));
+        } else {
+          next('snapshot-data');
+        }
+        return () => {};
+      },
+      onNext: () => {
+        status = pickSource(status, 'CLOUD_SNAPSHOT');
+      },
+      onError: () => {
+        status = pickSource(status, 'CLOUD_ERROR');
+      },
+      baseDelayMs: 1000
+    });
+
+    // O erro permanente derruba para local...
+    expect(status).toBe('local');
+
+    // ...e o wrapper reinscreve sozinho depois do backoff, sem o chamador
+    // precisar reagir ao erro manualmente.
+    vi.advanceTimersByTime(1000);
+
+    expect(status).toBe('cloud');
   });
 });
