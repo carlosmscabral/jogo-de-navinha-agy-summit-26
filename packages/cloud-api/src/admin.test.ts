@@ -10,7 +10,14 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { ingestBatch } from './ingest.js';
-import { patchMatch, listMatches, getCompanyCatalog, putCompanyCatalog, getHealthReport } from './admin.js';
+import {
+  patchMatch,
+  deleteMatch,
+  listMatches,
+  getCompanyCatalog,
+  putCompanyCatalog,
+  getHealthReport
+} from './admin.js';
 import { testDb, clearFirestore, matchFixture } from './test-helpers.js';
 import type { MatchDocument } from '@jogo/shared';
 
@@ -123,6 +130,41 @@ describe('PATCH /v1/admin/matches/:id', () => {
     const pilot = (await testDb.collection('pilots').doc('p1').get()).data()!;
     assert.equal(pilot.best_score, 400, 'o segundo colocado vira o novo melhor score');
     assert.equal(pilot.matches_played, 2);
+  });
+});
+
+describe('DELETE /v1/admin/matches/:id', () => {
+  beforeEach(async () => { await clearFirestore(); });
+
+  it('apaga o documento e recalcula company_rankings só com a partida que sobrou', async () => {
+    await ingestBatch(testDb, [
+      matchFixture({ match_id: 'm1', final_score: 1000, company_canonical: 'Google' }),
+      matchFixture({ match_id: 'm2', pilot_id: 'p2', final_score: 300, company_canonical: 'Google' })
+    ]);
+
+    await deleteMatch(testDb, 'm1');
+
+    const rank = (await testDb.collection('company_rankings').doc('Google').get()).data()!;
+    assert.equal(rank.total_score, 300);
+    assert.equal(rank.pilots_count, 1);
+    assert.equal(rank.top_individual_score, 300, 'o recorde precisa cair junto');
+    const doc = await testDb.collection('matches').doc('m1').get();
+    assert.equal(doc.exists, false, 'deleteMatch apaga de verdade, ao contrário de anular');
+  });
+
+  it('recalcula pilots/{id}.best_score e matches_played sem a partida apagada', async () => {
+    await ingestBatch(testDb, [
+      matchFixture({ match_id: 'm1', pilot_id: 'p1', final_score: 1000, company_canonical: 'Google' }),
+      matchFixture({ match_id: 'm2', pilot_id: 'p1', final_score: 400, company_canonical: 'Google' })
+    ]);
+    await deleteMatch(testDb, 'm1');
+    const pilot = (await testDb.collection('pilots').doc('p1').get()).data()!;
+    assert.equal(pilot.best_score, 400, 'o melhor score cai para o próximo colocado');
+    assert.equal(pilot.matches_played, 1, 'a partida apagada não conta mais');
+  });
+
+  it('recusa apagar uma partida que não existe', async () => {
+    await assert.rejects(() => deleteMatch(testDb, 'nao-existe'), /not found/i);
   });
 });
 

@@ -14,6 +14,7 @@ import { isAuthorized } from './auth.js';
 import { ingestBatch } from './ingest.js';
 import {
   patchMatch,
+  bulkPatchOrDelete,
   listMatches,
   getCompanyCatalog,
   putCompanyCatalog,
@@ -101,6 +102,24 @@ app.patch('/v1/admin/matches/:matchId', async (req: Request, res: Response) => {
     const message = err instanceof Error ? err.message : String(err);
     res.status(/not found/i.test(message) ? 404 : 400).json({ error: message });
   }
+});
+
+// Tarefa C9 — ações em lote (anular ou apagar de verdade) para limpeza de dados de teste
+// no painel, sem travar o lote inteiro por causa de um `match_id` problemático. Mesmo
+// espírito de partial-failure de `POST /v1/matches` (`ingest.ts`) — ver `bulkPatchOrDelete`
+// em `admin.ts` para o loop item a item.
+app.post('/v1/admin/matches/bulk', async (req: Request, res: Response) => {
+  const body = req.body as { match_ids?: unknown; action?: unknown };
+  if (!Array.isArray(body?.match_ids) || body.match_ids.length === 0 || body.match_ids.some((id) => typeof id !== 'string')) {
+    res.status(400).json({ error: 'body must be { match_ids: string[]; action: "void" | "delete" }' });
+    return;
+  }
+  if (body.action !== 'void' && body.action !== 'delete') {
+    res.status(400).json({ error: 'action must be "void" or "delete"' });
+    return;
+  }
+  const result = await bulkPatchOrDelete(db, body.match_ids as string[], body.action);
+  res.status(200).json(result);
 });
 
 app.get('/v1/admin/companies', async (_req: Request, res: Response) => {

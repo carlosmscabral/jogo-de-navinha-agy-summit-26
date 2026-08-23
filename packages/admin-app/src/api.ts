@@ -45,6 +45,23 @@ export function patchMatch(matchId: string, changes: MatchCorrection): Promise<{
   });
 }
 
+export interface BulkMatchActionResult {
+  succeeded: string[];
+  failed: Array<{ match_id: string; reason: string }>;
+}
+
+/**
+ * Tarefa C9 — ações em lote no painel. `action: 'void'` reusa `patchMatch({voided: true})`
+ * item a item (não-destrutivo); `action: 'delete'` apaga de verdade (`deleteMatch`,
+ * `packages/cloud-api/src/admin.ts`), pensado para limpar dados de teste do evento.
+ */
+export function bulkUpdateMatches(matchIds: string[], action: 'void' | 'delete'): Promise<BulkMatchActionResult> {
+  return requestJson('/v1/admin/matches/bulk', {
+    method: 'POST',
+    body: JSON.stringify({ match_ids: matchIds, action })
+  });
+}
+
 export function fetchCompanies(): Promise<CompanyCatalogDocument> {
   return requestJson('/v1/admin/companies');
 }

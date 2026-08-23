@@ -80,14 +80,16 @@ function recalcAggregate(
   company: string,
   rawDocs: StoredMatch[],
   patchedMatchId: string,
-  patchedMatch: StoredMatch
+  patchedMatch: StoredMatch | null
 ): CompanyAggregate {
   const docs: StoredMatch[] = [];
   for (const d of rawDocs) {
     if (d.match_id === patchedMatchId) continue; // versão pré-correção; tratada abaixo
     docs.push(d);
   }
-  if (patchedMatch.company_canonical === company) {
+  // `patchedMatch` é `null` quando a partida foi apagada (`deleteMatch`) — não sobra nada
+  // para reinserir, ao contrário de `patchMatch`, que sempre tem uma versão corrigida.
+  if (patchedMatch && patchedMatch.company_canonical === company) {
     docs.push(patchedMatch);
   }
 
@@ -117,14 +119,19 @@ interface PilotAggregate {
 function recalcPilotAggregate(
   rawDocs: StoredMatch[],
   patchedMatchId: string,
-  patchedMatch: StoredMatch
+  patchedMatch: StoredMatch | null
 ): PilotAggregate {
   const docs: StoredMatch[] = [];
   for (const d of rawDocs) {
     if (d.match_id === patchedMatchId) continue; // versão pré-correção; substituída abaixo
     docs.push(d);
   }
-  docs.push(patchedMatch); // pilot_id nunca muda via patchMatch — sempre pertence a este piloto
+  // `patchedMatch` é `null` quando a partida foi apagada (`deleteMatch`) — nada a
+  // reinserir. `pilot_id` nunca muda via `patchMatch`, então quando não é null ela
+  // sempre pertence a este piloto.
+  if (patchedMatch) {
+    docs.push(patchedMatch);
+  }
 
   const active = docs.filter((d) => !d.voided);
   return {
@@ -229,6 +236,108 @@ export async function patchMatch(db: Firestore, matchId: string, changes: MatchC
 
     tx.set(matchRef, { ...patchedMatch, schema_version: SCHEMA_VERSION });
   });
+}
+
+// ---------------------------------------------------------------------------
+// DELETE /v1/admin/matches/:id (via POST /v1/admin/matches/bulk, Tarefa C9)
+// ---------------------------------------------------------------------------
+
+/**
+ * Apaga de verdade uma partida (`tx.delete`), ao contrário de `patchMatch({voided: true})`,
+ * que mantém o documento e só o exclui dos agregados. Existe para limpar dados de teste
+ * (placares de antes de correções, empresas fictícias) sem deixá-los acumulados como
+ * "ANULADA" para sempre — brief da Tarefa C9. Segue a mesma forma de transação de
+ * `patchMatch` (ler tudo antes de escrever, recalcular do zero via os mesmos
+ * `recalcAggregate`/`recalcPilotAggregate`), mas mais simples: só UMA empresa é afetada
+ * (a da própria partida — nada muda de empresa aqui), e não há "versão corrigida" para
+ * reinserir, então os dois helpers recebem `null` no lugar de `patchedMatch`.
+ */
+export async function deleteMatch(db: Firestore, matchId: string): Promise<void> {
+  await db.runTransaction(async (tx) => {
+    const matchRef = db.collection('matches').doc(matchId);
+    const matchSnap = await tx.get(matchRef);
+    if (!matchSnap.exists) {
+      throw new Error(`deleteMatch: match ${matchId} not found`);
+    }
+    const current = matchSnap.data() as StoredMatch;
+    const company = current.company_canonical;
+
+    // Todas as leituras antes de qualquer escrita — mesma regra de transação do Firestore
+    // que `patchMatch` segue.
+    const companyQuery: Query = db.collection('matches').where(field<MatchDocument>('company_canonical'), '==', company);
+    const companySnap = await tx.get(companyQuery);
+    const companyDocs = companySnap.docs.map((d) => d.data() as StoredMatch);
+
+    const pilotId = current.pilot_id;
+    const pilotMatchesQuery: Query = db.collection('matches').where(field<MatchDocument>('pilot_id'), '==', pilotId);
+    const pilotMatchesSnap = await tx.get(pilotMatchesQuery);
+    const pilotMatches = pilotMatchesSnap.docs.map((d) => d.data() as StoredMatch);
+    const pilotRef = db.collection('pilots').doc(pilotId);
+    const pilotSnap = await tx.get(pilotRef);
+
+    const agg = recalcAggregate(company, companyDocs, matchId, null);
+    const companyRef = db.collection('company_rankings').doc(company);
+    tx.set(companyRef, {
+      schema_version: SCHEMA_VERSION,
+      company_canonical: company,
+      total_score: agg.total_score,
+      pilots_count: agg.pilots_count,
+      top_individual_score: agg.top_individual_score,
+      last_updated: FieldValue.serverTimestamp()
+    });
+
+    const pilotAgg = recalcPilotAggregate(pilotMatches, matchId, null);
+    if (pilotSnap.exists) {
+      tx.set(
+        pilotRef,
+        { best_score: pilotAgg.best_score, matches_played: pilotAgg.matches_played },
+        { merge: true }
+      );
+    }
+
+    tx.delete(matchRef);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// POST /v1/admin/matches/bulk (Tarefa C9)
+// ---------------------------------------------------------------------------
+
+export interface BulkMatchActionResult {
+  succeeded: string[];
+  failed: Array<{ match_id: string; reason: string }>;
+}
+
+/**
+ * Aplica `action` a cada `match_id` do lote, um de cada vez, isolando falhas por item —
+ * mesmo espírito de `ingestBatch` (`ingest.ts`): uma partida com problema (já apagada,
+ * `match_id` inexistente) não pode travar as outras 49 de uma limpeza em lote. Reusa
+ * `patchMatch`/`deleteMatch` (já testados pela Tarefa C7 e acima) em vez de duplicar a
+ * lógica de recálculo — se o volume real mostrar que recalcular a mesma empresa dezenas
+ * de vezes em sequência é lento, otimizar isso é uma tarefa separada.
+ */
+export async function bulkPatchOrDelete(
+  db: Firestore,
+  matchIds: string[],
+  action: 'void' | 'delete'
+): Promise<BulkMatchActionResult> {
+  const succeeded: string[] = [];
+  const failed: Array<{ match_id: string; reason: string }> = [];
+
+  for (const matchId of matchIds) {
+    try {
+      if (action === 'delete') {
+        await deleteMatch(db, matchId);
+      } else {
+        await patchMatch(db, matchId, { voided: true });
+      }
+      succeeded.push(matchId);
+    } catch (err) {
+      failed.push({ match_id: matchId, reason: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  return { succeeded, failed };
 }
 
 // ---------------------------------------------------------------------------
