@@ -57,23 +57,34 @@ para o porquê.
   à nuvem; `ingestBatch`'s `rejected[]` volta síncrono na resposta HTTP e não é persistido) — o
   endpoint devolve listas vazias com uma nota explicando isso, em vez de inventar dado.
 
-### Autenticação do painel de admin (Tarefa C7): IAP, não um token de aplicação
+### Autenticação do painel de admin (Tarefas C7 e C10): IAP e senha HTTP Basic, um serviço só
 
 `/admin` (o `admin-app` compilado) e `/v1/admin/*` (acima) devem ficar, em produção, atrás do
-**Identity-Aware Proxy** do Cloud Run — não atrás de uma senha em variável de ambiente. O painel
-escreve no banco de produção durante um evento público, com o navegador aberto no estande; uma
-senha digitada ali é a solução que vaza. IAP autentica com a conta Google de quem opera, sem
-nenhum segredo novo no sistema, e é configuração de deploy, não código.
+**Identity-Aware Proxy** do Cloud Run, configuração de deploy, não código — ver "Deploy" abaixo.
+IAP autentica com a conta Google de quem opera, sem nenhum segredo novo no sistema.
 
 O `BOOTH_INGEST_TOKEN` da Tarefa C3 **não serve para isto**: é um token de escopo único que vive
 na máquina do estande — exatamente a máquina que não pode ter privilégio administrativo. Por isso
 as rotas `/v1/admin/*` são montadas em `index.ts` ANTES do middleware que checa esse token, e
 nunca o exigem.
 
+Revisão final Fase C, achado crítico: `/v1/admin/*` não tinha nenhuma autenticação própria em
+código, e IAP sozinho não convive bem com o token do estande no mesmo serviço Cloud Run (o IAP
+intercepta toda a origem, inclusive `POST /v1/matches`, que a máquina do estande precisa alcançar
+sem uma identidade Google). Decisão da Tarefa C10: manter **um serviço só** (nenhum serviço novo
+para provisionar), IAP continua protegendo por identidade Google, e uma senha HTTP Basic simples
+entra em código por cima, cobrindo tanto `/v1/admin/*` quanto o bloco estático de `/admin` —
+`isAdminAuthorized` (`src/admin-auth.ts`), mesmo padrão de comparação em tempo constante de
+`isAuthorized`, sem sessão, sem cookie, sem dependência nova. O navegador mostra o prompt nativo
+de login sozinho; nenhuma mudança foi necessária no `admin-app` para isso (Basic Auth é resolvido
+pelo navegador, que reenvia a credencial automaticamente depois do primeiro prompt).
+
 Consequência para desenvolvimento local: sem IAP na frente (rodando contra o emulador, como nos
-testes deste pacote), `/v1/admin/*` fica **sem nenhuma autenticação própria**. Isso é esperado
-nesta camada — o código não tenta reimplementar o que o IAP resolve — mas significa que este
-serviço nunca deve ser exposto publicamente sem o IAP configurado na frente dele.
+testes deste pacote), `/v1/admin/*` e `/admin` agora exigem `ADMIN_PANEL_PASSWORD` mesmo assim —
+um servidor que sobe sem essa variável recusa toda requisição administrativa, mesmo padrão de
+`isAuthorized`/`BOOTH_INGEST_TOKEN`. Isso é intencional: a senha não depende do IAP estar presente,
+mas o serviço ainda nunca deve ser exposto publicamente sem o IAP configurado na frente dele — a
+senha é uma segunda camada, não um substituto.
 
 ## Variáveis de ambiente
 
@@ -83,7 +94,8 @@ arquivo commitado); `PORT` é injetada pelo Cloud Run. Desde a Tarefa C4: `GOOGL
 `NODE_ENV=test` — falhar já na subida é preferível a descobrir a ausência da variável só quando
 todo visitante do evento começa a ser recusado pela moderação), `VERTEX_LOCATION` (default
 `global` — é a única região que serve `gemini-3.7-flash` hoje) e `MODERATION_L2_TIMEOUT_MS`
-(default `1500`).
+(default `1500`). Desde a Tarefa C10: `ADMIN_PANEL_PASSWORD`, também do Secret Manager em
+produção — ver "Autenticação do painel de admin" acima.
 
 ## Testes locais
 
@@ -126,7 +138,8 @@ não código-fonte: o Docker só o copia, nunca o recompila.
 ## Deploy
 
 Sem nenhuma chave de credencial: o Cloud Run usa a identidade da própria service account,
-e o token de ingestão vive no Secret Manager.
+e o token de ingestão e a senha do painel vivem no Secret Manager — nunca em texto puro no
+comando de deploy.
 
 ```bash
 gcloud run deploy jogo-navinha-api \
@@ -134,6 +147,7 @@ gcloud run deploy jogo-navinha-api \
   --region southamerica-east1 \
   --service-account jogo-navinha-api@PROJETO.iam.gserviceaccount.com \
   --set-secrets BOOTH_INGEST_TOKEN=booth-ingest-token:latest \
+  --set-secrets ADMIN_PANEL_PASSWORD=admin-panel-password:latest \
   --set-env-vars GOOGLE_CLOUD_PROJECT=PROJETO \
   --no-allow-unauthenticated
 ```

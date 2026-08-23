@@ -11,6 +11,7 @@ import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { DATABASE_ID, type MatchDocument } from '@jogo/shared';
 import { isAuthorized } from './auth.js';
+import { isAdminAuthorized } from './admin-auth.js';
 import { ingestBatch } from './ingest.js';
 import {
   patchMatch,
@@ -36,6 +37,7 @@ const MAX_BATCH_SIZE = 50;
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080;
 const BOOTH_INGEST_TOKEN = process.env.BOOTH_INGEST_TOKEN;
+const ADMIN_PANEL_PASSWORD = process.env.ADMIN_PANEL_PASSWORD;
 
 // Tarefa C4 — moderação de camada 2 (bloqueante) e canonicalização (assíncrona). Ver
 // vertex.ts para a pesquisa de parâmetros do Passo 1 e moderation-l2.ts/canonicalize.ts
@@ -75,13 +77,31 @@ app.get('/v1/health', (_req: Request, res: Response) => {
   res.status(200).json({ status: 'ok' });
 });
 
+// Tarefa C10 — senha do painel, em cima do Identity-Aware Proxy (que continua sendo a
+// configuração de deploy documentada no README). Um serviço só: o IAP protege por identidade
+// Google, mas não convive com o token de escopo único do estande no mesmo serviço Cloud Run;
+// esta senha HTTP Basic (ver admin-auth.ts) fecha a lacuna em código, tanto para as rotas
+// abaixo quanto para o bloco estático de /admin mais adiante neste arquivo. 401 com
+// WWW-Authenticate para o navegador mostrar o prompt nativo de login.
+function requireAdminAuth(req: Request, res: Response, next: NextFunction): void {
+  if (!isAdminAuthorized(req.header('authorization'), ADMIN_PANEL_PASSWORD)) {
+    res.status(401).set('WWW-Authenticate', 'Basic realm="admin"').json({ error: 'unauthorized' });
+    return;
+  }
+  next();
+}
+
 // Tarefa C7 — /v1/admin/*. Este bloco fica ANTES do middleware do token de ingestão (logo
 // abaixo) de propósito: o token de escopo único da Tarefa C3 vive na máquina do estande e
 // não pode abrir a porta administrativa — são privilégios diferentes. Em produção, o
 // Cloud Run serve /v1/admin/* atrás do Identity-Aware Proxy (configuração de deploy, ver
 // README, não código aqui). Sem IAP na frente (localmente, contra o emulador), estas rotas
-// ficam abertas sem nenhum token — esperado nesta camada; ver admin.ts para o resto do
-// raciocínio de autenticação.
+// dependiam só do IAP e ficavam sem nenhuma autenticação própria — por isso a Tarefa C10
+// acrescenta `requireAdminAuth` logo abaixo, cobrindo todo `/v1/admin/*` de uma vez via
+// `app.use`, antes de qualquer rota individual. Ver admin.ts para o resto do raciocínio de
+// autorização (não autenticação) destas rotas.
+app.use('/v1/admin', requireAdminAuth);
+
 app.get('/v1/admin/matches', async (req: Request, res: Response) => {
   const q = typeof req.query.q === 'string' ? req.query.q : undefined;
   const company = typeof req.query.company === 'string' ? req.query.company : undefined;
@@ -236,6 +256,11 @@ const adminAppDist = process.env.ADMIN_APP_DIST || path.resolve(__dirname, '../.
 const adminAppIndexHtml = path.join(adminAppDist, 'index.html');
 
 if (fs.existsSync(adminAppIndexHtml)) {
+  // Tarefa C10 — mesma senha de `/v1/admin/*` acima, aplicada ANTES do `express.static`:
+  // sem isto, o painel serviria o bundle HTML/JS/CSS sem senha nenhuma e só a API ficaria
+  // protegida. `requireAdminAuth` cobre este `app.use` e o fallback de SPA logo abaixo, já
+  // que ambos são registrados depois dele para o mesmo prefixo `/admin`.
+  app.use('/admin', requireAdminAuth);
   app.use('/admin', express.static(adminAppDist));
   // Fallback de SPA: qualquer coisa sob /admin que o `express.static` acima não achou como
   // arquivo (isto é, qualquer coisa que não seja um asset com hash) devolve o mesmo

@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "tsc && cd ../.. && node --test --test-concurrency=1 packages/cloud-api/dist/firestore-rules.test.js packages/cloud-api/dist/auth.test.js packages/cloud-api/dist/ingest.test.js packages/cloud-api/dist/moderation-l2.test.js packages/cloud-api/dist/canonicalize.test.js packages/cloud-api/dist/admin.test.js",
+    "test": "tsc && cd ../.. && node --test --test-concurrency=1 packages/cloud-api/dist/firestore-rules.test.js packages/cloud-api/dist/auth.test.js packages/cloud-api/dist/admin-auth.test.js packages/cloud-api/dist/ingest.test.js packages/cloud-api/dist/moderation-l2.test.js packages/cloud-api/dist/canonicalize.test.js packages/cloud-api/dist/admin.test.js",
     "vendor:shared": "rm -rf vendor/jogo-shared && mkdir -p vendor/jogo-shared && cp -R ../shared/dist ../shared/package.json vendor/jogo-shared/",
     "vendor:admin-app": "rm -rf vendor/admin-app-dist && mkdir -p vendor/admin-app-dist && cp -R ../admin-app/dist/. vendor/admin-app-dist/",
     "vendor": "npm run vendor:shared && npm run vendor:admin-app"
