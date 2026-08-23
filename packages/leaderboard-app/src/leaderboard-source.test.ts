@@ -4,9 +4,15 @@ import {
   pickSource,
   applyAccurateCounts,
   subscribeWithRetry,
+  subscribeToLeaderboard,
   type SourceStatus
 } from './firestore-source.js';
 import type { MatchDocument, CompanyRankingDocument } from '@jogo/shared';
+
+/** A minimal stand-in for a Firestore `Timestamp` — only `.toDate()` is used by the code under test. */
+function fakeTimestamp(iso: string): { toDate: () => Date } {
+  return { toDate: () => new Date(iso) };
+}
 
 function makeMatch(overrides: Partial<MatchDocument> = {}): MatchDocument {
   return {
@@ -372,5 +378,112 @@ describe('subscribeWithRetry', () => {
     vi.advanceTimersByTime(1000);
 
     expect(status).toBe('cloud');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// subscribeToLeaderboard — Firestore `onSnapshot` mocked, exercises the actual
+// watchdog wiring (Finding 3) and the Timestamp-to-ISO read boundary (Finding 2),
+// neither of which `pickSource`/`subscribeWithRetry`'s isolated tests above cover.
+// ---------------------------------------------------------------------------
+
+type FakeSnapshotHandler = { next: (v: any) => void; error: (e: any) => void };
+
+const onSnapshotHandlers: FakeSnapshotHandler[] = [];
+
+vi.mock('firebase/app', () => ({
+  initializeApp: vi.fn(() => ({}))
+}));
+
+vi.mock('firebase/firestore', () => ({
+  getFirestore: vi.fn(() => ({})),
+  collection: vi.fn((_db: unknown, name: string) => ({ __collection: name })),
+  query: vi.fn((...args: unknown[]) => args[0]),
+  orderBy: vi.fn(),
+  limit: vi.fn(),
+  onSnapshot: vi.fn((_query: unknown, onNext: (v: any) => void, onError: (e: any) => void) => {
+    onSnapshotHandlers.push({ next: onNext, error: onError });
+    return () => {};
+  }),
+  getCountFromServer: vi.fn(async () => ({ data: () => ({ count: 0 }) }))
+}));
+
+function fakeMatchSnapshot(docsData: unknown[]) {
+  return {
+    docs: docsData.map((data) => ({ data: () => data })),
+    docChanges: () => []
+  };
+}
+
+describe('subscribeToLeaderboard (Firestore mockado)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubEnv('VITE_FIREBASE_PROJECT_ID', 'test-project');
+    onSnapshotHandlers.length = 0;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+  });
+
+  it('Finding 3: não cai para o bridge local durante silêncio normal depois do snapshot inicial', () => {
+    const onSourceChange = vi.fn();
+    const unsubscribe = subscribeToLeaderboard({ onData: vi.fn(), onSourceChange });
+
+    // As três queries (score, recência, rankings) entregam seu primeiro snapshot.
+    onSnapshotHandlers.forEach((h) => h.next(fakeMatchSnapshot([])));
+    expect(onSourceChange).toHaveBeenCalledWith('cloud');
+
+    onSourceChange.mockClear();
+    // Bem além do antigo watchdog de 5s — um intervalo real entre partidas no estande.
+    vi.advanceTimersByTime(60_000);
+
+    expect(onSourceChange).not.toHaveBeenCalledWith('local');
+
+    unsubscribe();
+  });
+
+  it('Finding 3: ainda cai para o bridge local se o PRIMEIRO snapshot nunca chegar', () => {
+    const onSourceChange = vi.fn();
+    const unsubscribe = subscribeToLeaderboard({ onData: vi.fn(), onSourceChange });
+
+    // Nenhum onSnapshotHandlers[].next() é chamado — simula a conexão inicial nunca completando.
+    vi.advanceTimersByTime(5_000);
+
+    expect(onSourceChange).toHaveBeenCalledWith('local');
+
+    unsubscribe();
+  });
+
+  it('Finding 2: converte um created_at Timestamp do Firestore em ISO antes de emitir o estado', () => {
+    const onData = vi.fn();
+    const unsubscribe = subscribeToLeaderboard({ onData, onSourceChange: vi.fn() });
+
+    const matchWithTimestamp: MatchDocument = {
+      schema_version: 1,
+      match_id: 'm1',
+      pilot_id: 'p1',
+      callsign: 'CALLSIGN',
+      company_raw: 'Acme',
+      company_canonical: 'ACME',
+      company_confidence: 1,
+      final_score: 100,
+      score_breakdown: {} as MatchDocument['score_breakdown'],
+      telemetry: {} as MatchDocument['telemetry'],
+      ship_spec_snapshot: {} as MatchDocument['ship_spec_snapshot'],
+      created_at: fakeTimestamp('2026-08-22T10:00:00.000Z') as unknown as string
+    };
+
+    // Todas as 3 queries usam a mesma fixture de snapshot aqui — só a de score/recência carrega matches.
+    onSnapshotHandlers.forEach((h) => h.next(fakeMatchSnapshot([matchWithTimestamp])));
+
+    const lastState = onData.mock.calls.at(-1)![0];
+    expect(lastState.topPilots).toHaveLength(1);
+    expect(typeof lastState.topPilots[0].created_at).toBe('string');
+    expect(Number.isNaN(Date.parse(lastState.topPilots[0].created_at))).toBe(false);
+    expect(lastState.topPilots[0].created_at).toBe('2026-08-22T10:00:00.000Z');
+
+    unsubscribe();
   });
 });

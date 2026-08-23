@@ -48,6 +48,30 @@ export interface LeaderboardState {
   };
 }
 
+/**
+ * `created_at` is written server-side as `FieldValue.serverTimestamp()` (`cloud-api`'s
+ * `ingestOne`), so every document that comes back from a real `onSnapshot` carries a
+ * Firestore `Timestamp` object here, not the ISO string that `MatchDocument.created_at`'s
+ * type promises. Every unit test in this file (and `leaderboard-source.test.ts`) uses a
+ * plain ISO string fixture instead, which is exactly why this mismatch went unnoticed:
+ * `Date.parse` on a `Timestamp` object is `NaN`, so recency sort broke silently, and
+ * `LiveTickerFeed`/`HallOfFame` rendered "Invalid Date". Detecting via `.toDate` (a method
+ * every Firestore Timestamp implementation exposes) rather than `instanceof Timestamp`
+ * keeps this working across the web SDK's own class and any test double shaped like one.
+ */
+function toIsoString(value: unknown): string {
+  if (value && typeof (value as { toDate?: unknown }).toDate === 'function') {
+    return (value as { toDate: () => Date }).toDate().toISOString();
+  }
+  return typeof value === 'string' ? value : new Date(0).toISOString();
+}
+
+/** Normalizes a raw Firestore doc into the `MatchDocument` shape the rest of this file expects. */
+function normalizeMatchDoc(raw: DocumentData): MatchDocument {
+  const data = raw as MatchDocument;
+  return { ...data, created_at: toIsoString(data.created_at) };
+}
+
 export type SourceStatus = 'cloud' | 'local' | 'offline';
 
 export interface LeaderboardHandlers {
@@ -257,6 +281,9 @@ export function subscribeWithRetry<T>(options: RetryableSubscriptionOptions<T>):
 // Side-effecting plumbing — Firestore onSnapshot + local bridge fallback.
 // ---------------------------------------------------------------------------
 
+// Finding 3 (revisão final Fase C): esta janela vale só para a PRIMEIRA conexão — ver
+// `armWatchdog()`. Deixou de ser um "silêncio no meio da sessão = falha", que confundia
+// ociosidade normal entre partidas (minutos, no estande real) com uma falha genuína.
 const CLOUD_WATCHDOG_MS = 5000;
 const COUNT_REFRESH_MS = 15000;
 
@@ -388,6 +415,12 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
   let countsIntervalHandle: ReturnType<typeof setInterval> | null = null;
   let localUnsubscribe: (() => void) | null = null;
   let recencyInitialized = false;
+  // Finding 3 (revisão final Fase C): true a partir do primeiro snapshot que QUALQUER uma
+  // das três assinaturas onSnapshot entrega com sucesso. A partir daí, silêncio deixa de
+  // ser, por si só, sinal de falha — só o callback de erro do próprio onSnapshot (tratado
+  // por onCloudError/subscribeWithRetry) derruba para o bridge local. Ver comentário em
+  // armWatchdog()/onCloudSuccess() logo abaixo para o porquê.
+  let hasEverConnected = false;
 
   function setStatus(event: SourceEvent) {
     const next = pickSource(status, event);
@@ -418,6 +451,20 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
    * Failures are logged and skipped — the next tick tries again, and the
    * three onSnapshot listeners remain the authority on source health, so a
    * transient count-fetch failure doesn't flip the NUVEM/LOCAL badge.
+   *
+   * Minor 10 (revisão final Fase C): unlike `mergeLeaderboardState` above, these two
+   * `getCountFromServer` counts do NOT exclude `voided` matches — a voided match still
+   * counts toward `total_matches` here. Deliberately not adding a `where('voided', '!=',
+   * true)` filter to fix this: `ingestOne` (Task C3) never writes a `voided` field on a
+   * normal match, and Firestore's `!=` operator excludes documents where the filtered field
+   * is absent entirely — that filter would return zero results for every never-voided match
+   * (the overwhelming majority) instead of the handful of voided ones it's meant to exclude.
+   * The current behavior is a slight overcount, bounded by however many matches an operator
+   * has voided so far; as the event goes on and more real matches accumulate, that fixed
+   * absolute overcount shrinks as a share of the displayed total — good enough for a public
+   * counter that only needs to be roughly right. Making `ingestOne` write `voided: false` on
+   * every match so this filter becomes safe is a real schema decision (touches indexes and
+   * other queries) and is out of scope for this cleanup pass.
    */
   async function refreshCounts(firestoreDb: Firestore) {
     try {
@@ -435,10 +482,24 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
     }
   }
 
+  /**
+   * Finding 3 (revisão final Fase C): armado só para a conexão INICIAL. Antes desta
+   * correção, `onCloudSuccess()` rearmava este watchdog a cada snapshot — mas
+   * `onSnapshot` só dispara quando há dado novo, e no estande partidas reais chegam com
+   * minutos de intervalo. Um watchdog de 5s rearmado a cada snapshot disparava sozinho em
+   * QUALQUER período ocioso normal, derrubando para o bridge local (tipicamente
+   * inalcançável de uma TV hospedada) e alternando de volta na próxima partida real — o
+   * telão passava a maior parte do tempo na fonte errada mesmo com o Firestore saudável.
+   * `hasEverConnected` faz este watchdog só existir enquanto NENHUM snapshot chegou ainda;
+   * uma vez confirmada a conexão inicial, esta função vira no-op para sempre — daí em
+   * diante, só o callback de erro do próprio onSnapshot (via subscribeWithRetry) decide
+   * quando cair para local.
+   */
   function armWatchdog() {
     clearWatchdog();
+    if (hasEverConnected) return;
     watchdogHandle = setTimeout(() => {
-      console.warn('[leaderboard-source] No Firestore snapshot within watchdog window, falling back to local bridge');
+      console.warn('[leaderboard-source] No initial Firestore snapshot within watchdog window, falling back to local bridge');
       setStatus('CLOUD_TIMEOUT');
       startLocalFallback();
     }, CLOUD_WATCHDOG_MS);
@@ -478,9 +539,9 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
 
     const onCloudSuccess = () => {
       clearWatchdog();
+      hasEverConnected = true; // ver comentário em armWatchdog(): silêncio depois disto não é mais falha.
       setStatus('CLOUD_SNAPSHOT');
       stopLocalFallback();
-      armWatchdog(); // Re-arm: a mid-session stall must also trip the fallback.
       emitMerged();
     };
 
@@ -499,7 +560,7 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
       subscribeWithRetry<QuerySnapshot<DocumentData>>({
         subscribe: (onNext, onError) => onSnapshot(topByScoreQuery, onNext, onError),
         onNext: (snap) => {
-          matchesByScore = snap.docs.map((d) => d.data() as MatchDocument);
+          matchesByScore = snap.docs.map((d) => normalizeMatchDoc(d.data()));
           onCloudSuccess();
         },
         onError: onCloudError('matches-by-score')
@@ -524,13 +585,13 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
           return onSnapshot(topByRecencyQuery, onNext, onError);
         },
         onNext: (snap) => {
-          matchesByRecency = snap.docs.map((d) => d.data() as MatchDocument);
+          matchesByRecency = snap.docs.map((d) => normalizeMatchDoc(d.data()));
           // Skip the initial snapshot (pre-existing docs) so the celebration
           // modal only fires for matches that arrive while the telão is up.
           if (recencyInitialized && handlers.onNewMatch) {
             for (const change of snap.docChanges()) {
               if (change.type === 'added') {
-                const m = change.doc.data() as MatchDocument;
+                const m = normalizeMatchDoc(change.doc.data());
                 handlers.onNewMatch({
                   match_id: m.match_id,
                   callsign: m.callsign,
