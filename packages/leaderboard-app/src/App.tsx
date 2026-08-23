@@ -1,22 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Trophy, Radio, Zap, Users, Flame, Shield, Globe, Terminal } from 'lucide-react';
 import { HallOfFame, TopPilotEntry } from './components/HallOfFame.js';
 import { CompanyDominance, CompanyRankEntry } from './components/CompanyDominance.js';
 import { LiveTickerFeed, RecentMatchEntry } from './components/LiveTickerFeed.js';
 import { RecordCelebrationModal } from './components/RecordCelebrationModal.js';
 import { AttractQrCode } from './components/AttractQrCode.js';
-import { ENDPOINTS } from './config.js';
+import { subscribeToLeaderboard, LeaderboardState, SourceStatus } from './firestore-source.js';
 
-interface LeaderboardState {
-  topPilots: TopPilotEntry[];
-  companyRankings: CompanyRankEntry[];
-  recentMatches: RecentMatchEntry[];
-  stats: {
-    total_pilots: number;
-    total_matches: number;
-    top_score: number;
-  };
-}
+const SOURCE_BADGE: Record<SourceStatus, { label: string; className: string }> = {
+  cloud: { label: 'NUVEM', className: 'bg-[#10b981]/20 text-[#10b981] border-[#10b981]/40' },
+  local: { label: 'LOCAL', className: 'bg-[#38bdf8]/20 text-[#38bdf8] border-[#38bdf8]/40' },
+  offline: { label: 'SEM SINAL', className: 'bg-[#ef4444]/20 text-[#ef4444] border-[#ef4444]/40' }
+};
 
 export function App() {
   const [data, setData] = useState<LeaderboardState>({
@@ -25,7 +20,12 @@ export function App() {
     recentMatches: [],
     stats: { total_pilots: 0, total_matches: 0, top_score: 0 }
   });
+  const dataRef = useRef(data);
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
 
+  const [source, setSource] = useState<SourceStatus>('offline');
   const [celebrationMatch, setCelebrationMatch] = useState<{ match: any; rank: number } | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString());
 
@@ -37,71 +37,20 @@ export function App() {
     return () => clearInterval(timer);
   }, []);
 
-  // Fetch initial leaderboard & polling fallback
-  const fetchLeaderboard = async () => {
-    try {
-      const res = await fetch(`${ENDPOINTS.bridgeBase}/api/leaderboard`);
-      if (res.ok) {
-        const json = await res.json();
-        setData(json);
-      }
-    } catch {
-      // Offline fallback
-    }
-  };
-
+  // Leaderboard data: Firestore onSnapshot as primary source, local bridge
+  // (fetch + WebSocket) as fallback. See firestore-source.ts.
   useEffect(() => {
-    fetchLeaderboard();
-    const interval = setInterval(fetchLeaderboard, 3000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // WebSocket Live Updates
-  useEffect(() => {
-    let ws: WebSocket | null = null;
-    let reconnectTimeout: any = null;
-
-    const connect = () => {
-      try {
-        ws = new WebSocket(ENDPOINTS.bridgeWsUrl);
-
-        ws.onopen = () => {
-          console.log('[Leaderboard WS] Connected to Daemon');
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const msg = JSON.parse(event.data);
-            if (msg.type === 'EVENT_LEADERBOARD_UPDATE') {
-              setData(msg.data);
-
-              // Check if new match is a record in Top 3
-              if (msg.newMatch) {
-                const rank = msg.data.topPilots.findIndex((p: any) => p.match_id === msg.newMatch.match_id) + 1;
-                if (rank > 0 && rank <= 3) {
-                  setCelebrationMatch({ match: msg.newMatch, rank });
-                }
-              }
-            }
-          } catch {
-            // Ignored
-          }
-        };
-
-        ws.onclose = () => {
-          reconnectTimeout = setTimeout(connect, 3000);
-        };
-      } catch {
-        reconnectTimeout = setTimeout(connect, 3000);
+    const unsubscribe = subscribeToLeaderboard({
+      onData: (state) => setData(state),
+      onSourceChange: (status) => setSource(status),
+      onNewMatch: (match) => {
+        const rank = dataRef.current.topPilots.findIndex((p) => p.match_id === match.match_id) + 1;
+        if (rank > 0 && rank <= 3) {
+          setCelebrationMatch({ match, rank });
+        }
       }
-    };
-
-    connect();
-
-    return () => {
-      if (ws) ws.close();
-      if (reconnectTimeout) clearTimeout(reconnectTimeout);
-    };
+    });
+    return unsubscribe;
   }, []);
 
   return (
@@ -127,6 +76,12 @@ export function App() {
               </h1>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#ff9e0b]/20 text-[#ff9e0b] border border-[#ff9e0b]/40 uppercase tracking-wider font-mono">
                 LIVE ARENA
+              </span>
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider font-mono flex items-center gap-1 ${SOURCE_BADGE[source].className}`}
+                title="Fonte dos dados do placar"
+              >
+                <Radio className="w-2.5 h-2.5" /> {SOURCE_BADGE[source].label}
               </span>
             </div>
             <p className="text-xs text-slate-400 font-mono">

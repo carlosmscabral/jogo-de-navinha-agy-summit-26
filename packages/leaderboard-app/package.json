@@ -6,10 +6,12 @@
   "scripts": {
     "dev": "vite --port 5174",
     "build": "tsc && vite build",
-    "preview": "vite preview --port 5174"
+    "preview": "vite preview --port 5174",
+    "test": "vitest run"
   },
   "dependencies": {
     "@jogo/shared": "*",
+    "firebase": "^12.0.0",
     "lucide-react": "^0.475.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
@@ -22,6 +24,7 @@
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.3",
-    "vite": "^6.2.0"
+    "vite": "^6.2.0",
+    "vitest": "^3.2.7"
   }
 }
