@@ -49,6 +49,15 @@ para o porquê.
   catálogo pelo Firestore; `config/companies.json` do estande (Tarefa C0b) continua sendo a fonte
   local e offline, e a reconciliação entre os dois é manual (botão "exportar para o estande" no
   painel, puramente client-side).
+- `POST /v1/admin/matches/bulk` (Tarefa C9) — corpo `{ match_ids: string[]; action: 'void' | 'delete'
+  }`. Aplica `action` a cada `match_id` do lote, um de cada vez, isolando falhas por item (mesmo
+  espírito de `ingestBatch`). Resposta `{ succeeded: string[]; failed: Array<{ match_id: string;
+  reason: string }> }`. `action: 'void'` reusa `patchMatch({ voided: true })` — não-destrutivo, o
+  documento continua existindo. **`action: 'delete'` é irreversível**: apaga de verdade o documento
+  em `matches/{id}` (`tx.delete`) e recalcula do zero os agregados de `company_rankings` e `pilots`
+  afetados, ao contrário de anular. Existe para limpar dados de teste (placares inconsistentes,
+  empresas fictícias) sem deixá-los acumulados como "ANULADA" para sempre — não use em partidas de
+  um evento real.
 - `GET /v1/admin/health` — fila de sync por estação, rejeições recentes e taxa de preset de
   emergência. Limitação aceita e documentada no relatório da Tarefa C7: só a taxa de preset de
   emergência é calculada de verdade (a partir de `telemetry.fallback_used` em `matches`); a fila

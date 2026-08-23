@@ -183,10 +183,11 @@ export async function correctMatchCompany(
 
     const match = matchSnap.data() as MatchDocument;
     // Revisão final Fase C — Importante 6: uma partida anulada (`patchMatch`, Tarefa C7) nunca
-    // pode voltar a somar em nenhum agregado. Hoje `needs_company_review` não é setado por
-    // nenhum caminho real (Spec 11 §4.11), então este `if` é preventivo — mas o dia em que
-    // §4.11 for corrigido e as duas coisas puderem coexistir na mesma partida, sem esta
-    // checagem uma varredura de canonicalização desfaria silenciosamente a anulação de um
+    // pode voltar a somar em nenhum agregado. `needs_company_review` é hoje um sinal real e ao
+    // vivo (Tarefa C8 fechou a Spec 11 §4.11 — o daemon marca isso em toda resolução de empresa
+    // de baixa confiança antes de gravar), então esta checagem já é load-bearing em produção,
+    // não hipotética: sem ela, uma partida anulada mas com `needs_company_review` verdadeiro
+    // teria essa varredura de canonicalização desfazendo silenciosamente a anulação de um
     // operador, somando de volta o `final_score` de uma partida que ele explicitamente excluiu.
     if (match.voided) return;
     if (!match.needs_company_review) return; // já resolvida por outra varredura — idempotente

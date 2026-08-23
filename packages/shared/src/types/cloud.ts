@@ -40,7 +40,12 @@ export interface MatchDocument {
    * Marcado por uma correção do painel de admin (Tarefa C7). Anular exclui a partida de
    * todos os agregados recalculados (`company_rankings`), mas o documento nunca é apagado —
    * `DELETE` destruiria a evidência de que a partida existiu, o que importa se alguém
-   * contestar uma pontuação durante o evento.
+   * contestar uma pontuação durante o evento. Isso continua valendo para o fluxo normal de
+   * correção de um evento ao vivo: anular é o único mecanismo ali. Exceção deliberada,
+   * separada (Tarefa C9): `deleteMatch`/`POST /v1/admin/matches/bulk` com `action: 'delete'`
+   * apaga o documento de verdade e é explicitamente irreversível — existe só para limpar
+   * dados de teste (placares de antes de correções, empresas fictícias) antes do evento,
+   * não para corrigir uma partida real.
    */
   voided?: boolean;
 }
