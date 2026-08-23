@@ -417,6 +417,13 @@ export class SQLiteBufferService {
     stmt.run(matchId);
   }
 
+  // Contagem total, sem o LIMIT 50 de getPendingMatches(): usado por CloudSyncService.status()
+  // (Tarefa C5) para reportar o tamanho real da fila, não só o tamanho do próximo lote.
+  countPending(): number {
+    const stmt = this.db.prepare('SELECT COUNT(*) as c FROM local_matches WHERE synced_to_cloud = 0');
+    return (stmt.get() as { c: number }).c;
+  }
+
   close(): void {
     this.db.close();
   }

@@ -9,6 +9,7 @@ import { SQLiteBufferService } from './services/sqlite-buffer.js';
 import { WorkspaceGeneratorService } from './services/workspace-generator.js';
 import { FileWatcherService } from './services/file-watcher.js';
 import { moderateRemotely } from './services/remote-moderation.js';
+import { CloudSyncService } from './services/cloud-sync.js';
 import { validateCallsign, selectFallbackPreset, EnergySliders } from '@jogo/shared';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -147,6 +148,16 @@ const CLOUD_API_BASE = process.env.BOOTH_CLOUD_API_BASE || null;
 // packages/cloud-api/src/auth.ts) — o daemon é o único cliente autorizado a chamá-la.
 const CLOUD_API_TOKEN = process.env.BOOTH_INGEST_TOKEN || null;
 const MODERATION_L2_TIMEOUT_MS = Number(process.env.BOOTH_MODERATION_L2_TIMEOUT_MS) || 1500;
+
+// Tarefa C5 — worker de sincronização do buffer local com POST /v1/matches (Tarefa C3). `token`
+// relê `process.env` a cada tentativa em vez de capturar `CLOUD_API_TOKEN` uma vez: se o staff
+// trocar BOOTH_INGEST_TOKEN no Secret Manager depois de um `auth_failed`, o worker precisa
+// enxergar o valor novo sem reiniciar o daemon (ver comentário em cloud-sync.ts).
+const cloudSync = new CloudSyncService(sqliteBuffer, {
+  base: CLOUD_API_BASE,
+  token: () => process.env.BOOTH_INGEST_TOKEN || null
+});
+cloudSync.start(30_000);
 
 let currentSessionMetadata: any = null;
 
@@ -390,9 +401,18 @@ app.post('/api/matches', (req, res) => {
     });
 
     res.json({ status: 'SAVED_LOCALLY', match_id: matchRecord.match_id, leaderboard: updatedLeaderboard });
+
+    // Sem `await`, de propósito (Tarefa C5): o jogador já viu a resposta acima. A nuvem pode
+    // estar inalcançável (Wi-Fi do estande) sem que isso acrescente um milissegundo à resposta
+    // local — a fila drena no próximo tick do worker se esta tentativa falhar.
+    void cloudSync.syncNow();
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
+});
+
+app.get('/api/sync/status', (_req, res) => {
+  res.json(cloudSync.status());
 });
 
 app.post('/api/session/reset', (req, res) => {
