@@ -275,24 +275,38 @@ export async function deleteMatch(db: Firestore, matchId: string): Promise<void>
     const pilotRef = db.collection('pilots').doc(pilotId);
     const pilotSnap = await tx.get(pilotRef);
 
+    // Diferente de patchMatch (comentário acima, Minor 10): deleteMatch é o caminho de
+    // limpeza de dados de teste, então um agregado que recalcula para zero partidas ativas
+    // aqui não é "temporariamente zerado" -- é "não sobrou nada desta empresa/piloto", e um
+    // documento fantasma zero-valorado poderia aparecer no ranking do painel ou (no início
+    // de um evento, antes de empresas reais pontuarem) até no telão público. `tx.delete` em
+    // vez de `tx.set` quando o agregado recalculado está vazio.
     const agg = recalcAggregate(company, companyDocs, matchId, null);
     const companyRef = db.collection('company_rankings').doc(company);
-    tx.set(companyRef, {
-      schema_version: SCHEMA_VERSION,
-      company_canonical: company,
-      total_score: agg.total_score,
-      pilots_count: agg.pilots_count,
-      top_individual_score: agg.top_individual_score,
-      last_updated: FieldValue.serverTimestamp()
-    });
+    if (agg.pilots_count === 0) {
+      tx.delete(companyRef);
+    } else {
+      tx.set(companyRef, {
+        schema_version: SCHEMA_VERSION,
+        company_canonical: company,
+        total_score: agg.total_score,
+        pilots_count: agg.pilots_count,
+        top_individual_score: agg.top_individual_score,
+        last_updated: FieldValue.serverTimestamp()
+      });
+    }
 
     const pilotAgg = recalcPilotAggregate(pilotMatches, matchId, null);
     if (pilotSnap.exists) {
-      tx.set(
-        pilotRef,
-        { best_score: pilotAgg.best_score, matches_played: pilotAgg.matches_played },
-        { merge: true }
-      );
+      if (pilotAgg.matches_played === 0) {
+        tx.delete(pilotRef);
+      } else {
+        tx.set(
+          pilotRef,
+          { best_score: pilotAgg.best_score, matches_played: pilotAgg.matches_played },
+          { merge: true }
+        );
+      }
     }
 
     tx.delete(matchRef);

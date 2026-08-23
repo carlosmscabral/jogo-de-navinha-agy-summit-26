@@ -166,6 +166,44 @@ describe('DELETE /v1/admin/matches/:id', () => {
   it('recusa apagar uma partida que não existe', async () => {
     await assert.rejects(() => deleteMatch(testDb, 'nao-existe'), /not found/i);
   });
+
+  // Revisão final Fase C follow-up — Importante 2: apagar a última partida de uma empresa
+  // (ou a única de um piloto) não pode deixar um documento de agregado zero-valorado para
+  // trás -- isso reapareceria no ranking do painel ou, cedo num evento, até no telão.
+  it('apagar a única partida de uma empresa remove o documento de company_rankings, não só zera', async () => {
+    await ingestBatch(testDb, [
+      matchFixture({ match_id: 'm1', pilot_id: 'p1', final_score: 1000, company_canonical: 'Google' })
+    ]);
+
+    await deleteMatch(testDb, 'm1');
+
+    const rank = await testDb.collection('company_rankings').doc('Google').get();
+    assert.equal(rank.exists, false, 'não deve sobrar um documento fantasma zero-valorado');
+  });
+
+  it('apagar a única partida de um piloto remove o documento de pilots, não só zera', async () => {
+    await ingestBatch(testDb, [
+      matchFixture({ match_id: 'm1', pilot_id: 'p1', final_score: 1000, company_canonical: 'Google' })
+    ]);
+
+    await deleteMatch(testDb, 'm1');
+
+    const pilot = await testDb.collection('pilots').doc('p1').get();
+    assert.equal(pilot.exists, false, 'não deve sobrar um documento fantasma zero-valorado');
+  });
+
+  it('apagar uma de duas partidas da mesma empresa mantém um agregado real e não vazio para a sobrevivente', async () => {
+    await ingestBatch(testDb, [
+      matchFixture({ match_id: 'm1', pilot_id: 'p1', final_score: 1000, company_canonical: 'Google' }),
+      matchFixture({ match_id: 'm2', pilot_id: 'p2', final_score: 300, company_canonical: 'Google' })
+    ]);
+
+    await deleteMatch(testDb, 'm1');
+
+    const rank = await testDb.collection('company_rankings').doc('Google').get();
+    assert.equal(rank.exists, true, 'a empresa ainda tem uma partida real -- o documento não pode sumir');
+    assert.equal(rank.data()!.total_score, 300);
+  });
 });
 
 describe('listMatches', () => {
