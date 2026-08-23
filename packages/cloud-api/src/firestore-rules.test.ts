@@ -24,6 +24,11 @@ describe('firestore.rules', () => {
     await assertSucceeds(db.collection('pilots').doc('p1').get());
   });
 
+  it('permite leitura pública do catálogo de empresas (Tarefa C7)', async () => {
+    const db = env.unauthenticatedContext().firestore();
+    await assertSucceeds(db.collection('companies').doc('catalog').get());
+  });
+
   it('nega escrita de cliente em matches', async () => {
     const db = env.unauthenticatedContext().firestore();
     await assertFails(db.collection('matches').doc('m1').set({ final_score: 999999 }));
@@ -33,6 +38,11 @@ describe('firestore.rules', () => {
     const db = env.unauthenticatedContext().firestore();
     await assertFails(db.collection('company_rankings').doc('Google').set({ total_score: 1 }));
     await assertFails(db.collection('pilots').doc('p1').set({ best_score: 1 }));
+  });
+
+  it('nega escrita de cliente no catálogo de empresas (Tarefa C7)', async () => {
+    const db = env.unauthenticatedContext().firestore();
+    await assertFails(db.collection('companies').doc('catalog').set({ companies: ['Hackeado'] }));
   });
 
   it('nega escrita mesmo para um cliente autenticado', async () => {

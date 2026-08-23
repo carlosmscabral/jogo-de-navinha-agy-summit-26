@@ -10,8 +10,12 @@
 import { FieldValue, type Firestore } from 'firebase-admin/firestore';
 import { SCHEMA_VERSION, type MatchDocument } from '@jogo/shared';
 
-/** Ordem de 5x o teto teórico da Spec 09; barra lixo, não perícia. */
-const MAX_PLAUSIBLE_SCORE = 500_000;
+/**
+ * Ordem de 5x o teto teórico da Spec 09; barra lixo, não perícia. Exportado porque
+ * `admin.ts` (Tarefa C7) reusa a mesma checagem de faixa plausível para `patchMatch` —
+ * um único teto, não dois números que podem divergir com o tempo.
+ */
+export const MAX_PLAUSIBLE_SCORE = 500_000;
 
 export interface IngestResult {
   accepted: string[];

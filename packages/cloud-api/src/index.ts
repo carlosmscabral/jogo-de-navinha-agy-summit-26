@@ -9,6 +9,14 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { DATABASE_ID, type MatchDocument } from '@jogo/shared';
 import { isAuthorized } from './auth.js';
 import { ingestBatch } from './ingest.js';
+import {
+  patchMatch,
+  listMatches,
+  getCompanyCatalog,
+  putCompanyCatalog,
+  getHealthReport,
+  type MatchCorrection
+} from './admin.js';
 import { moderateCallsign, generateWithVertex as moderateWithVertex } from './moderation-l2.js';
 import {
   resolveCompanies,
@@ -45,8 +53,60 @@ app.get('/v1/health', (_req: Request, res: Response) => {
   res.status(200).json({ status: 'ok' });
 });
 
+// Tarefa C7 — /v1/admin/*. Este bloco fica ANTES do middleware do token de ingestão (logo
+// abaixo) de propósito: o token de escopo único da Tarefa C3 vive na máquina do estande e
+// não pode abrir a porta administrativa — são privilégios diferentes. Em produção, o
+// Cloud Run serve /v1/admin/* atrás do Identity-Aware Proxy (configuração de deploy, ver
+// README, não código aqui). Sem IAP na frente (localmente, contra o emulador), estas rotas
+// ficam abertas sem nenhum token — esperado nesta camada; ver admin.ts para o resto do
+// raciocínio de autenticação.
+app.get('/v1/admin/matches', async (req: Request, res: Response) => {
+  const q = typeof req.query.q === 'string' ? req.query.q : undefined;
+  const company = typeof req.query.company === 'string' ? req.query.company : undefined;
+  const limitParam = typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined;
+  const matches = await listMatches(db, {
+    q,
+    company,
+    limit: limitParam !== undefined && Number.isFinite(limitParam) ? limitParam : undefined
+  });
+  res.status(200).json({ matches });
+});
+
+app.patch('/v1/admin/matches/:matchId', async (req: Request, res: Response) => {
+  try {
+    await patchMatch(db, String(req.params.matchId), req.body as MatchCorrection);
+    res.status(200).json({ status: 'ok' });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(/not found/i.test(message) ? 404 : 400).json({ error: message });
+  }
+});
+
+app.get('/v1/admin/companies', async (_req: Request, res: Response) => {
+  res.status(200).json(await getCompanyCatalog(db));
+});
+
+app.put('/v1/admin/companies', async (req: Request, res: Response) => {
+  const body = req.body as { companies?: unknown };
+  if (!Array.isArray(body?.companies) || body.companies.some((c) => typeof c !== 'string')) {
+    res.status(400).json({ error: 'body must be { companies: string[] }' });
+    return;
+  }
+  try {
+    await putCompanyCatalog(db, body.companies as string[]);
+    res.status(200).json({ status: 'ok' });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+app.get('/v1/admin/health', async (_req: Request, res: Response) => {
+  res.status(200).json(await getHealthReport(db));
+});
+
 // Tudo em /v1/* a partir daqui exige o token de ingestão. Um servidor que sobe sem
-// BOOTH_INGEST_TOKEN configurado recusa tudo — ver auth.ts.
+// BOOTH_INGEST_TOKEN configurado recusa tudo — ver auth.ts. /v1/admin/* já foi tratado
+// pelas rotas acima e nunca chega até aqui.
 app.use('/v1', (req: Request, res: Response, next: NextFunction) => {
   if (!isAuthorized(req.header('authorization'), BOOTH_INGEST_TOKEN)) {
     res.status(401).json({ error: 'unauthorized' });

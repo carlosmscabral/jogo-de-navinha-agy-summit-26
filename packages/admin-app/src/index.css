@@ -1,0 +1,48 @@
+/* Ferramenta de operador: sem tema neon, sem animação — legibilidade sob pressa vale mais
+   que estética (Tarefa C7, brief). CSS simples de propósito, sem framework. */
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+  background: #f4f4f5;
+  color: #18181b;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+th, td {
+  border: 1px solid #d4d4d8;
+  padding: 6px 10px;
+  text-align: left;
+  font-size: 14px;
+}
+
+th {
+  background: #e4e4e7;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+input, select {
+  font: inherit;
+}
+
+.tag-voided {
+  color: #991b1b;
+  font-weight: bold;
+}
+
+.note {
+  color: #52525b;
+  font-size: 12px;
+}
+
+.error {
+  color: #b91c1c;
+}

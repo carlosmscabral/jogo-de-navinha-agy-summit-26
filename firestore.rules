@@ -21,6 +21,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Tarefa C7: catálogo de empresas, agora também no Firestore (companies/catalog).
+    // Leitura pública porque o estande pode querer buscá-lo; escrita negada como as
+    // outras três — o painel de admin escreve pelo Admin SDK, que ignora estas regras.
+    match /companies/{companyDoc} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // Nada mais existe. Uma coleção nova precisa ser declarada aqui de propósito.
     match /{document=**} {
       allow read, write: if false;

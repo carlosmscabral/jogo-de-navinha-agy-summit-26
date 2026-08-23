@@ -23,6 +23,53 @@ estande nunca fala com o Firestore diretamente — só com este serviço, via HT
 - `GET /v1/aliases?since=<ISO 8601>` — aliases de empresa resolvidos pela canonicalização desde
   `since`, para o daemon cachear localmente em `company_aliases` (Spec 05 §3.1).
 
+### Endpoints administrativos (Tarefa C7) — `/v1/admin/*`
+
+Servem o painel `packages/admin-app`. Ao contrário de todo o resto de `/v1/*`, estas rotas NÃO
+passam pelo middleware do token de ingestão (`isAuthorized`) — ver "Autenticação do painel" abaixo
+para o porquê.
+
+- `GET /v1/admin/matches?q=&company=&limit=` — busca por callsign ou empresa (substring,
+  case-insensitive) e/ou empresa exata; varre uma janela das partidas mais recentes em memória
+  (Firestore não faz OR de texto entre dois campos numa consulta indexada). Resposta:
+  `{ matches: MatchDocument[] }`.
+- `PATCH /v1/admin/matches/{match_id}` — corpo `{ callsign?, company_canonical?, final_score?,
+  voided? }`. Corrige a partida numa transação e recalcula do zero (`total_score`, `pilots_count`,
+  `top_individual_score`) os agregados de toda empresa afetada — a antiga e a nova, quando a
+  empresa muda. `voided: true` exclui a partida dos agregados sem apagar o documento. 404 se o
+  `match_id` não existir; 400 se a correção violar a faixa plausível de score
+  (`MAX_PLAUSIBLE_SCORE`, mesma de `ingest.ts`).
+- `GET|PUT /v1/admin/companies` — o documento `companies/catalog`
+  (`{ schema_version, companies: string[], updated_at }`). `PUT` é a única escrita deste
+  catálogo pelo Firestore; `config/companies.json` do estande (Tarefa C0b) continua sendo a fonte
+  local e offline, e a reconciliação entre os dois é manual (botão "exportar para o estande" no
+  painel, puramente client-side).
+- `GET /v1/admin/health` — fila de sync por estação, rejeições recentes e taxa de preset de
+  emergência. Limitação aceita e documentada no relatório da Tarefa C7: só a taxa de preset de
+  emergência é calculada de verdade (a partir de `telemetry.fallback_used` em `matches`); a fila
+  de sync por estação e as rejeições recentes não têm hoje nenhum registro do lado do Firestore
+  (`CloudSyncService.status()` da Tarefa C5 é estado em processo de cada daemon, nunca reportado
+  à nuvem; `ingestBatch`'s `rejected[]` volta síncrono na resposta HTTP e não é persistido) — o
+  endpoint devolve listas vazias com uma nota explicando isso, em vez de inventar dado.
+
+### Autenticação do painel de admin (Tarefa C7): IAP, não um token de aplicação
+
+`/admin` (o `admin-app` compilado) e `/v1/admin/*` (acima) devem ficar, em produção, atrás do
+**Identity-Aware Proxy** do Cloud Run — não atrás de uma senha em variável de ambiente. O painel
+escreve no banco de produção durante um evento público, com o navegador aberto no estande; uma
+senha digitada ali é a solução que vaza. IAP autentica com a conta Google de quem opera, sem
+nenhum segredo novo no sistema, e é configuração de deploy, não código.
+
+O `BOOTH_INGEST_TOKEN` da Tarefa C3 **não serve para isto**: é um token de escopo único que vive
+na máquina do estande — exatamente a máquina que não pode ter privilégio administrativo. Por isso
+as rotas `/v1/admin/*` são montadas em `index.ts` ANTES do middleware que checa esse token, e
+nunca o exigem.
+
+Consequência para desenvolvimento local: sem IAP na frente (rodando contra o emulador, como nos
+testes deste pacote), `/v1/admin/*` fica **sem nenhuma autenticação própria**. Isso é esperado
+nesta camada — o código não tenta reimplementar o que o IAP resolve — mas significa que este
+serviço nunca deve ser exposto publicamente sem o IAP configurado na frente dele.
+
 ## Variáveis de ambiente
 
 Ver `.env.example`. Em produção, `BOOTH_INGEST_TOKEN` vem do Secret Manager (nunca de um
@@ -78,3 +125,14 @@ gcloud run deploy jogo-navinha-api \
 
 A service account precisa de `roles/datastore.user` e, a partir da Tarefa C4,
 `roles/aiplatform.user`. **Nenhum arquivo de chave é gerado.**
+
+### Topologia pretendida para `/admin` (Tarefa C7)
+
+O brief pede que `packages/admin-app` compilado seja servido pelo MESMO serviço Cloud Run desta
+API, sob `/admin`, atrás do IAP — um serviço a menos para provisionar, e o IAP protege a rota
+inteira de uma vez. Este `Dockerfile`/`index.ts` **ainda não fazem isso**: o arquivo lista só
+`packages/admin-app`, `packages/cloud-api/src/*`, `firestore.rules` e
+`packages/shared/src/types/cloud.ts` como escopo desta tarefa, e não inclui o `Dockerfile`. Servir
+os estáticos do `admin-app` (build multi-stage incluindo `packages/admin-app/dist` no contexto,
+mais um `express.static('/admin', ...)` em `index.ts`) fica registrado aqui como o próximo passo
+concreto de deploy, não implementado nesta tarefa.

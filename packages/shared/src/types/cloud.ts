@@ -36,6 +36,13 @@ export interface MatchDocument {
   created_at: string;
   /** Marcado quando a canonicalização por modelo ainda não rodou (Spec 05 §3.2). */
   needs_company_review?: boolean;
+  /**
+   * Marcado por uma correção do painel de admin (Tarefa C7). Anular exclui a partida de
+   * todos os agregados recalculados (`company_rankings`), mas o documento nunca é apagado —
+   * `DELETE` destruiria a evidência de que a partida existiu, o que importa se alguém
+   * contestar uma pontuação durante o evento.
+   */
+  voided?: boolean;
 }
 
 /** Documento em /pilots/{pilot_id}. Spec 05 §4.2. */
@@ -59,6 +66,20 @@ export interface CompanyRankingDocument {
   top_individual_score: number;
   /** ISO 8601 no cliente. O servidor sobrescreve com FieldValue.serverTimestamp(). */
   last_updated: string;
+}
+
+/**
+ * Documento único em /companies/catalog. Espelha `config/companies.json` (Tarefa C0b), mas
+ * é a cópia que o painel de admin (Tarefa C7) edita — a fonte de verdade local e offline do
+ * estande continua sendo o arquivo. A reconciliação entre os dois é manual e explícita (um
+ * botão "exportar para o estande" no painel), nunca automática: um segundo canal nuvem→estande
+ * é exatamente o que a Spec 05 §5 evita.
+ */
+export interface CompanyCatalogDocument {
+  schema_version: number;
+  companies: string[];
+  /** ISO 8601 no cliente. O servidor sobrescreve com FieldValue.serverTimestamp(). */
+  updated_at: string;
 }
 
 /**
