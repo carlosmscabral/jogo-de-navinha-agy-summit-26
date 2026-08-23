@@ -73,6 +73,49 @@ export interface CompanyResolutionResult {
 }
 
 /**
+ * Firestore document-ID rules (used by `company_canonical` as the doc ID of
+ * `company_rankings/{company_canonical}` in `packages/cloud-api`): no `/`, not exactly
+ * `.` or `..`, must not match `__.*__`, and capped at 1500 bytes UTF-8. A visitor can
+ * type anything into the "company" field — this is the shared check both the fallback
+ * sanitizer below and `packages/cloud-api/src/ingest.ts`'s `validate()` use, so the two
+ * never drift on what counts as "safe enough to become a document ID".
+ */
+export function isValidFirestoreDocId(id: string): boolean {
+  if (!id) return false;
+  if (id === '.' || id === '..') return false;
+  if (id.includes('/')) return false;
+  if (/^__.*__$/.test(id)) return false;
+  if (new TextEncoder().encode(id).length > 1500) return false;
+  return true;
+}
+
+/** Well under Firestore's 1500-byte cap — no legitimate typed company name gets close. */
+const MAX_FALLBACK_NAME_LENGTH = 200;
+
+/** Used when sanitization strips a fallback name down to nothing usable. */
+const UNSANITIZABLE_COMPANY_PLACEHOLDER = 'Empresa Nao Identificada';
+
+/**
+ * Sanitizes a formatted fallback company name so it is always safe to use as a
+ * Firestore document ID (see `isValidFirestoreDocId` above). Only the fallback branch
+ * of `resolveCompanyFromCatalog` needs this: exact/suffix/fuzzy matches all resolve to
+ * a name from the curated catalog, which is trusted; the fallback is the one path where
+ * the visitor's raw keystrokes flow through almost unfiltered.
+ */
+function sanitizeCompanyNameForDocId(formatted: string): string {
+  let s = formatted
+    .replace(/[^\p{L}\p{N} .&-]/gu, '') // keep letters/numbers/spaces plus a small punctuation set
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (s.length > MAX_FALLBACK_NAME_LENGTH) {
+    s = s.slice(0, MAX_FALLBACK_NAME_LENGTH).trim();
+  }
+
+  return isValidFirestoreDocId(s) ? s : UNSANITIZABLE_COMPANY_PLACEHOLDER;
+}
+
+/**
  * Proactively matches a raw company input against a canonical catalog
  */
 export function resolveCompanyFromCatalog(
@@ -164,7 +207,7 @@ export function resolveCompanyFromCatalog(
 
   return {
     raw: rawTrimmed,
-    canonical: formatted,
+    canonical: sanitizeCompanyNameForDocId(formatted),
     confidence: 0.50,
     matchedBy: 'fallback'
   };

@@ -4,7 +4,8 @@ import { validateCallsign } from './utils/moderation.js';
 import {
   calculateSimilarity,
   cleanCompanyName,
-  resolveCompanyFromCatalog
+  resolveCompanyFromCatalog,
+  isValidFirestoreDocId
 } from './utils/company-normalizer.js';
 
 describe('Moderation & Profanity Filter', () => {
@@ -106,5 +107,43 @@ describe('Proactive Company Normalizer & Fuzzy Matcher', () => {
     assert.strictEqual(r.canonical, 'Independente');
     assert.strictEqual(r.matchedBy, 'fallback');
     assert.ok(r.confidence < 1.0, 'entrada vazia não pode ter confiança máxima');
+  });
+
+  // Revisão final Fase C — Crítico 1: `company_canonical` vira o ID de documento de
+  // `company_rankings/{company_canonical}` em `cloud-api`. Um nome cru de visitante que
+  // sobrevive sem filtro até ali pode travar a transação de ingestão inteira.
+  it('sanitiza o palpite de fallback para ser um ID de documento Firestore válido', () => {
+    const r = resolveCompanyFromCatalog('Ambev/InBev', seedCatalog);
+    assert.strictEqual(r.matchedBy, 'fallback');
+    assert.ok(isValidFirestoreDocId(r.canonical), `"${r.canonical}" não é um ID de documento válido`);
+    assert.ok(!r.canonical.includes('/'), 'a barra não pode sobreviver ao saneamento');
+  });
+
+  it('nunca produz "." ou ".." a partir de uma entrada só com pontuação', () => {
+    const r = resolveCompanyFromCatalog('??.', seedCatalog);
+    assert.notStrictEqual(r.canonical, '.');
+    assert.notStrictEqual(r.canonical, '..');
+    assert.ok(isValidFirestoreDocId(r.canonical));
+  });
+
+  it('corta um nome de fallback absurdamente longo bem abaixo do limite de 1500 bytes do Firestore', () => {
+    const r = resolveCompanyFromCatalog('A'.repeat(5000), seedCatalog);
+    assert.ok(isValidFirestoreDocId(r.canonical));
+    assert.ok(r.canonical.length <= 200);
+  });
+});
+
+describe('isValidFirestoreDocId', () => {
+  it('recusa barra, "." exato, ".." exato e o padrão reservado __*__', () => {
+    assert.strictEqual(isValidFirestoreDocId('Ambev/InBev'), false);
+    assert.strictEqual(isValidFirestoreDocId('.'), false);
+    assert.strictEqual(isValidFirestoreDocId('..'), false);
+    assert.strictEqual(isValidFirestoreDocId('__reserved__'), false);
+    assert.strictEqual(isValidFirestoreDocId(''), false);
+  });
+
+  it('aceita um nome de empresa comum', () => {
+    assert.strictEqual(isValidFirestoreDocId('Google'), true);
+    assert.strictEqual(isValidFirestoreDocId('Itaú Unibanco'), true);
   });
 });

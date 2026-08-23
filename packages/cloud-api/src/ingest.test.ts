@@ -77,4 +77,47 @@ describe('ingestBatch', () => {
     assert.equal(r.accepted.length, 0);
     assert.match(r.rejected[0].reason, /telemetry/i);
   });
+
+  // Revisão final Fase C — Crítico 1: um `company_canonical` que não é um ID de documento
+  // Firestore válido (aqui, contendo `/`) precisa cair em `rejected[]` ANTES da transação,
+  // não travar `ingestOne` no meio de `db.runTransaction`.
+  it('rejeita company_canonical que não seria um ID de documento Firestore válido, sem derrubar o lote', async () => {
+    const r = await ingestBatch(testDb, [
+      matchFixture({ match_id: 'ok', final_score: 1000, company_canonical: 'Google' }),
+      matchFixture({ match_id: 'ruim', final_score: 1000, company_canonical: 'Ambev/InBev' })
+    ]);
+    assert.deepEqual(r.accepted, ['ok']);
+    assert.equal(r.rejected.length, 1);
+    assert.equal(r.rejected[0].match_id, 'ruim');
+    assert.match(r.rejected[0].reason, /company_canonical/i);
+  });
+
+  // Revisão final Fase C — Crítico 1, parte 3 (defesa em profundidade): mesmo uma partida que
+  // passa em `validate()` pode fazer a transação do Firestore lançar por outro motivo qualquer.
+  // Sem o try/catch em `ingestBatch`, isso rejeitaria a Promise inteira e derrubaria as OUTRAS
+  // partidas boas do mesmo lote — exatamente o cenário que este teste simula travando
+  // `db.runTransaction` na primeira chamada.
+  it('uma transação que falha por qualquer outro motivo cai em rejected sem derrubar o lote inteiro', async () => {
+    const realRunTransaction = testDb.runTransaction.bind(testDb);
+    let calls = 0;
+    (testDb as any).runTransaction = (fn: any) => {
+      calls += 1;
+      if (calls === 1) {
+        return Promise.reject(new Error('falha simulada de transação'));
+      }
+      return realRunTransaction(fn);
+    };
+    try {
+      const r = await ingestBatch(testDb, [
+        matchFixture({ match_id: 'boom', final_score: 1000 }),
+        matchFixture({ match_id: 'ok2', final_score: 500 })
+      ]);
+      assert.deepEqual(r.accepted, ['ok2']);
+      assert.equal(r.rejected.length, 1);
+      assert.equal(r.rejected[0].match_id, 'boom');
+      assert.match(r.rejected[0].reason, /ingestOne threw/i);
+    } finally {
+      (testDb as any).runTransaction = realRunTransaction;
+    }
+  });
 });

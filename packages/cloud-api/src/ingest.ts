@@ -8,7 +8,7 @@
  * (o worker da Tarefa C5 pode reenviar em caso de falha de rede) não soma duas vezes.
  */
 import { FieldValue, type Firestore } from 'firebase-admin/firestore';
-import { SCHEMA_VERSION, type MatchDocument } from '@jogo/shared';
+import { SCHEMA_VERSION, isValidFirestoreDocId, type MatchDocument } from '@jogo/shared';
 
 /**
  * Ordem de 5x o teto teórico da Spec 09; barra lixo, não perícia. Exportado porque
@@ -42,6 +42,15 @@ function validate(m: MatchDocument): string | null {
   }
   if (!m.telemetry) return 'missing telemetry';
   if (!m.ship_spec_snapshot) return 'missing ship_spec_snapshot';
+  // Crítico 1 (revisão final Fase C): `company_canonical` vira o ID do documento
+  // `company_rankings/{company_canonical}` dentro da transação abaixo. `company-normalizer.ts`
+  // já saneia o próprio palpite de fallback, mas esta checagem é defesa em profundidade contra
+  // qualquer `company_canonical` que chegue por outro caminho (ex.: um cliente mais antigo, ou
+  // uma correção manual futura) sem ter passado por aquele saneamento — barrar aqui, antes de
+  // qualquer escrita, é preferível a deixar o Firestore lançar dentro da transação.
+  if (!isValidFirestoreDocId(m.company_canonical)) {
+    return `company_canonical is not a valid Firestore document ID: ${JSON.stringify(m.company_canonical)}`;
+  }
   return null;
 }
 
@@ -97,12 +106,25 @@ export async function ingestBatch(
   for (const m of matches) {
     const reason = validate(m);
     if (reason) {
-      rejected.push({ match_id: m.match_id ?? '(sem match_id)', reason });
+      rejected.push({ match_id: m.match_id ?? '(no match_id)', reason });
       continue;
     }
-    await ingestOne(db, m);
-    accepted.push(m.match_id);
-    if (m.needs_company_review) anyNeedsReview = true;
+    // Crítico 1 (revisão final Fase C), parte 3: `validate()` acima é a primeira barreira,
+    // mas não a única forma de uma partida quebrar a transação (qualquer outro erro do
+    // Firestore dentro de `ingestOne` também conta). Sem este try/catch, uma única partida
+    // problemática rejeitava a `Promise` de `ingestBatch` inteira — derrubando as outras 49
+    // partidas boas do mesmo lote junto. Isolar por partida é o ponto central desta função,
+    // documentado no topo do arquivo; este catch fecha a última lacuna onde isso não valia.
+    try {
+      await ingestOne(db, m);
+      accepted.push(m.match_id);
+      if (m.needs_company_review) anyNeedsReview = true;
+    } catch (err) {
+      rejected.push({
+        match_id: m.match_id ?? '(no match_id)',
+        reason: `ingestOne threw: ${err instanceof Error ? err.message : String(err)}`
+      });
+    }
   }
 
   if (anyNeedsReview && onNeedsReview) {
