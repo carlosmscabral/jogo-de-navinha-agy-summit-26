@@ -117,6 +117,9 @@ que a memória da conversa que a criou tiver evaporado.
 | **C0b** | Revisão de entrada da Fase C, 2026-08-22 | Catálogo de empresas em arquivo e moderação do campo empresa (Spec 05 §3.1 e §3.3). |
 | **C6** | Spec 05 §7 | O telão sobre Firestore é entrega de escopo, não correção. |
 | **C7** | Revisão de entrada da Fase C, 2026-08-22 | Painel de administração, promovido da Tarefa E2 (opcional) para a Fase C. |
+| **C8** | Revisão final da Fase C, 2026-08-23 (Spec 11 §4.11) | `company_raw`/`company_confidence`/`score_breakdown` nunca chegavam ao Firestore — achado durante a implementação da C5, corrigido depois do merge. |
+| **C9** | Pedido do usuário, 2026-08-23 | Limpeza de dados de teste (placares inconsistentes, empresas fictícias) exigia ação em lote que a C7 não previa. |
+| **C10** | Revisão final da Fase C, 2026-08-23 (achado Crítico 4) | `/v1/admin/*` sem autenticação própria; IAP sozinho não convive com o token do estande no mesmo serviço. |
 | **D1** *(tarefa)* | Spec 08 §7 | Runbook. Não confundir com o **defeito** D1 da tabela acima — a colisão de nomes é infeliz e antiga. |
 
 ---
@@ -5362,9 +5365,24 @@ scores** e **gerenciar o catálogo de empresas** sem editar um arquivo por SSH n
 > resolve com a conta Google de quem opera, sem nenhum segredo novo no sistema, e é configuração de
 > deploy em vez de código. **O token de ingestão da Tarefa C3 não serve aqui**: ele é de escopo único
 > e vive na máquina do estande, exatamente a máquina que não pode ter privilégio administrativo.
+>
+> **Correção, revisão final da Fase C + decisão do usuário, 2026-08-23.** A revisão final de branch
+> encontrou uma contradição nesta afirmação: IAP é proteção **de todo o serviço** Cloud Run, e este
+> serviço também recebe o token de ingestão do estande (Tarefa C3) — com IAP ligado, o estande é
+> recusado pelo IAP antes de chegar ao token; com IAP desligado, `/v1/admin/*` fica aberto ao público.
+> Decisão: manter **um serviço só** (não abrir um segundo Cloud Run), IAP continua na frente por
+> identidade Google, **mais uma senha simples por HTTP Basic Auth** só nas rotas `/v1/admin/*` e em
+> `/admin` — ver **Tarefa C10**. A senha não é o "vaza fácil" que este parágrafo original temia: ela
+> nunca é digitada pelo visitante, só pelo operador administrando o painel, numa aba separada da que
+> o estande usa.
 
-> **`voided` em vez de `DELETE`.** Anular marca e exclui dos agregados; apagar destrói a evidência de
-> que a partida existiu. Num evento onde alguém pode contestar uma pontuação, a diferença importa —
+> **`voided` em vez de `DELETE` — para o evento real.** Anular marca e exclui dos agregados; apagar
+> destrói a evidência de que a partida existiu. Num evento onde alguém pode contestar uma pontuação, a
+> diferença importa — e restaurar um documento apagado do Firestore não é uma operação que se faça com
+> o estande aberto. **Exceção deliberada, Tarefa C9:** para limpar dados de teste (placares
+> inconsistentes de antes desta fase, empresas fictícias), a exclusão permanente existe como uma ação
+> separada e mais bem guardada — a razão de existir de `voided` (proteger o evento real) não se aplica
+> a dados que o próprio operador sabe que são lixo de desenvolvimento.
 > e restaurar um documento apagado do Firestore não é uma operação que se faça com o estande aberto.
 
 - [ ] **Passo 1: Escrever o teste da correção com recálculo**
@@ -5479,6 +5497,194 @@ git commit -m "feat(admin): painel de operação com correção de partidas e ca
 
 ---
 
+> **Revisão pré-Gate M3, 2026-08-23.** A revisão final de branch da Fase C encontrou 5 defeitos
+> críticos de integração entre tarefas (todos corrigidos, ver histórico de commits) e deixou dois
+> itens em aberto para decisão do usuário: a autenticação do painel de admin, e a lacuna da Spec 11
+> §4.11 (`company_raw`/`company_confidence`/`score_breakdown` nunca chegam ao Firestore). As três
+> tarefas abaixo fecham os dois itens, mais um pedido novo de limpeza de dados de teste.
+
+### Tarefa C8 — `company_raw`, `company_confidence` e `score_breakdown` chegam ao Firestore (fecha Spec 11 §4.11)
+
+O dado já existe no momento certo em quase todo lugar — só é descartado um passo adiante.
+`packages/player-app/src/App.tsx:112-126` já tem `pilot.company_raw` (do registro,
+`RegistrationForm.tsx:56`) e já calcula `result.breakdown`, mas o objeto enviado a
+`POST /api/matches` não inclui nenhum dos dois. `packages/daemon/src/services/sqlite-buffer.ts:260-289`
+(`resolveCompany`) já calcula confiança via `resolveCompanyFromCatalog` e devolve só o nome canônico,
+descartando o número.
+
+**Arquivos:**
+- Modificar: `packages/daemon/src/services/sqlite-buffer.ts` (`resolveCompany`, schema de
+  `local_matches`, `saveMatch`, `getPendingMatches`, `countPending`)
+- Modificar: `packages/daemon/src/index.ts` (handler de `/api/session/start`)
+- Modificar: `packages/shared/src/types/ship.ts` (`MatchRecord`, `PilotInfo`)
+- Modificar: `packages/player-app/src/App.tsx` (`handleMatchComplete`)
+- Criar: `scripts/reset_local_db.sh`
+
+**Interfaces:**
+- Muda: `resolveCompany(raw: string): string` → `resolveCompany(raw: string): { canonical: string; confidence: number }`. Único chamador atual é `daemon/src/index.ts:253` — atualizar junto.
+- Produz: `MatchRecord` ganha `company_raw: string`, `company_confidence: number`,
+  `score_breakdown: ScoreBreakdown`, `needs_company_review?: boolean` (derivado de
+  `company_confidence < 0.80`, o mesmo limiar de `resolveCompanyFromCatalog`).
+- Produz: `PilotInfo` ganha `company_confidence?: number`, devolvido pelo daemon na resposta de
+  `/api/session/start` e guardado no estado do cliente.
+
+- [ ] **Passo 1: Escrever os testes**
+
+`sqlite-buffer.test.ts`: `resolveCompany('Gooogle')` devolve `{ canonical: 'Google', confidence: ≥0.8 }`;
+uma entrada nova de catálogo (`matchedBy: 'fallback'`) devolve confiança baixa; um alias já em cache
+devolve confiança `1.0` (é curado, não há dúvida a marcar). `App.tsx`'s teste de match_id (ou um novo)
+confirma que `company_raw`/`score_breakdown` chegam no corpo de `POST /api/matches`.
+
+- [ ] **Passo 2: Rodar e ver falhar**
+
+- [ ] **Passo 3: Implementar**
+
+`resolveCompany` devolve o par; o cache de alias (`company_aliases`) não guarda confiança — um hit de
+cache é, por construção, uma resolução já aceita antes, então trate como confiança `1.0`.
+`local_matches` ganha as colunas correspondentes (`company_raw TEXT`, `company_confidence REAL`,
+`score_breakdown_json TEXT`, `needs_company_review INTEGER DEFAULT 0`). **Sem migração**: dados de
+teste anteriores a esta tarefa são descartáveis (ver `reset_local_db.sh` abaixo) — `CREATE TABLE IF
+NOT EXISTS` com o schema novo já resolve bancos novos; um banco antigo precisa ser apagado, não
+migrado.
+
+`scripts/reset_local_db.sh`: apaga o arquivo SQLite do estande (caminho de `BOOTH_DB_PATH`, default
+documentado em `USER_GUIDE.md`) depois de confirmar com o operador (`read -p "Apagar TUDO em $DB?
+(s/N)"`). Existe porque "apagar e deixar reseedar" é mais seguro do que uma migração escrita às
+pressas para dados que ninguém precisa preservar.
+
+- [ ] **Passo 4: Rodar e ver passar; rodar `npm test`**
+
+- [ ] **Passo 5: Commit**
+
+```bash
+git add packages/daemon/src packages/shared/src/types/ship.ts packages/player-app/src \
+        scripts/reset_local_db.sh
+git commit -m "feat(sync): levar company_raw, confiança e score_breakdown até o Firestore"
+```
+
+---
+
+### Tarefa C9 — Ações em lote no painel: anular e excluir partidas de teste
+
+Duas ações, deliberadamente separadas — **anular continua não-destrutivo** (é o mecanismo certo para
+corrigir uma pontuação durante o evento real); **excluir** é novo, permanente, e existe para limpar
+dados de teste (placares inconsistentes de antes dos fixes, empresas fictícias) sem deixá-los
+acumulados como "ANULADA" para sempre.
+
+**Arquivos:**
+- Modificar: `packages/admin-app/src/components/MatchesScreen.tsx` (checkboxes, seleção múltipla,
+  duas ações em lote)
+- Modificar: `packages/admin-app/src/api.ts` (`bulkUpdateMatches`)
+- Criar: `packages/cloud-api/src/admin.ts` — `deleteMatch(db, matchId)` e `bulkPatchOrDelete`
+- Criar/Modificar: `packages/cloud-api/src/admin.test.ts`
+- Modificar: `packages/cloud-api/src/index.ts` (rota `POST /v1/admin/matches/bulk`)
+
+**Interfaces:**
+- Produz: `POST /v1/admin/matches/bulk` — corpo `{ match_ids: string[]; action: 'void' | 'delete' }`.
+  Resposta `{ succeeded: string[]; failed: Array<{ match_id: string; reason: string }> }` — o mesmo
+  padrão de lote parcial que `POST /v1/matches` já usa, para uma partida com problema não travar as
+  outras 49.
+- Produz: `deleteMatch(db, matchId): Promise<void>` — transação que **apaga de verdade** o documento
+  em `matches/{id}` e recalcula do zero (varredura, mesmo mecanismo de `patchMatch`) os agregados de
+  `company_rankings` e `pilots` da partida removida. Diferente de `patchMatch({voided: true})`: aqui o
+  documento não sobra.
+
+- [ ] **Passo 1: Escrever o teste do delete com recálculo**
+
+Mesmo formato dos testes de `patchMatch` (Tarefa C7): `ingestBatch` duas partidas da mesma empresa,
+`deleteMatch` uma delas, confirmar que `company_rankings` reflete só a que sobrou e que o documento
+apagado realmente não existe mais (`get().exists === false`, ao contrário do teste de anulação que
+afirma o oposto).
+
+- [ ] **Passo 2: Rodar e ver falhar**
+
+- [ ] **Passo 3: Implementar `deleteMatch` e a rota em lote**
+
+A rota em lote chama `patchMatch`/`deleteMatch` por item, um por vez, capturando erro individual —
+reusa a lógica já testada da Tarefa C7 em vez de duplicá-la. Se o volume de uso real mostrar que
+recalcular a mesma empresa dezenas de vezes em sequência é lento, otimizar depois é uma tarefa
+separada; não vale complicar isto agora para um caso de uso de limpeza pontual.
+
+- [ ] **Passo 4: A tela**
+
+`MatchesScreen.tsx`: checkbox por linha, "selecionar todas" no cabeçalho, duas ações que aparecem
+quando há seleção — **"Anular selecionadas"** (mesmo `window.confirm` de hoje) e **"Excluir
+definitivamente"**, com confirmação reforçada: o operador digita a palavra `EXCLUIR` num campo antes
+do botão habilitar. Depois de qualquer ação em lote, `runSearch()` de novo para refletir o estado.
+
+- [ ] **Passo 5: Rodar, ver passar, commit**
+
+```bash
+git add packages/admin-app/src packages/cloud-api/src
+git commit -m "feat(admin): ações em lote — anular e excluir partidas, com confirmação reforçada para exclusão"
+```
+
+---
+
+### Tarefa C10 — Senha do painel de admin, atrás do IAP no mesmo serviço
+
+Fecha o achado crítico da revisão final: `/v1/admin/*` não tinha autenticação própria, e IAP sozinho
+não convive com o token do estande no mesmo serviço Cloud Run. Decisão: **um serviço só**, IAP
+protegendo por identidade Google (configuração de deploy, como já documentado), e uma senha simples
+por cima — comparação de tempo constante, mesmo padrão de `auth.ts`, sem sessão, sem cookie, sem
+dependência nova. HTTP Basic Auth: o navegador mostra o prompt nativo de login sozinho.
+
+**Arquivos:**
+- Criar: `packages/cloud-api/src/admin-auth.ts`, `admin-auth.test.ts`
+- Modificar: `packages/cloud-api/src/index.ts` (middleware antes das rotas `/v1/admin/*` e do bloco
+  estático de `/admin`)
+- Modificar: `packages/cloud-api/.env.example`, `README.md`
+
+**Interfaces:**
+- Produz: `isAdminAuthorized(header: string | undefined, expected: string | undefined): boolean` —
+  decodifica `Authorization: Basic <base64(usuario:senha)>`, ignora o usuário (qualquer valor serve),
+  compara a senha em tempo constante contra `ADMIN_PANEL_PASSWORD`. Servidor sem a variável
+  configurada recusa tudo, mesmo padrão de `isAuthorized`.
+
+- [ ] **Passo 1: Escrever o teste**
+
+Mesmos três casos de `auth.test.ts` (Tarefa C3), adaptados: aceita a senha certa; recusa senha errada,
+cabeçalho ausente, ou esquema errado (`Bearer` em vez de `Basic`); recusa tudo quando o servidor sobe
+sem `ADMIN_PANEL_PASSWORD`.
+
+- [ ] **Passo 2: Rodar e ver falhar**
+
+- [ ] **Passo 3: Implementar**
+
+```ts
+import { timingSafeEqual } from 'node:crypto';
+
+export function isAdminAuthorized(header: string | undefined, expected: string | undefined): boolean {
+  if (!expected) return false;
+  if (!header?.startsWith('Basic ')) return false;
+  const decoded = Buffer.from(header.slice(6), 'base64').toString('utf8');
+  const password = decoded.slice(decoded.indexOf(':') + 1);
+  const given = Buffer.from(password);
+  const want = Buffer.from(expected);
+  if (given.length !== want.length) return false;
+  return timingSafeEqual(given, want);
+}
+```
+
+Em `index.ts`, um middleware aplicado antes de **todas** as rotas `/v1/admin/*` e antes do bloco
+`express.static('/admin', …)` — sem isso, o painel serve os arquivos estáticos sem senha nenhuma e só
+protege a API. Resposta de recusa: `401` com cabeçalho `WWW-Authenticate: Basic realm="admin"`, para o
+navegador saber que deve mostrar o prompt.
+
+- [ ] **Passo 4: Rodar e ver passar**
+
+- [ ] **Passo 5: Documentar e commit**
+
+`ADMIN_PANEL_PASSWORD` em `.env.example` e no `README.md`, com nota: guardar no Secret Manager como
+`--set-secrets ADMIN_PANEL_PASSWORD=admin-panel-password:latest`, nunca em texto puro no deploy.
+
+```bash
+git add packages/cloud-api
+git commit -m "feat(admin): senha HTTP Basic na frente do painel, além do IAP"
+```
+
+---
+
 > ### Gate M3 — nuvem, no Mac, com o Wi-Fi na mão
 >
 > ```bash
@@ -5516,6 +5722,13 @@ git commit -m "feat(admin): painel de operação com correção de partidas e ca
 >   confirme que a fila drena sozinha, sem reiniciar o daemon.
 > - **No painel de admin:** mova uma partida de empresa e confirme que os dois agregados acertam;
 >   anule uma partida do recordista e confirme que `top_individual_score` cai para o segundo colocado.
+> - **Sem a senha do painel, `/admin` e `/v1/admin/*` recusam com 401** — teste antes de configurar
+>   `ADMIN_PANEL_PASSWORD`, depois confirme que a senha certa entra (Tarefa C10).
+> - **Selecione três partidas de teste no painel e exclua em lote** — confirme que os documentos
+>   somem de verdade (não ficam `ANULADA`) e que `company_rankings` reflete só o que sobrou
+>   (Tarefa C9).
+> - **Abra o SQLite do estande depois de uma partida** e confirme `company_raw`, `company_confidence`
+>   e `score_breakdown` preenchidos — não só no Firestore, na origem (Tarefa C8).
 > - A verificação de 10 minutos da [Spec 08](./08_DEPLOYMENT_TOPOLOGY_AND_CLOUD_SPLIT.md) §5: abrir o
 >   `leaderboard-app` hospedado, forçar a queda para o bridge local e **registrar a versão exata do
 >   Chrome** no resultado. Se o Chrome bloquear a chamada à rede local, o fallback passa a ser um
@@ -6088,10 +6301,10 @@ B3), e `balance.ts` (B1 cria, A3 passa a interpolar via B2).
 A Fase C depende de credenciais de GCP e da criação do projeto — **encaminhe isso durante a Fase A**,
 porque o tempo de provisionamento não é tempo de engenharia e não deveria bloquear ninguém.
 
-### Ordem dentro da Fase C (revisada em 2026-08-22)
+### Ordem dentro da Fase C (revisada em 2026-08-23)
 
 ```
-C0  →  C0b  →  C1  →  C2  →  C3  →  C4  →  C5  →  C6  →  C7  →  Gate M3
+C0  →  C0b  →  C1  →  C2  →  C3  →  C4  →  C5  →  C6  →  C7  →  C8  →  C9  →  C10  →  Gate M3
 ```
 
 Onde a ordem é obrigatória, e por quê:
@@ -6102,6 +6315,11 @@ Onde a ordem é obrigatória, e por quê:
 - **C2 antes da C3.** A C3 escreve os tipos e o banco que a C2 define.
 - **C3 antes da C5.** O worker consome `POST /v1/matches`.
 - **C7 depois da C3.** O painel reusa a transação de agregados; escrevê-lo antes duplicaria a lógica.
+- **C8 antes da C9.** Sem `company_raw`/`company_confidence`/`score_breakdown` chegando ao Firestore,
+  não há nada de novo para o painel exibir — mas C9 não *depende* tecnicamente de C8 (a exclusão em
+  lote funciona nos campos que já existem hoje); a ordem aqui é só para testar a limpeza de dados já
+  com o schema final, evitando testar duas vezes.
+- **C9 depois da C7.** Reusa `patchMatch`/a lógica de recálculo que a C7 já escreveu e testou.
 
 Onde a ordem é conveniência, e pode ser trocada:
 
@@ -6113,6 +6331,9 @@ Onde a ordem é conveniência, e pode ser trocada:
   canonicalização local já funcionam sem ela.
 - **C6 e C7** são independentes entre si e podem ir em paralelo — uma é leitura por `onSnapshot`, a
   outra é escrita administrativa pela API.
+- **C10 pode ir a qualquer momento depois da C7** — é só um middleware novo na frente de rotas que já
+  existem. Está por último porque fechar a autenticação é a última coisa que faz sentido testar, uma
+  vez que todo o resto do painel já está estável.
 
 **Pré-requisito de ferramenta — resolvido em 2026-08-22:** as Tarefas C2, C3 e C7 testam contra o
 emulador do Firestore, que precisa de uma JRE. Instalada e confirmada: `default-jre-headless`,

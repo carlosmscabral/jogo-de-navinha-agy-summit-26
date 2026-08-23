@@ -393,7 +393,7 @@ antes do próximo evento que reusar este código.
 
 ---
 
-### 4.11 `local_matches` nunca carrega `company_raw`/`company_confidence`/`score_breakdown` — a canonicalização assíncrona da Tarefa C4 nunca dispara na prática
+### 4.11 `local_matches` nunca carrega `company_raw`/`company_confidence`/`score_breakdown` — **alocado à Tarefa C8**, 2026-08-23
 
 Encontrado em 2026-08-22, durante a implementação da Tarefa C5, ao ligar o worker de sincronização
 pela primeira vez ponta a ponta.
@@ -440,7 +440,15 @@ evento fica permanentemente sem `score_breakdown`**, um campo não-opcional de `
 > acrescentado ao checklist do M3 exatamente para fechar isso — ver Tarefa C7 em
 > [10_IMPLEMENTATION_PLAN.md](./10_IMPLEMENTATION_PLAN.md).
 
-**Reavaliar antes do Gate M3.**
+> **Alocado, 2026-08-23.** Vira **Tarefa C8** em
+> [10_IMPLEMENTATION_PLAN.md](./10_IMPLEMENTATION_PLAN.md), mais barata do que esta seção previa: sem
+> migração (o usuário confirmou que os dados locais atuais são de teste e podem ser descartados —
+> `scripts/reset_local_db.sh` apaga o banco em vez de migrá-lo), e `company_raw` **já existe** no
+> cliente (`pilot.company_raw`, preenchido no registro) — só nunca foi incluído no envio da partida.
+> Falta só `company_confidence` (o número já é calculado dentro de `resolveCompany` no daemon, e só
+> precisa parar de ser descartado) e passar os três campos adiante.
+
+**Fechar ao concluir a Tarefa C8, não antes.**
 
 ---
 
