@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import Database from 'better-sqlite3';
 import { SQLiteBufferService, loadCompanyCatalog } from './sqlite-buffer.js';
 
 function tempDb(): string {
@@ -153,6 +154,68 @@ describe('SQLiteBufferService', () => {
     const second = db.resolveCompany('Startup do João');
     assert.equal(second.canonical, 'Startup Do João');
     assert.equal(second.confidence, 1.0, 'um alias já em cache é uma resolução já aceita antes -- não há dúvida a marcar');
+    db.close();
+  });
+});
+
+describe('auto-cura do schema pré-C8', () => {
+  it('adiciona as colunas novas a um banco existente com o schema antigo, sem perder saveMatch', () => {
+    const dbPath = tempDb();
+
+    // Simula um banco criado antes da Tarefa C8: só as 9 colunas originais.
+    const raw = new Database(dbPath);
+    raw.exec(`
+      CREATE TABLE local_matches (
+        match_id TEXT PRIMARY KEY,
+        pilot_id TEXT NOT NULL,
+        callsign TEXT NOT NULL,
+        company_canonical TEXT NOT NULL,
+        final_score INTEGER NOT NULL,
+        telemetry_json TEXT NOT NULL,
+        ship_spec_json TEXT NOT NULL,
+        synced_to_cloud INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL
+      );
+    `);
+    raw.close();
+
+    // Antes da correção, isto lançaria "table local_matches has no column named company_raw".
+    const db = new SQLiteBufferService(dbPath);
+    assert.doesNotThrow(() => db.saveMatch({
+      match_id: 'm-old-schema',
+      pilot_id: 'pilot-old',
+      callsign: 'LEGACY',
+      company_canonical: 'Acme',
+      company_raw: 'acme',
+      company_confidence: 0.95,
+      final_score: 100,
+      telemetry: {
+        duration_s: 10, enemies_killed: 1, boss_defeated: false, damage_taken: 0,
+        accuracy_pct: 50, shots_fired: 2, shots_hit: 1,
+        fallback_used: false, seed: 1, boss_ttk_s: 0, boss_fight_min_fps: 60,
+        boss_damage_dealt: 0, boss_phase_reached: 0
+      },
+      ship_spec_snapshot: { pilot: { callsign: 'LEGACY' } } as any
+    } as any));
+    db.close();
+  });
+
+  it('continua funcionando normalmente num banco novo, sem arquivo pré-existente (regressão)', () => {
+    const db = new SQLiteBufferService(tempDb());
+    assert.doesNotThrow(() => db.saveMatch({
+      match_id: 'm-fresh',
+      pilot_id: 'pilot-fresh',
+      callsign: 'FRESH',
+      company_canonical: 'Acme',
+      final_score: 50,
+      telemetry: {
+        duration_s: 10, enemies_killed: 1, boss_defeated: false, damage_taken: 0,
+        accuracy_pct: 50, shots_fired: 2, shots_hit: 1,
+        fallback_used: false, seed: 1, boss_ttk_s: 0, boss_fight_min_fps: 60,
+        boss_damage_dealt: 0, boss_phase_reached: 0
+      },
+      ship_spec_snapshot: { pilot: { callsign: 'FRESH' } } as any
+    } as any));
     db.close();
   });
 });

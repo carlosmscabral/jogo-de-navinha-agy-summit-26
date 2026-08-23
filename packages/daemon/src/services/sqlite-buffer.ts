@@ -142,6 +142,32 @@ export class SQLiteBufferService {
         needs_company_review INTEGER DEFAULT 0
       );
     `);
+
+    this.migrateLocalMatchesSchema();
+  }
+
+  // Auto-cura para um banco pré-existente criado antes da Tarefa C8: `CREATE TABLE IF
+  // NOT EXISTS` acima é um no-op silencioso quando a tabela já existe com o schema
+  // antigo, e sem isso todo saveMatch() falharia com "no such column" sem log nenhum
+  // no daemon. ALTER TABLE ADD COLUMN é seguro em SQLite para colunas anuláveis: linhas
+  // existentes recebem NULL, novas linhas populam normalmente.
+  private migrateLocalMatchesSchema(): void {
+    const columns = this.db.prepare('PRAGMA table_info(local_matches)').all() as { name: string }[];
+    const existing = new Set(columns.map((c) => c.name));
+
+    const requiredColumns: { name: string; ddl: string }[] = [
+      { name: 'company_raw', ddl: 'TEXT' },
+      { name: 'company_confidence', ddl: 'REAL' },
+      { name: 'score_breakdown_json', ddl: 'TEXT' },
+      { name: 'needs_company_review', ddl: 'INTEGER DEFAULT 0' }
+    ];
+
+    for (const col of requiredColumns) {
+      if (!existing.has(col.name)) {
+        console.warn(`[SQLiteBuffer] local_matches sem a coluna ${col.name} (schema pré-C8) — adicionando via ALTER TABLE.`);
+        this.db.exec(`ALTER TABLE local_matches ADD COLUMN ${col.name} ${col.ddl}`);
+      }
+    }
   }
 
   // INSERT OR IGNORE torna isto idempotente entre reinícios. Empresas removidas do
