@@ -4,7 +4,7 @@
  * já autentica a conta Google de quem opera antes de a requisição chegar aqui — não há
  * nenhum segredo de aplicação para este cliente carregar. Ver README do cloud-api.
  */
-import type { MatchDocument, CompanyCatalogDocument } from '@jogo/shared';
+import type { MatchDocument, CompanyCatalogDocument, MatchCorrection } from '@jogo/shared';
 import { ENDPOINTS } from './config.js';
 
 // '' quando não configurado: mesma origem, o caso normal em produção (o admin-app é
@@ -36,13 +36,6 @@ export function fetchMatches(query: ListMatchesQuery): Promise<{ matches: MatchD
   if (query.limit) params.set('limit', String(query.limit));
   const qs = params.toString();
   return requestJson(`/v1/admin/matches${qs ? `?${qs}` : ''}`);
-}
-
-export interface MatchCorrection {
-  callsign?: string;
-  company_canonical?: string;
-  final_score?: number;
-  voided?: boolean;
 }
 
 export function patchMatch(matchId: string, changes: MatchCorrection): Promise<{ status: string }> {

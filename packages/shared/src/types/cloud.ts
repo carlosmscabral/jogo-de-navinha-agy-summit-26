@@ -90,3 +90,17 @@ export interface CompanyCatalogDocument {
 export function field<T>(name: keyof T & string): string {
   return name;
 }
+
+/**
+ * Campos que uma correção manual de partida (Tarefa C7, `PATCH /v1/admin/matches/:id`) pode
+ * tocar. Tudo opcional: o operador manda só o que muda. Declarado uma única vez aqui (revisão
+ * final Fase C, Minor 10) — antes disso, `packages/cloud-api/src/admin.ts` e
+ * `packages/admin-app/src/api.ts` tinham cada um sua própria cópia idêntica, exatamente o
+ * tipo de deriva que este arquivo existe para o compilador pegar em vez de uma revisão humana.
+ */
+export interface MatchCorrection {
+  callsign?: string;
+  company_canonical?: string;
+  final_score?: number;
+  voided?: boolean;
+}

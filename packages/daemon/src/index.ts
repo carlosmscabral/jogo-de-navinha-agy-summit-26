@@ -146,7 +146,12 @@ const sessionDir = process.env.BOOTH_SESSION_DIR || '/tmp/booth_session';
 const CLOUD_API_BASE = process.env.BOOTH_CLOUD_API_BASE || null;
 // Mesmo token de escopo único que a cloud-api espera em `Authorization: Bearer` (ver
 // packages/cloud-api/src/auth.ts) — o daemon é o único cliente autorizado a chamá-la.
-const CLOUD_API_TOKEN = process.env.BOOTH_INGEST_TOKEN || null;
+// Revisão final Fase C (Minor 10): função, não uma constante capturada uma vez — relê
+// `process.env` a cada chamada de moderação, o mesmo padrão que `cloudSync` já usa (ver
+// comentário logo abaixo) para sobreviver a uma rotação de `BOOTH_INGEST_TOKEN` no Secret
+// Manager sem exigir reiniciar o daemon. Antes desta correção, o site de moderação era o
+// único lugar do arquivo que ainda capturava o token uma vez no carregamento do módulo.
+const getCloudApiToken = (): string | null => process.env.BOOTH_INGEST_TOKEN || null;
 const MODERATION_L2_TIMEOUT_MS = Number(process.env.BOOTH_MODERATION_L2_TIMEOUT_MS) || 1500;
 
 // Tarefa C5 — worker de sincronização do buffer local com POST /v1/matches (Tarefa C3). `token`
@@ -155,7 +160,7 @@ const MODERATION_L2_TIMEOUT_MS = Number(process.env.BOOTH_MODERATION_L2_TIMEOUT_
 // enxergar o valor novo sem reiniciar o daemon (ver comentário em cloud-sync.ts).
 const cloudSync = new CloudSyncService(sqliteBuffer, {
   base: CLOUD_API_BASE,
-  token: () => process.env.BOOTH_INGEST_TOKEN || null
+  token: getCloudApiToken
 });
 cloudSync.start(30_000);
 
@@ -221,7 +226,7 @@ app.post('/api/session/start', async (req, res) => {
     // o insulto velado que a camada 1 não pega tem chance de passar, e é aí que a camada 2 entra.
     if (validation.isValid) {
       const remote = await moderateRemotely(
-        CLOUD_API_BASE, CLOUD_API_TOKEN, validation.sanitized, MODERATION_L2_TIMEOUT_MS
+        CLOUD_API_BASE, getCloudApiToken(), validation.sanitized, MODERATION_L2_TIMEOUT_MS
       );
 
       if (remote.verdict === 'block') {
