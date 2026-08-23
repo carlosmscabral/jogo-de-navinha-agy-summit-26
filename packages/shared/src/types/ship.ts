@@ -15,6 +15,13 @@ export interface PilotInfo {
   callsign: string;
   company_raw: string;
   company_canonical: string;
+  /**
+   * Confiança (0-1) da resolução de `company_canonical` a partir de `company_raw`, devolvida
+   * pelo daemon na resposta de `/api/session/start` (ver `SQLiteBufferService.resolveCompany`).
+   * Ausente antes do primeiro round-trip com o daemon -- o estado inicial de registro do
+   * cliente ainda não tem essa informação.
+   */
+  company_confidence?: number;
 }
 
 export interface EnergySliders {
@@ -145,9 +152,17 @@ export interface MatchRecord {
   pilot_id: string;
   callsign: string;
   company_canonical: string;
+  /** Texto cru digitado pelo visitante no registro, antes de `resolveCompany`. */
+  company_raw: string;
+  /** Confiança (0-1) da resolução `company_raw` -> `company_canonical`. Ver `PilotInfo.company_confidence`. */
+  company_confidence: number;
   final_score: number;
   telemetry: MatchTelemetry;
   ship_spec_snapshot: ShipSpecification;
+  /** Detalhamento do score exibido no debrief. Ver `ScoreBreakdown`. */
+  score_breakdown: ScoreBreakdown;
+  /** true quando `company_confidence < 0.80` -- fila de revisão manual do staff (Spec 11 §4.11). */
+  needs_company_review?: boolean;
   created_at: string;
 }
 

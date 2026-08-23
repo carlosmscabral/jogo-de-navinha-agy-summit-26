@@ -13,7 +13,8 @@ describe('Local Bridge Daemon Services', () => {
     assert.ok(results.includes('Google') || results.includes('Google Cloud'));
 
     const resolved = sqlite.resolveCompany('google cloud');
-    assert.ok(resolved.toLowerCase().includes('google'));
+    assert.ok(resolved.canonical.toLowerCase().includes('google'));
+    assert.ok(resolved.confidence > 0);
     sqlite.close();
   });
 

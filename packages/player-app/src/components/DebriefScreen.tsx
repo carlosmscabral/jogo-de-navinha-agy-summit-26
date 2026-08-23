@@ -3,7 +3,7 @@ import { Trophy, RotateCcw, Award, CheckCircle, Clock, Heart, Flame, ShieldAlert
 import { MatchRecord } from '@jogo/shared';
 
 interface DebriefScreenProps {
-  matchRecord?: Partial<MatchRecord> & { victory?: boolean; breakdown?: any };
+  matchRecord?: Partial<MatchRecord> & { victory?: boolean };
   onReset: () => void;
 }
 
@@ -29,7 +29,7 @@ export function DebriefScreen({ matchRecord, onReset }: DebriefScreenProps) {
   const callsign = matchRecord?.callsign || 'PILOTO';
   const company = matchRecord?.company_canonical || 'GOOGLE';
   const isVictory = matchRecord?.victory ?? true;
-  const breakdown = matchRecord?.breakdown;
+  const breakdown = matchRecord?.score_breakdown;
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center p-6 select-none font-sans">

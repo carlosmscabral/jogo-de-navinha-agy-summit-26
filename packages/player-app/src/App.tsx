@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ShipSpecification, PilotInfo, EnergySliders, McpServerName, SubagentName, FALLBACK_PRESETS, MatchRecord } from '@jogo/shared';
 import { createGameInstance, MatchCompleteData } from './game/index.js';
+import { buildMatchRecord } from './match-record.js';
 import { audioManager } from './game/audio/AudioManager.js';
 import { AttractScreen } from './components/AttractScreen.js';
 import { RegistrationForm } from './components/RegistrationForm.js';
@@ -25,7 +26,7 @@ export function App() {
   const [selectedSubagents, setSelectedSubagents] = useState<SubagentName[]>(['aesthetic-designer', 'combat-strategist']);
   const [shipSpec, setShipSpec] = useState<ShipSpecification>(FALLBACK_PRESETS.interceptor);
   const [isMuted, setIsMuted] = useState(false);
-  const [lastMatch, setLastMatch] = useState<Partial<MatchRecord> & { victory?: boolean; breakdown?: any } | undefined>();
+  const [lastMatch, setLastMatch] = useState<Partial<MatchRecord> & { victory?: boolean } | undefined>();
   const [pilotId, setPilotId] = useState<string>(() => crypto.randomUUID());
   const [sessionStartError, setSessionStartError] = useState<string | null>(null);
 
@@ -96,6 +97,13 @@ export function App() {
         })
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // O daemon resolve company_canonical/company_confidence de verdade (via resolveCompany)
+      // e sanitiza o callsign -- o palpite local do registro (RegistrationForm.tsx) é só um
+      // placeholder até essa resposta chegar. Sem isto, company_confidence nunca sai de
+      // undefined no estado do cliente, e o registro da partida nunca sabe se a empresa
+      // precisa de revisão manual (Spec 11 §4.11).
+      const data: { pilot?: PilotInfo } = await res.json();
+      if (data.pilot) setPilot(data.pilot);
       setSessionStartError(null);
       setStage('HANDOFF');
     } catch (err) {
@@ -110,22 +118,7 @@ export function App() {
   };
 
   const handleMatchComplete = (result: MatchCompleteData) => {
-    const matchRecord: MatchRecord & { victory: boolean; breakdown: any } = {
-      // UUID, não timestamp: este valor é a PRIMARY KEY do SQLite e vira o ID do
-      // documento Firestore, onde a escrita é set() por ID. Duas estações que
-      // terminam no mesmo milissegundo sobrescreveriam uma à outra em silêncio.
-      // Spec 05 §4.1.
-      match_id: crypto.randomUUID(),
-      pilot_id: pilotId,
-      callsign: pilot.callsign,
-      company_canonical: pilot.company_canonical,
-      final_score: result.finalScore,
-      telemetry: result.telemetry,
-      ship_spec_snapshot: shipSpec,
-      created_at: new Date().toISOString(),
-      victory: result.victory,
-      breakdown: result.breakdown
-    };
+    const matchRecord = buildMatchRecord(pilot, pilotId, shipSpec, result);
 
     setLastMatch(matchRecord);
 

@@ -47,6 +47,8 @@ describe('SQLiteBufferService', () => {
       pilot_id: 'pilot-abc',
       callsign: 'NOVA',
       company_canonical: 'Acme',
+      company_raw: 'acme corp',
+      company_confidence: 0.95,
       final_score: 12345,
       telemetry: {
         duration_s: 90, enemies_killed: 42, boss_defeated: true, damage_taken: 2,
@@ -55,6 +57,10 @@ describe('SQLiteBufferService', () => {
         boss_damage_dealt: 800, boss_phase_reached: 3
       },
       ship_spec_snapshot: { pilot: { callsign: 'NOVA' } } as any,
+      score_breakdown: {
+        combatScore: 1000, bossBonus: 500, timeBonus: 100, survivalBonus: 50,
+        bossDamageBonus: 0, bossPhaseBonus: 0, synergyBonus: 0, mcpMultiplier: 1.1
+      },
       created_at: new Date().toISOString()
     });
 
@@ -64,20 +70,89 @@ describe('SQLiteBufferService', () => {
     assert.equal(pending[0].telemetry.enemies_killed, 42);
     assert.equal(pending[0].telemetry.seed, 7);
     assert.equal(pending[0].ship_spec_snapshot.pilot.callsign, 'NOVA');
+    assert.equal(pending[0].company_raw, 'acme corp');
+    assert.equal(pending[0].company_confidence, 0.95);
+    assert.deepEqual(pending[0].score_breakdown, {
+      combatScore: 1000, bossBonus: 500, timeBonus: 100, survivalBonus: 50,
+      bossDamageBonus: 0, bossPhaseBonus: 0, synergyBonus: 0, mcpMultiplier: 1.1
+    });
+    assert.equal(pending[0].needs_company_review, false, 'confiança 0.95 está acima do limiar de 0.80');
+    db.close();
+  });
+
+  it('marca needs_company_review quando a confiança fica abaixo de 0.80', () => {
+    const db = new SQLiteBufferService(tempDb());
+    db.saveMatch({
+      match_id: 'm3',
+      pilot_id: 'pilot-xyz',
+      callsign: 'GHOST',
+      company_canonical: 'Startup Do João',
+      company_raw: 'startup do joao',
+      company_confidence: 0.5,
+      final_score: 100,
+      telemetry: {
+        duration_s: 10, enemies_killed: 1, boss_defeated: false, damage_taken: 0,
+        accuracy_pct: 100, shots_fired: 1, shots_hit: 1,
+        fallback_used: false, seed: 1, boss_ttk_s: null, boss_fight_min_fps: null,
+        boss_damage_dealt: 0, boss_phase_reached: null
+      },
+      ship_spec_snapshot: { pilot: { callsign: 'GHOST' } } as any,
+      score_breakdown: {
+        combatScore: 10, bossBonus: 0, timeBonus: 0, survivalBonus: 0,
+        bossDamageBonus: 0, bossPhaseBonus: 0, synergyBonus: 0, mcpMultiplier: 1
+      },
+      created_at: new Date().toISOString()
+    });
+
+    const pending = db.getPendingMatches();
+    assert.equal(pending[0].needs_company_review, true);
     db.close();
   });
 
   it('não atribui a Google uma empresa vazia', () => {
     const db = new SQLiteBufferService(tempDb());
-    assert.notEqual(db.resolveCompany(''), 'Google');
-    assert.notEqual(db.resolveCompany('   '), 'Google');
-    assert.equal(db.resolveCompany(''), 'Independente');
+    assert.notEqual(db.resolveCompany('').canonical, 'Google');
+    assert.notEqual(db.resolveCompany('   ').canonical, 'Google');
+    assert.equal(db.resolveCompany('').canonical, 'Independente');
     db.close();
   });
 
   it('continua resolvendo os typos conhecidos', () => {
     const db = new SQLiteBufferService(tempDb());
-    assert.equal(db.resolveCompany('Gooogle'), 'Google');
+    assert.equal(db.resolveCompany('Gooogle').canonical, 'Google');
+    db.close();
+  });
+
+  it('trata entrada vazia como confiança 1.0 -- é um default deliberado, não uma dúvida', () => {
+    const db = new SQLiteBufferService(tempDb());
+    assert.equal(db.resolveCompany('').confidence, 1.0);
+    db.close();
+  });
+
+  it('devolve confiança alta (>= 0.8) para um typo conhecido resolvido via catálogo', () => {
+    const db = new SQLiteBufferService(tempDb());
+    const resolved = db.resolveCompany('Gooogle');
+    assert.equal(resolved.canonical, 'Google');
+    assert.ok(resolved.confidence >= 0.8, `esperava confiança >= 0.8, recebeu ${resolved.confidence}`);
+    db.close();
+  });
+
+  it('devolve confiança baixa para uma entrada nova que só bate no fallback do catálogo', () => {
+    const db = new SQLiteBufferService(tempDb());
+    const resolved = db.resolveCompany('Startup do João');
+    assert.equal(resolved.canonical, 'Startup Do João');
+    assert.ok(resolved.confidence < 0.8, `esperava confiança < 0.8, recebeu ${resolved.confidence}`);
+    db.close();
+  });
+
+  it('trata um hit de cache de alias como confiança 1.0, mesmo que a resolução original tenha sido incerta', () => {
+    const db = new SQLiteBufferService(tempDb());
+    const first = db.resolveCompany('Startup do João');
+    assert.ok(first.confidence < 0.8, 'pré-condição: a primeira resolução precisa ser incerta');
+
+    const second = db.resolveCompany('Startup do João');
+    assert.equal(second.canonical, 'Startup Do João');
+    assert.equal(second.confidence, 1.0, 'um alias já em cache é uma resolução já aceita antes -- não há dúvida a marcar');
     db.close();
   });
 });
@@ -107,20 +182,26 @@ describe('catálogo de empresas', () => {
 describe('moderação do campo empresa', () => {
   it('não deixa texto ofensivo virar nome de empresa no telão', () => {
     const buffer = new SQLiteBufferService(tempDb());
-    assert.equal(buffer.resolveCompany('PORRA LTDA'), 'Independente');
-    assert.equal(buffer.resolveCompany('p0rr4 tech'), 'Independente');
+    assert.equal(buffer.resolveCompany('PORRA LTDA').canonical, 'Independente');
+    assert.equal(buffer.resolveCompany('p0rr4 tech').canonical, 'Independente');
+    buffer.close();
+  });
+
+  it('trata o override de profanidade como confiança 1.0 -- é uma decisão deliberada, não incerteza', () => {
+    const buffer = new SQLiteBufferService(tempDb());
+    assert.equal(buffer.resolveCompany('PORRA LTDA').confidence, 1.0);
     buffer.close();
   });
 
   it('não afeta empresa desconhecida mas inofensiva', () => {
     const buffer = new SQLiteBufferService(tempDb());
-    assert.equal(buffer.resolveCompany('Startup do João'), 'Startup Do João');
+    assert.equal(buffer.resolveCompany('Startup do João').canonical, 'Startup Do João');
     buffer.close();
   });
 
   it('não afeta empresa do catálogo', () => {
     const buffer = new SQLiteBufferService(tempDb());
-    assert.equal(buffer.resolveCompany('Gooogle Brasil'), 'Google');
+    assert.equal(buffer.resolveCompany('Gooogle Brasil').canonical, 'Google');
     buffer.close();
   });
 });

@@ -250,11 +250,12 @@ app.post('/api/session/start', async (req, res) => {
       }
     }
 
-    const canonicalCompany = sqliteBuffer.resolveCompany(pilot?.company_raw);
+    const { canonical: canonicalCompany, confidence: companyConfidence } = sqliteBuffer.resolveCompany(pilot?.company_raw);
     const fullPilot = {
       ...pilot,
       callsign: validation.sanitized,
-      company_canonical: canonicalCompany
+      company_canonical: canonicalCompany,
+      company_confidence: companyConfidence
     };
 
     // 1. Generate clean workspace in /tmp/booth_session with .agents configs & GEMINI.md

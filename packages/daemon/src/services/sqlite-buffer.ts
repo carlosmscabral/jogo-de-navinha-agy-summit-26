@@ -135,7 +135,11 @@ export class SQLiteBufferService {
         telemetry_json TEXT NOT NULL,
         ship_spec_json TEXT NOT NULL,
         synced_to_cloud INTEGER DEFAULT 0,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        company_raw TEXT,
+        company_confidence REAL,
+        score_breakdown_json TEXT,
+        needs_company_review INTEGER DEFAULT 0
       );
     `);
   }
@@ -257,16 +261,19 @@ export class SQLiteBufferService {
     return matches.slice(0, 8).map((m) => m.name);
   }
 
-  resolveCompany(rawInput: string): string {
+  resolveCompany(rawInput: string): CompanyMatch {
     const raw = (rawInput || '').trim();
     // 'Independente', não 'Google': num evento do Google, o default errado infla
-    // o ranking corporativo do próprio anfitrião. Spec 05 §3.1.
-    if (!raw) return 'Independente';
+    // o ranking corporativo do próprio anfitrião. Spec 05 §3.1. Confiança 1.0: é um
+    // default deliberado para entrada vazia, não uma dúvida a sinalizar.
+    if (!raw) return { raw, canonical: 'Independente', confidence: 1.0 };
 
-    // 1. Check cached alias in SQLite
+    // 1. Check cached alias in SQLite. Um hit de cache é, por construção, uma
+    // resolução já aceita antes -- confiança 1.0, mesmo que a resolução original
+    // (linha abaixo) tenha sido incerta.
     const aliasStmt = this.db.prepare('SELECT canonical_name FROM company_aliases WHERE raw_input = ?');
     const alias = aliasStmt.get(raw.toLowerCase()) as { canonical_name: string } | undefined;
-    if (alias) return alias.canonical_name;
+    if (alias) return { raw, canonical: alias.canonical_name, confidence: 1.0 };
 
     // 2. Proactive multi-layer resolution (exact, suffix stripping, containment, Levenshtein fuzzy)
     const catalog = this.getCanonicalList();
@@ -279,13 +286,14 @@ export class SQLiteBufferService {
       const check = validateCallsign(resolution.canonical);
       if (!check.isValid && check.reasonCode === 'profanity') {
         this.cacheAlias(raw, 'Independente');
-        return 'Independente';
+        // Override deliberado, não incerteza: confiança 1.0.
+        return { raw, canonical: 'Independente', confidence: 1.0 };
       }
     }
 
     // 3. Cache the resolved alias
     this.cacheAlias(raw, resolution.canonical);
-    return resolution.canonical;
+    return { raw, canonical: resolution.canonical, confidence: resolution.confidence };
   }
 
   private cacheAlias(raw: string, canonical: string): void {
@@ -307,11 +315,17 @@ export class SQLiteBufferService {
       throw new Error(`[SQLiteBuffer] Partida ${match.match_id} sem pilot_id — recusada. Ver D5.`);
     }
 
+    // needs_company_review é derivado aqui, não confiado ao chamador: a fonte de verdade da
+    // confiança é o próprio company_confidence gravado, e o limiar (0.80) é o mesmo de
+    // resolveCompanyFromCatalog -- um único lugar decide "isso precisa de revisão humana".
+    const needsCompanyReview = (match.company_confidence ?? 1.0) < 0.80;
+
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO local_matches (
         match_id, pilot_id, callsign, company_canonical, final_score,
-        telemetry_json, ship_spec_json, synced_to_cloud, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+        telemetry_json, ship_spec_json, synced_to_cloud, created_at,
+        company_raw, company_confidence, score_breakdown_json, needs_company_review
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -322,7 +336,11 @@ export class SQLiteBufferService {
       match.final_score,
       JSON.stringify(match.telemetry),
       JSON.stringify(match.ship_spec_snapshot),
-      match.created_at || new Date().toISOString()
+      match.created_at || new Date().toISOString(),
+      match.company_raw ?? null,
+      match.company_confidence ?? null,
+      match.score_breakdown ? JSON.stringify(match.score_breakdown) : null,
+      needsCompanyReview ? 1 : 0
     );
   }
 
@@ -405,9 +423,13 @@ export class SQLiteBufferService {
       pilot_id: r.pilot_id,
       callsign: r.callsign,
       company_canonical: r.company_canonical,
+      company_raw: r.company_raw,
+      company_confidence: r.company_confidence,
       final_score: r.final_score,
       telemetry: JSON.parse(r.telemetry_json),
       ship_spec_snapshot: JSON.parse(r.ship_spec_json),
+      score_breakdown: r.score_breakdown_json ? JSON.parse(r.score_breakdown_json) : undefined,
+      needs_company_review: r.needs_company_review === 1,
       created_at: r.created_at
     }));
   }
