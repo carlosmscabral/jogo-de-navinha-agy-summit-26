@@ -72,13 +72,26 @@ const RECENT_MATCHES_LIMIT = 12;
  * function does its own sorting/truncation for both views, so the caller
  * doesn't need to pre-sort or pick which slice feeds which panel. Never
  * throws, even on empty input.
+ *
+ * Matches with `voided: true` (Task C7's admin panel) are dropped first, before
+ * any sorting/slicing — this is the ONLY place that filters them out, so it
+ * covers the Hall of Fame and the Live Ticker in one spot regardless of which
+ * of the two `onSnapshot` listeners (by-score, by-recency) delivered the
+ * document. Deliberately NOT a Firestore `where('voided', '!=', true)` query:
+ * `ingestOne` (Task C3) never writes a `voided` field on a normal match, and
+ * Firestore's `!=` excludes documents where the filtered field is absent
+ * entirely — that query would return zero results for every never-voided
+ * match and empty the whole leaderboard. `company_rankings` needs no such
+ * filter here: `patchMatch` (Task C7) already recalculates that aggregate
+ * excluding voided matches server-side.
  */
 export function mergeLeaderboardState(
   matches: MatchDocument[],
   rankings: CompanyRankingDocument[]
 ): LeaderboardState {
-  const byScoreDesc = [...matches].sort((a, b) => b.final_score - a.final_score);
-  const byRecencyDesc = [...matches].sort(
+  const activeMatches = matches.filter((m) => !m.voided);
+  const byScoreDesc = [...activeMatches].sort((a, b) => b.final_score - a.final_score);
+  const byRecencyDesc = [...activeMatches].sort(
     (a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)
   );
 
@@ -110,7 +123,7 @@ export function mergeLeaderboardState(
     created_at: m.created_at
   }));
 
-  const distinctPilots = new Set(matches.map((m) => m.pilot_id)).size;
+  const distinctPilots = new Set(activeMatches.map((m) => m.pilot_id)).size;
 
   return {
     topPilots,
@@ -118,7 +131,7 @@ export function mergeLeaderboardState(
     recentMatches,
     stats: {
       total_pilots: distinctPilots,
-      total_matches: matches.length,
+      total_matches: activeMatches.length,
       top_score: topPilots.length > 0 ? topPilots[0].final_score : 0
     }
   };

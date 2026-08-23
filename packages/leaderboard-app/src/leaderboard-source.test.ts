@@ -121,6 +121,30 @@ describe('mergeLeaderboardState', () => {
     expect(s.stats.total_matches).toBe(3);
     expect(s.stats.top_score).toBe(200);
   });
+
+  it('exclui partidas anuladas (voided) do hall da fama e do ticker (Tarefa C7)', () => {
+    const matches = [
+      makeMatch({
+        match_id: 'recordista-anulado',
+        pilot_id: 'p1',
+        final_score: 999_999,
+        created_at: '2026-01-05T00:00:00.000Z',
+        voided: true
+      }),
+      makeMatch({ match_id: 'legitima-1', pilot_id: 'p2', final_score: 500, created_at: '2026-01-01T00:00:00.000Z' }),
+      makeMatch({ match_id: 'legitima-2', pilot_id: 'p3', final_score: 300, created_at: '2026-01-02T00:00:00.000Z' })
+    ];
+
+    const s = mergeLeaderboardState(matches, []);
+
+    expect(s.topPilots.map((p) => p.match_id)).not.toContain('recordista-anulado');
+    expect(s.topPilots.map((p) => p.match_id)).toEqual(['legitima-1', 'legitima-2']);
+    expect(s.recentMatches.map((m) => m.match_id)).not.toContain('recordista-anulado');
+    expect(s.recentMatches.map((m) => m.match_id)).toEqual(['legitima-2', 'legitima-1']);
+    expect(s.stats.top_score).toBe(500);
+    expect(s.stats.total_matches).toBe(2);
+    expect(s.stats.total_pilots).toBe(2);
+  });
 });
 
 describe('pickSource', () => {

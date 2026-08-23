@@ -94,20 +94,27 @@ intermitente. `moderation-l2.test.ts` não precisa do emulador (o `generate` é 
 ## Build para deploy (monorepo)
 
 O contexto do build do Docker é `packages/cloud-api` (o comando de deploy abaixo usa
-`--source packages/cloud-api`), então o pacote irmão `@jogo/shared` — resolvido em
-desenvolvimento via workspace do npm — não está visível para o Docker. Antes de gerar a
-imagem (local ou via `gcloud run deploy`), materialize uma cópia local do `dist` já
-compilado de `@jogo/shared`:
+`--source packages/cloud-api`), então os pacotes irmãos `@jogo/shared` e `@jogo/admin-app`
+— resolvidos em desenvolvimento via workspace do npm — não estão visíveis para o Docker.
+Antes de gerar a imagem (local ou via `gcloud run deploy`), materialize uma cópia local do
+`dist` já compilado dos dois:
 
 ```bash
 npm run build --workspace=packages/shared
-npm run vendor:shared --workspace=packages/cloud-api
+npm run build --workspace=packages/admin-app
+npm run vendor --workspace=packages/cloud-api
 ```
 
-Isso escreve em `packages/cloud-api/vendor/jogo-shared/` (gitignored, regenerado a cada
-build) o material que o `Dockerfile` injeta em `node_modules/@jogo/shared` durante a
-imagem — ver os comentários no `Dockerfile` para o porquê disso e por que `ajv`,
-`ajv-formats` e `zod` também estão em `dependencies` deste pacote.
+`npm run vendor` roda `vendor:shared` e depois `vendor:admin-app` (rodáveis também em
+separado). Isso escreve em `packages/cloud-api/vendor/jogo-shared/` e
+`packages/cloud-api/vendor/admin-app-dist/` (ambos gitignored, regenerados a cada build) o
+material que o `Dockerfile` injeta na imagem: `jogo-shared/` vira
+`node_modules/@jogo/shared` (ver os comentários no `Dockerfile` para o porquê disso e por
+que `ajv`, `ajv-formats` e `zod` também estão em `dependencies` deste pacote);
+`admin-app-dist/` vira `/app/admin-app-dist`, o diretório que `ADMIN_APP_DIST` (definida
+pelo próprio `Dockerfile`) diz a `src/index.ts` para servir sob `/admin` — ver "Topologia de
+`/admin`" abaixo. `admin-app/dist` já é build final (HTML/JS/CSS estáticos via `vite build`),
+não código-fonte: o Docker só o copia, nunca o recompila.
 
 ## Deploy
 
@@ -126,13 +133,31 @@ gcloud run deploy jogo-navinha-api \
 A service account precisa de `roles/datastore.user` e, a partir da Tarefa C4,
 `roles/aiplatform.user`. **Nenhum arquivo de chave é gerado.**
 
-### Topologia pretendida para `/admin` (Tarefa C7)
+### Topologia de `/admin` (Tarefa C7)
 
-O brief pede que `packages/admin-app` compilado seja servido pelo MESMO serviço Cloud Run desta
-API, sob `/admin`, atrás do IAP — um serviço a menos para provisionar, e o IAP protege a rota
-inteira de uma vez. Este `Dockerfile`/`index.ts` **ainda não fazem isso**: o arquivo lista só
-`packages/admin-app`, `packages/cloud-api/src/*`, `firestore.rules` e
-`packages/shared/src/types/cloud.ts` como escopo desta tarefa, e não inclui o `Dockerfile`. Servir
-os estáticos do `admin-app` (build multi-stage incluindo `packages/admin-app/dist` no contexto,
-mais um `express.static('/admin', ...)` em `index.ts`) fica registrado aqui como o próximo passo
-concreto de deploy, não implementado nesta tarefa.
+O `admin-app` compilado é servido pelo MESMO serviço Cloud Run desta API, sob `/admin` — um
+serviço a menos para provisionar, e o IAP (configurado no Cloud Run, não neste repositório)
+protege a rota inteira de uma vez, tanto `/admin` (a UI) quanto `/v1/admin/*` (a API que ela
+consome). Implementação, em `src/index.ts`:
+
+- `express.static(ADMIN_APP_DIST)` montado em `/admin`, para os arquivos com hash
+  (JS/CSS) do build do Vite.
+- Uma rota de fallback (`app.get(/^\/admin(\/.*)?$/, ...)`) que devolve o mesmo
+  `index.html` para qualquer coisa sob `/admin` que não seja um arquivo estático conhecido
+  — mesmo padrão que `packages/daemon/src/index.ts` usa para servir o `player-app` (Spec 08
+  §5), adaptado para ler o arquivo com `fs.readFileSync` + `res.type('html').send(...)` em
+  vez de `res.sendFile` (o Express 5 deste pacote, diferente do Express 4 do `daemon`,
+  tornou `sendFile` mais estrito sobre a resolução do caminho; a leitura direta do arquivo
+  evita essa diferença de versão).
+- `ADMIN_APP_DIST` default para `../../admin-app/dist` relativo a `dist/index.js` — funciona
+  sem nenhuma variável de ambiente em desenvolvimento local no monorepo. O `Dockerfile`
+  sobrescreve com `ADMIN_APP_DIST=/app/admin-app-dist` porque, dentro da imagem, o build do
+  `admin-app` chega vendorizado (`vendor/admin-app-dist`, ver seção anterior), não no mesmo
+  layout relativo do monorepo.
+- Se o build não existir no caminho resolvido (`ADMIN_APP_DIST`/index.html ausente), o
+  servidor sobe normalmente e só loga um aviso — `/v1/*` continua funcionando, só `/admin`
+  fica indisponível. Isso é o que acontece se alguém rodar `node dist/index.js` sem antes
+  rodar `npm run build --workspace=packages/admin-app` (ou o `vendor:admin-app` do Docker).
+
+O IAP em si continua sendo configuração de deploy, não código — ver "Autenticação do painel
+de admin" acima.

@@ -3,6 +3,9 @@
  * Firestore diretamente; este processo é o único lugar onde a credencial privilegiada
  * (a identidade da service account do Cloud Run, sem arquivo de chave) existe.
  */
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
@@ -175,6 +178,42 @@ app.get('/v1/aliases', async (req: Request, res: Response) => {
   const aliases = await listAliasesSince(db, since);
   res.status(200).json({ aliases });
 });
+
+// --- Estáticos do admin-app (Tarefa C7, Passo 5 do brief) ---
+// "Servir o admin-app pelo MESMO container Cloud Run da API, sob /admin, atrás do IAP.
+// Um serviço a menos para provisionar, e o IAP protege a rota inteira de uma vez." O IAP em
+// si é configuração de deploy (ver README, seção de autenticação) — este bloco só serve os
+// estáticos já compilados, mesmo padrão de `packages/daemon/src/index.ts` para o player-app
+// (Spec 08 §5): `express.static` para os arquivos com hash (JS/CSS), e uma rota de fallback
+// de SPA para qualquer outra coisa sob `/admin` que não seja um arquivo estático conhecido.
+// A checagem por `/admin` explícito (não um catch-all de toda a origem) garante que isto
+// nunca compete com nenhuma rota de `/v1/*` acima, em nenhuma ordem de registro.
+// Default funciona sem nenhuma variável de ambiente em dev local (monorepo: dist/ está em
+// packages/cloud-api/dist, então '../../admin-app/dist' é packages/admin-app/dist). No
+// container Docker o Dockerfile define ADMIN_APP_DIST=/app/admin-app-dist explicitamente,
+// porque lá o build do admin-app chega vendorizado (vendor/admin-app-dist), não no mesmo
+// layout relativo do monorepo — ver Dockerfile e README ("vendor:admin-app").
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const adminAppDist = process.env.ADMIN_APP_DIST || path.resolve(__dirname, '../../admin-app/dist');
+
+const adminAppIndexHtml = path.join(adminAppDist, 'index.html');
+
+if (fs.existsSync(adminAppIndexHtml)) {
+  app.use('/admin', express.static(adminAppDist));
+  // Fallback de SPA: qualquer coisa sob /admin que o `express.static` acima não achou como
+  // arquivo (isto é, qualquer coisa que não seja um asset com hash) devolve o mesmo
+  // index.html. `res.type(...).send(...)` em vez de `res.sendFile` — mais simples de
+  // raciocinar entre versões do Express do que a validação de caminho absoluto do `sendFile`.
+  app.get(/^\/admin(\/.*)?$/, (_req: Request, res: Response) => {
+    res.type('html').send(fs.readFileSync(adminAppIndexHtml, 'utf8'));
+  });
+  console.log(`[cloud-api] Serving admin-app from ${adminAppDist}`);
+} else {
+  console.warn(
+    `[cloud-api] admin-app build not found at ${adminAppDist}. ` +
+      'Run "npm run build --workspace=packages/admin-app" before deploying.'
+  );
+}
 
 /* c8 ignore start -- bootstrap real de processo, não exercitado por teste unitário */
 if (process.env.NODE_ENV !== 'test') {
