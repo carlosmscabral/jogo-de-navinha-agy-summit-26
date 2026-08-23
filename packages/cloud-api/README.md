@@ -13,9 +13,14 @@ estande nunca fala com o Firestore diretamente — só com este serviço, via HT
   se algum item aceito ficou marcado `needs_company_review`, dispara (sem `await`, nunca no
   caminho de resposta) a varredura de canonicalização da Tarefa C4.
 - `GET /v1/health` — sem autenticação; usado pelo `self_test.sh` (Tarefa D3).
-- `POST /v1/moderate` — corpo `{ callsign: string }` → `{ verdict: 'allow' | 'block'; reason?: string }`.
-  Camada 2 de moderação (Tarefa C4, Spec 05 §3.2): bloqueante, falha FECHADA em qualquer dúvida
-  do modelo (timeout, JSON malformado, forma inesperada).
+- `POST /v1/moderate` — corpo `{ callsign: string }` →
+  `{ verdict: 'allow' | 'block' | 'unavailable'; reason?: string }`. Camada 2 de moderação
+  (Tarefa C4, Spec 05 §3.2): bloqueante, falha FECHADA (`block`) em qualquer dúvida do modelo
+  (timeout, JSON malformado, forma inesperada). Revisão final Fase C (Crítico 4): `unavailable`
+  é um terceiro veredito, distinto de `block` — cobre erro de infraestrutura/config (Vertex
+  inalcançável, `GOOGLE_CLOUD_PROJECT` ausente, IAM, cota) em que a chamada NUNCA chegou a um
+  julgamento do modelo. O daemon (`remote-moderation.ts`) já trata qualquer veredito fora de
+  `allow`/`block` como "moderação indisponível" e segue com fail-open (camada 1 local basta).
 - `POST /v1/canonicalize` — corpo `{ items: Array<{ match_id, company_raw, local_guess }> }` →
   `{ resolved: Array<{ match_id, company_canonical, confidence }> }`. Não escreve no Firestore —
   só resolve contra o modelo; quem aplica a correção é a varredura interna disparada por
@@ -74,9 +79,11 @@ serviço nunca deve ser exposto publicamente sem o IAP configurado na frente del
 
 Ver `.env.example`. Em produção, `BOOTH_INGEST_TOKEN` vem do Secret Manager (nunca de um
 arquivo commitado); `PORT` é injetada pelo Cloud Run. Desde a Tarefa C4: `GOOGLE_CLOUD_PROJECT`
-(obrigatória só na primeira chamada real ao Vertex — nunca nos testes, que injetam `generate`),
-`VERTEX_LOCATION` (default `global` — é a única região que serve `gemini-3.7-flash` hoje) e
-`MODERATION_L2_TIMEOUT_MS` (default `1500`).
+(revisão final Fase C — Crítico 4: o servidor agora recusa subir sem isto configurado, fora de
+`NODE_ENV=test` — falhar já na subida é preferível a descobrir a ausência da variável só quando
+todo visitante do evento começa a ser recusado pela moderação), `VERTEX_LOCATION` (default
+`global` — é a única região que serve `gemini-3.7-flash` hoje) e `MODERATION_L2_TIMEOUT_MS`
+(default `1500`).
 
 ## Testes locais
 
@@ -127,7 +134,8 @@ gcloud run deploy jogo-navinha-api \
   --region southamerica-east1 \
   --service-account jogo-navinha-api@PROJETO.iam.gserviceaccount.com \
   --set-secrets BOOTH_INGEST_TOKEN=booth-ingest-token:latest \
-  --no-allow-unauthenticated=false
+  --set-env-vars GOOGLE_CLOUD_PROJECT=PROJETO \
+  --no-allow-unauthenticated
 ```
 
 A service account precisa de `roles/datastore.user` e, a partir da Tarefa C4,
@@ -161,3 +169,13 @@ consome). Implementação, em `src/index.ts`:
 
 O IAP em si continua sendo configuração de deploy, não código — ver "Autenticação do painel
 de admin" acima.
+
+### Por que este pacote usa Express 5, e o `daemon` usa Express 4
+
+Diferença de propósito, não descuido (revisão final Fase C, Minor 10): quase toda rota deste
+pacote é um `async (req, res) => { ... }` que faz `await` em Firestore/Vertex sem `try/catch`
+próprio. No Express 5, uma `Promise` rejeitada dentro de um handler é encaminhada automaticamente
+para o error handler — no Express 4 (a versão do `daemon`), isso exigiria um `try/catch` manual
+em cada rota async, ou um wrapper, para não virar um `unhandledRejection` silencioso. Mantido
+como está: os dois pacotes têm razões independentes para a versão que usam, e não há nenhum
+código compartilhado entre eles que dependa de uma versão específica do Express.
