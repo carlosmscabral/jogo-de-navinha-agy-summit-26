@@ -393,6 +393,47 @@ antes do próximo evento que reusar este código.
 
 ---
 
+### 4.11 `local_matches` nunca carrega `company_raw`/`company_confidence`/`score_breakdown` — a canonicalização assíncrona da Tarefa C4 nunca dispara na prática
+
+Encontrado em 2026-08-22, durante a implementação da Tarefa C5, ao ligar o worker de sincronização
+pela primeira vez ponta a ponta.
+
+**O estado:** `MatchRecord` (`packages/shared/src/types/ship.ts:143-152`) — o tipo que o `App.tsx`
+envia a `POST /api/matches` e que `local_matches` (`sqlite-buffer.ts:129-138`) persiste — nunca teve
+`company_raw`, `company_confidence` ou `score_breakdown`. Esse tipo e essa tabela são da Fase A,
+anteriores à Spec 05 e à Tarefa C2. `getPendingMatches()` (Tarefa C5) devolve exatamente o que a
+tabela guarda, e `CloudSyncService` encaminha isso para `POST /v1/matches` sem completar os campos
+que faltam.
+
+**Por que isso não é só um campo faltando no Firestore.** A Tarefa C4 implementou a canonicalização
+assíncrona inteira — prompt com o catálogo, transação de correção nos dois agregados de
+`company_rankings`, `GET /v1/aliases` — condicionada a `needs_company_review: true` no documento.
+Nada no caminho real de escrita (estande → `saveMatch` → `local_matches` → `CloudSyncService` →
+`POST /v1/matches`) jamais define esse campo, porque ele nunca existiu no lado do estande. **O
+recurso da Tarefa C4 está implementado, testado e aprovado — e não dispara nunca em produção**, porque
+o gatilho que o aciona nunca é gravado. `company_raw` também nunca chega ao Firestore, então mesmo uma
+correção manual futura (Tarefa C7) não teria o texto original do visitante para comparar.
+
+**Por que não foi corrigido nesta tarefa:** consertar exige tocar `App.tsx` (client, já mexido pelas
+Tarefas C0 e C1), `MatchRecord` (tipo compartilhado, usado pelo simulador e pela engine), o schema de
+`local_matches` (migração de coluna) e o cálculo de confiança local que hoje só existe dentro de
+`resolveCompany` no daemon, nunca devolvido ao cliente. Nenhum arquivo desses está na lista de
+Arquivos da Tarefa C5, e forçar essa mudança ali teria misturado uma correção de schema de três tarefas
+anteriores dentro de uma tarefa que só deveria drenar o buffer existente.
+
+**O que fazer:** uma tarefa própria — candidata a **Tarefa C8** ou a uma extensão pequena da C3/C7 —
+que (1) acrescenta `company_raw`, `company_confidence` e `needs_company_review` a `MatchRecord` e à
+tabela `local_matches` (com migração, já que o banco pode ter partidas do ensaio manual da Fase B);
+(2) faz o `App.tsx` enviar `company_raw` (o texto que o visitante digitou, sem normalizar) junto com o
+`company_canonical` já resolvido; (3) faz a resposta de `resolveCompany` no daemon devolver a
+confiança, não só o nome canônico, para popular `company_confidence`. Sem isso, a Tarefa C4 é código
+morto tecnicamente correto.
+
+**Reavaliar antes do Gate M3** — é o gate que testa a sincronização ponta a ponta, e é onde esta
+lacuna teria sido descoberta de qualquer forma, só que depois do código já estar todo escrito.
+
+---
+
 ## 5. O que **não** é lacuna (verificado, apesar da aparência)
 
 Registrado para que ninguém "conserte" de novo o que já foi investigado:
