@@ -139,10 +139,12 @@ Alocado à **Tarefa C0** do [plano](./10_IMPLEMENTATION_PLAN.md).
 O placar na TV corrige o nome alguns segundos depois. É aceitável, e é a única forma de ter tanto
 resposta instantânea quanto desambiguação por modelo.
 
-**Moderação de conteúdo é o caso oposto** e permanece **bloqueante**: um callsign ofensivo no telão é
-um incidente, e vale esperar. O filtro determinístico atual roda primeiro e decide sozinho na
-maioria dos casos; a chamada ao modelo só entra na dúvida, com **falha fechada** — na dúvida, o
-codinome não vai para o telão. Ver [Spec 06](./06_RELIABILITY_FAILOVER_AND_SECURITY_SPEC.md).
+**Moderação de conteúdo tem a mesma forma, por um motivo diferente.** Um callsign ofensivo no telão é
+um incidente, mas o telão só vê o nome quando a partida acaba — minutos depois de ele ser digitado.
+O filtro determinístico (camada 1) roda no caminho crítico e decide sozinho na maioria dos casos; a
+chamada ao modelo (camada 2) é **disparada no registro e colhida na gravação da partida**, com
+**falha fechada** — na dúvida, o codinome não vai para o telão. Ver
+[Spec 06](./06_RELIABILITY_FAILOVER_AND_SECURITY_SPEC.md).
 
 > **Correção, 2026-08-24 (Gate M3, contra o projeto real).** Duas afirmações desta seção descreviam
 > um desenho que não sobreviveu ao primeiro contato com a nuvem real, e foram substituídas acima.
@@ -153,8 +155,8 @@ codinome não vai para o telão. Ver [Spec 06](./06_RELIABILITY_FAILOVER_AND_SEC
 > do hop até o Cloud Run — o abort local sempre vencia, então o `block` por timeout que a falha
 > fechada existe para emitir **nunca chegava ao daemon**. Chegava como abort, virava `unavailable`,
 > e caía no fail-open. A política estava invertida no seu exato oposto, e nenhum callsign jamais
-> tinha sido visto pelo modelo. Tetos hoje: **8000ms** no servidor, **10000ms** no daemon, nessa
-> ordem obrigatória (ver os comentários nos dois `.env.example`).
+> tinha sido visto pelo modelo. A ordem servidor **<** daemon é obrigatória para sempre (ver os
+> comentários nos dois `.env.example`); os valores mudaram de novo no mesmo dia, ver abaixo.
 >
 > **"Rejeita e pede outro callsign"** nunca existiu na interface. O `422 callsign_rejected` chegava
 > ao `player-app` como um `!res.ok` genérico, virava *"Não foi possível conectar ao servidor da
@@ -164,6 +166,30 @@ codinome não vai para o telão. Ver [Spec 06](./06_RELIABILITY_FAILOVER_AND_SEC
 > ofensivo não chega ao telão — continua cumprido; o que muda é que o visitante não trava. Efeito
 > colateral bem-vindo: sem o 422, ninguém mapeia por tentativa e erro onde fica a fronteira do
 > modelo.
+
+> **Segunda correção, 2026-08-24 (mesmo dia, depois de uma bateria de 100 callsigns).** A camada 2
+> saiu do caminho crítico. O que forçou a mudança foi uma medição, não uma preferência: com o teto
+> em 8000ms, a bateria mediu p50 de 2,7s e p90 de 4,4s, mas **a latência cresce junto com o quanto o
+> nome é ofensivo** — provável reação da própria maquinaria de segurança do Vertex ao prompt, que por
+> construção carrega o texto ofensivo. As duas siglas nazistas da bateria foram as duas mais lentas
+> por uma margem enorme (47,8s e 78,0s); os termos ligados a matar vieram em seguida (14,8s e 16,2s);
+> o mais leve, mais rápido (8,3s). O serviço é mais lento exatamente onde ele mais importa, e **não
+> existe teto sensato que caiba em 78s com uma pessoa esperando na tela de cadastro**.
+>
+> A saída não é teto nenhum: é notar que **o callsign não precisa estar certo quando é digitado, só
+> quando chega ao telão**. Desde `fa3b3fb`, o `POST /api/session/start` dispara a camada 2 e devolve
+> na hora o veredito da camada 1 (`packages/daemon/src/services/pending-moderation.ts`); o
+> `POST /api/matches` aguarda a promessa e sobrescreve o callsign antes de gravar. É o mesmo padrão
+> assíncrono da canonicalização de empresa acima, e da Spec 08 §6.2. Dois efeitos:
+> - **Os tetos deixam de ser orçamento de paciência.** Hoje: **20000ms** no servidor, **25000ms** no
+>   daemon. Vereditos legítimos que antes viravam fail-closed por timeout (11,5s, 14,8s, 16,2s)
+>   agora chegam de verdade.
+> - **Fecha um buraco que existia antes:** um `POST /api/matches` direto, com qualquer callsign no
+>   corpo, pulava a moderação inteira. Agora o daemon sobrescreve o campo com o resultado da sessão.
+>
+> A falha fechada do servidor continua sendo a política certa, e a bateria provou por quê: **9 dos 16
+> estouros originais eram nomes genuinamente ofensivos**, incluindo `SS_PANZER`. Fail-open teria posto
+> os nove no telão.
 
 ### 3.3. Moderação do campo empresa — lacuna encontrada em 2026-08-22
 

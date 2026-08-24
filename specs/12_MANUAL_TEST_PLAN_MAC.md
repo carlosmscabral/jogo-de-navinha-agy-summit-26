@@ -1100,6 +1100,18 @@ palavrão o efeito é aceitável, porque o `sanitized` vira `PILOTO_###`".
 > codinome nem é editável. Ver a correção na Spec 05 §3.2. Um `block` da camada 2 hoje é visível só
 > no log do daemon: `[Daemon] Camada 2 recusou "<nome>" (<motivo>)`.
 
+> **A camada 2 não responde mais dentro do `/api/session/start`** (`fa3b3fb`, 2026-08-24). Ela é
+> disparada ali e colhida no `POST /api/matches`, depois da partida — ver Spec 05 §3.2. Consequência
+> para este bloco: a resposta do `curl` acima **sempre** traz o veredito da camada 1 e nada mais,
+> mesmo para um nome que a camada 2 vá reprovar. Para observar a camada 2:
+> - o log do daemon aparece alguns segundos depois do `200`, não junto dele;
+> - o callsign trocado só existe no registro da partida (`local_matches` e Firestore), não na
+>   resposta do registro.
+>
+> Para testar a camada 2 isoladamente, sem passar por uma sessão, use a bateria:
+> `node scripts/moderation-bench.mjs --concurrency 1` (bate direto no `POST /v1/moderate`).
+> Use `--concurrency 1`: o estande é serial, e paralelizar mede a fila do Vertex, não o serviço.
+
 Repita trocando só o `callsign` para `"SKILLER"` (e resete de novo depois):
 
 **Critério:** aceito, com `pilot.callsign` igual a `SKILLER` — o filtro de containment não pode
