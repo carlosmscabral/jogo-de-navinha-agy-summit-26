@@ -807,12 +807,15 @@ deixa o sistema tentando reconectar e pode gerar tráfego que confunde a aba Net
 
 ## Bloco 10 — Preparação para M3 (uma vez)
 
-- [ ] **10.1 — `main` atualizada, no commit certo**
+- [ ] **10.1 — `main` atualizada, no commit certo, dependências instaladas**
 
 ```bash
 git checkout main && git pull
 git log --oneline -1     # deve mostrar f3172ab ou mais recente
 git status --short       # vazio
+npm install              # ESSENCIAL: Fase C trouxe a dependência `firebase` (admin-app e
+                          # leaderboard-app) e outras novas — pular este passo faz o Bloco 11
+                          # falhar no build local com "Cannot find module 'firebase/app'"
 ```
 
 - [ ] **10.2 — Limpar o SQLite local antigo**
