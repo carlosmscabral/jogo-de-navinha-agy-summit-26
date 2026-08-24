@@ -929,6 +929,11 @@ Esperado: os cinco testes passam.
 
 Em `packages/daemon/src/index.ts`, acrescentar após a função `broadcast` criada na Tarefa A2:
 
+> **Histórico.** Os números deste bloco são os planejados, e já não são os que rodam. O relógio único
+> de 15s virou quatro fases após os Gates M2 e M3 (2026-08-16 e 2026-08-24). Para os valores
+> vigentes e a invariante entre eles, ver
+> [Spec 06](./06_RELIABILITY_FAILOVER_AND_SECURITY_SPEC.md) §1.1 e `packages/daemon/.env.example`.
+
 ```ts
 const AGY_SILENCE_TIMEOUT_MS = Number(process.env.AGY_SILENCE_TIMEOUT_MS) || 15_000;
 const AGY_HARD_TIMEOUT_MS = Number(process.env.AGY_HARD_TIMEOUT_MS) || 150_000;

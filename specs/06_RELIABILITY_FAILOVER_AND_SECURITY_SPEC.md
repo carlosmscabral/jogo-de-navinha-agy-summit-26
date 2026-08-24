@@ -25,11 +25,28 @@ Os três presets **existem e estão corretos** (`packages/shared/src/constants/f
 é um botão manual em `HandoffTerminalScreen.tsx`. Se o `agy` travar, se a autenticação expirar, ou se o
 modelo simplesmente não gravar o arquivo, a estação fica parada até que alguém do staff perceba.
 
-**Requisito.** O daemon arma três gatilhos independentes. O primeiro que disparar injeta o preset:
+**Requisito.** O daemon arma quatro gatilhos independentes. O primeiro que disparar injeta o preset:
 
-- **Silêncio de 15s** após a primeira linha de `mcp_audit.log`, rearmado a cada nova linha.
-- **Teto rígido de 150s** desde `.session_active`, protegendo o SLA do ciclo.
+- **75s da abertura da sessão até a primeira linha de `mcp_audit.log`** (`AGY_PRE_MCP_SILENCE_TIMEOUT_MS`).
+  Não é silêncio no sentido dos outros: o daemon é cego à conversa do Fast-Grill-Me, então este
+  relógio é armado uma vez e nunca rearmado nesta fase. É o orçamento somado do visitante lendo e
+  respondendo duas perguntas *e* do modelo pensando.
+- **Silêncio de 30s entre chamadas de MCP**, depois da primeira (`AGY_SILENCE_TIMEOUT_MS`), rearmado a
+  cada nova linha. Aqui o ritmo é de máquina, e parada longa é travamento de verdade.
+- **Silêncio de 90s depois do gate de auditoria** (`AGY_POST_AUDIT_TIMEOUT_MS`), cobrindo a fase dos
+  sub-agentes narrativos e visuais, legitimamente mais lenta.
+- **Teto rígido de 165s** desde `.session_active` (`AGY_HARD_TIMEOUT_MS`), armado uma vez e nunca
+  rearmado. Invariante: tem que ser ≥ 75s + 90s, porque as duas fases acontecem em sequência — um
+  teto menor mata uma sessão que está progredindo dentro de cada janela.
 - **Morte do processo** do `agy` sem spec aceita.
+
+> **Revisão de 2026-08-24.** Esta lista dizia "três gatilhos", "silêncio de 15s" e "teto de 150s".
+> Os três números estavam defasados: a fase pré-MCP e a pós-auditoria foram separadas em 2026-08-16
+> (o relógio único matava o `agy` no meio da conversa com o visitante), e o pré-MCP subiu de 60s para
+> 75s hoje, para cobrir também o modelo lento — o que obrigou o teto rígido a subir junto, pela
+> invariante acima. O SLA do ciclo (§1 da [Spec 01](./01_BOOTH_AND_EXPERIENCE_SPEC.md): meta 2m30s,
+> teto 3m00s) cobre a jornada inteira, não só a forja; uma sessão que vai até os 165s estoura a meta
+> sozinha. Isso já valia com 150s, e é o confronto que o cronômetro do Gate M4 tem que fazer.
 
 Ao disparar:
 
@@ -59,7 +76,7 @@ Tela 2, o foco está no terminal, e o hotkey não responde.
 | :--- | :--- | :--- |
 | Registro | 60s | Volta para a tela de atração |
 | Builder | 120s | Volta para a tela de atração |
-| Handoff / forja | 15s de silêncio ou 150s no total | Fallback automático, §1.1 |
+| Handoff / forja | 75s até o 1º MCP, 30s entre MCPs, 90s pós-auditoria, ou 165s no total | Fallback automático, §1.1 |
 | Debrief | 45s | Envia a partida e volta para a atração |
 
 E um caminho de reset independente do foco do browser: `reset_booth.sh` no terminal da Tela 2, que já

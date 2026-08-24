@@ -698,8 +698,12 @@ JSON que `build_metadata.fallback_used` é `true`.
 
 Comece uma sessão e simplesmente **não responda** ao `agy`.
 
-**Critério:** o timeout de silêncio (15s, `AGY_SILENCE_TIMEOUT_MS`) dispara o fallback. Se você
-responder e o agente já tiver chamado MCPs, vale o timeout pós-auditoria, mais generoso (90s).
+**Critério:** o fallback dispara em **75s** (`AGY_PRE_MCP_SILENCE_TIMEOUT_MS`) — este é o relógio que
+vale enquanto nenhuma ferramenta MCP tiver sido chamada, e ele não é rearmado pela conversa, porque o
+daemon não a enxerga. Se você responder e o agente já tiver chamado MCPs, passam a valer os relógios
+mais curtos entre chamadas (30s, `AGY_SILENCE_TIMEOUT_MS`) e, depois do gate de auditoria, o mais
+generoso (90s, `AGY_POST_AUDIT_TIMEOUT_MS`). Em qualquer caminho, o teto rígido de 165s
+(`AGY_HARD_TIMEOUT_MS`) é a última rede. Ver [Spec 06](./06_RELIABILITY_FAILOVER_AND_SECURITY_SPEC.md) §1.1.
 
 ---
 

@@ -48,12 +48,30 @@ function broadcast(message: Record<string, unknown>): void {
 // nunca foi pouco tempo pra "o agente travou"; era pouco tempo pra "um humano leu duas perguntas
 // e digitou duas respostas". Ver AGY_SILENCE_TIMEOUT_MS abaixo para a fase que continua rápida
 // por natureza (chamadas de ferramenta são automáticas, não esperam humano).
-const AGY_PRE_MCP_SILENCE_TIMEOUT_MS = Number(process.env.AGY_PRE_MCP_SILENCE_TIMEOUT_MS) || 60_000;
+//
+// 60s -> 75s em 2026-08-24. Este número NÃO mede silêncio: como o daemon é cego à conversa, o
+// relógio é armado uma única vez no início da sessão e nunca é rearmado antes da primeira chamada
+// de MCP. Ele é, na prática, o orçamento total de "sessão iniciada até a primeira ferramenta" — e
+// esse orçamento cobre duas coisas somadas: o visitante lendo/respondendo E o modelo pensando. Um
+// modelo lento ou momentaneamente travado consome o mesmo relógio que o humano, e era esse o caso
+// que os 60s não cobriam.
+const AGY_PRE_MCP_SILENCE_TIMEOUT_MS = Number(process.env.AGY_PRE_MCP_SILENCE_TIMEOUT_MS) || 75_000;
 // Vale só DEPOIS da primeira ferramenta MCP já ter sido chamada: daqui pra frente é o `agy`
 // encadeando chamadas de tool sozinho, sem esperar resposta de humano, então o ritmo é de
 // máquina -- 30s de silêncio nessa fase é sinal real de travamento, não de gente pensando.
 const AGY_SILENCE_TIMEOUT_MS = Number(process.env.AGY_SILENCE_TIMEOUT_MS) || 30_000;
-const AGY_HARD_TIMEOUT_MS = Number(process.env.AGY_HARD_TIMEOUT_MS) || 150_000;
+// INVARIANTE: este teto tem que ser >= AGY_PRE_MCP_SILENCE_TIMEOUT_MS + AGY_POST_AUDIT_TIMEOUT_MS.
+// Ele é absoluto (armado no início da sessão, nunca rearmado — ver `hardTimer` mais abaixo),
+// enquanto os outros dois são orçamentos de fases que acontecem em SEQUÊNCIA. Se a soma passar
+// deste teto, existe uma sessão que está progredindo normalmente, dentro de cada janela de fase,
+// e mesmo assim morre aqui no meio da geração — o visitante recebe fallback sem que nada tenha
+// travado. Até 2026-08-24 os números fechavam exatos (60 + 90 = 150); subir o pré-MCP para 75s
+// quebraria a soma, então o teto subiu junto, para 165s.
+//
+// O SLA do ciclo do visitante (Spec 01 §1: meta 2m30s, teto 3m00s) cobre a jornada INTEIRA, não
+// só a forja. Com 165s aqui, uma sessão que vai até o teto já estoura a meta sozinha. Isso não é
+// novo — 150s já estourava — mas é o número que o cronômetro do Gate M4 tem que confrontar.
+const AGY_HARD_TIMEOUT_MS = Number(process.env.AGY_HARD_TIMEOUT_MS) || 165_000;
 const AGY_POST_AUDIT_TIMEOUT_MS = Number(process.env.AGY_POST_AUDIT_TIMEOUT_MS) || 90_000;
 const AGY_LIVENESS_POLL_MS = 1_000;
 
@@ -371,8 +389,8 @@ app.post('/api/session/start', async (req, res) => {
     // Sem isto, `silenceTimer` só nasce dentro de onMcpActivity/onSpecRejected/
     // onAuditGateSatisfied -- se o agy nunca chegar a chamar uma ferramenta (sessão inerte desde
     // o início, ship_spec.json corrompido antes de qualquer atividade), nenhum desses três dispara
-    // e a única rede de segurança que sobra é o teto rígido de 150s, dez vezes mais que os 15s
-    // prometidos ao visitante. Achado no Bloco 6.1 (2026-08-16): sessão sem interação nenhuma
+    // e a única rede de segurança que sobra é o teto rígido (AGY_HARD_TIMEOUT_MS), muitas vezes
+    // maior que a janela prometida ao visitante. Achado no Bloco 6.1 (2026-08-16): sessão sem interação nenhuma
     // ficou presa na tela de forja bem além de 15s, sem nenhuma atividade de MCP nos logs.
     armSilenceTimer(energy_sliders, 'sessão iniciada sem atividade');
     livenessTimer = setInterval(() => {
