@@ -893,18 +893,15 @@ BOOTH_CLOUD_API_BASE=<URL do Cloud Run do passo 11.2>
 BOOTH_INGEST_TOKEN=<valor gerado no passo 11.1>
 ```
 
-- [ ] **11.4 — IAP — decisão consciente, não padrão**
+- [ ] **11.4 — Sem IAP, de propósito (corrigido ao vivo em 2026-08-24)**
 
-Sem `--with-iap`, o serviço fica protegido só pela senha HTTP Basic (`ADMIN_PANEL_PASSWORD`) — que
-funciona para este teste, mas **não é a topologia final** decidida na Tarefa C10 para o evento real.
-Duas opções, registre qual você escolheu no §17:
-
-```bash
-# Opção A: tentar ligar via CLI agora (pode precisar do Console na primeira vez — ver aviso do script)
-PROJECT_ID=vibe-cabral npm run deploy:gcp -- --yes --with-iap
-
-# Opção B: deixar para configurar pelo Console antes do evento, testar hoje sem IAP
-```
+O serviço sobe com `--allow-unauthenticated` e fica protegido só pela senha HTTP Basic
+(`ADMIN_PANEL_PASSWORD`) — e **isto é a topologia final**, não um atalho de teste. A tentativa
+original de usar IAP além da senha foi corrigida durante o primeiro deploy real: IAP no Cloud Run
+é por serviço inteiro, sem exceção de rota, e bloquearia `/v1/matches` (a ingestão do estande)
+junto com `/v1/admin/*`. `npm run deploy:gcp -- --with-iap` recusa com essa explicação em vez de
+ligar algo que quebraria o estande — nada a fazer aqui além de confirmar que a senha entra
+(Bloco 14.2).
 
 ---
 
@@ -1150,8 +1147,8 @@ pressas no dia do evento.
 Depois de fechar M3, decida entre manter o ambiente no ar (se `vibe-cabral` já é o projeto do
 evento) ou desmontar (se isto foi um projeto de teste separado, ou você quer recomeçar do zero).
 
-- [ ] **16.1 — Manter** — nada a fazer. Considere rodar `npm run deploy:gcp -- --yes --with-iap`
-  se ainda não ligou o IAP (Bloco 11.4), antes do evento.
+- [ ] **16.1 — Manter** — nada a fazer. A senha HTTP Basic já é a topologia final (Bloco 11.4) —
+  não há IAP para ligar depois.
 - [ ] **16.2 — Desmontar a nuvem** (só se este NÃO for o projeto do evento):
 
 ```bash
@@ -1178,7 +1175,7 @@ Projeto GCP:              ____________
 Região:                   ____________
 Commit (git rev-parse --short HEAD):  ____________
 Chrome (versão exata, Bloco 15.1):     ____________
-IAP ligado?  [ ] sim  [ ] não (só senha HTTP Basic)
+Auth do painel: só senha HTTP Basic, sem IAP (topologia final, Bloco 11.4)
 
 Bloco 11 — provisionamento            [ ] passou  [ ] falhou
 Bloco 12 — validação no emulador      [ ] passou  [ ] falhou
@@ -1212,10 +1209,14 @@ autenticações separadas — rode `firebase login` também, não só `gcloud au
 se o Cloud Run falhar por permissão logo após `deploy.sh` criar a service account, espere um
 pouco e tente de novo antes de investigar mais fundo.
 
-**`--with-iap` falha na primeira vez num projeto novo.** Esperado — a tela de consentimento OAuth
-("brand") do projeto ainda não existe, e criá-la por CLI é frágil. Ligue o IAP uma vez pelo
-Console (Segurança → Identity-Aware Proxy) e rode `deploy.sh` de novo sem `--with-iap` nas
-próximas vezes.
+**`403` em tudo, mesmo com a senha certa.** Sintoma de `--no-allow-unauthenticated` no deploy do
+Cloud Run — a plataforma recusa antes do código do serviço rodar, então nem a senha HTTP Basic nem
+o token do estande chegam a ser checados. `deploy.sh` já usa `--allow-unauthenticated` desde
+2026-08-24; se você vir isto, confirme que está na `main` atualizada (`git log --oneline -1`).
+
+**`--with-iap` recusa com uma explicação.** Esperado, de propósito (não é um bug a contornar): IAP
+no Cloud Run é por serviço inteiro, e ligá-lo bloquearia `/v1/matches` — a ingestão do estande —
+junto com o painel. Não há flag para isentar uma rota. Rode sem `--with-iap`.
 
 **Faturamento não habilitado.** Firestore, Cloud Run e Vertex AI exigem uma conta de faturamento
 vinculada ao projeto — se `deploy.sh` falhar bem no início com um erro de billing, é isto, não um

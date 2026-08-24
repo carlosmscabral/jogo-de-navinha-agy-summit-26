@@ -66,34 +66,37 @@ para o porquê.
   à nuvem; `ingestBatch`'s `rejected[]` volta síncrono na resposta HTTP e não é persistido) — o
   endpoint devolve listas vazias com uma nota explicando isso, em vez de inventar dado.
 
-### Autenticação do painel de admin (Tarefas C7 e C10): IAP e senha HTTP Basic, um serviço só
+### Autenticação do painel de admin (Tarefas C7 e C10): senha HTTP Basic, sem IAP
 
-`/admin` (o `admin-app` compilado) e `/v1/admin/*` (acima) devem ficar, em produção, atrás do
-**Identity-Aware Proxy** do Cloud Run, configuração de deploy, não código — ver "Deploy" abaixo.
-IAP autentica com a conta Google de quem opera, sem nenhum segredo novo no sistema.
+**Corrigido ao vivo em 2026-08-24, no primeiro deploy real** — a versão anterior desta seção dizia
+que o IAP protegeria o painel por cima da senha, "um serviço só". Isso está **errado**: IAP no
+Cloud Run é por **serviço inteiro**, não por rota. Ligá-lo bloquearia `/v1/admin/*` **e**
+`/v1/matches` juntos, porque não existe forma de isentar uma rota específica — exatamente o
+problema que motivou a Tarefa C10 em primeiro lugar (a máquina do estande não tem identidade
+Google, só o token Bearer da Tarefa C3). A "solução" documentada antes não resolvia esse problema,
+só o escondia atrás de uma frase — descoberto quando `gcloud run deploy` real, com
+`--no-allow-unauthenticated`, rejeitava com 403 **tudo**, inclusive requisições com a senha certa,
+porque a checagem da plataforma acontece antes do código do serviço rodar.
 
-O `BOOTH_INGEST_TOKEN` da Tarefa C3 **não serve para isto**: é um token de escopo único que vive
-na máquina do estande — exatamente a máquina que não pode ter privilégio administrativo. Por isso
-as rotas `/v1/admin/*` são montadas em `index.ts` ANTES do middleware que checa esse token, e
-nunca o exigem.
+**A topologia real, de serviço único:** o Cloud Run sobe com `--allow-unauthenticated` — a
+plataforma deixa todo o tráfego HTTP chegar ao código, e a autenticação é inteiramente de
+**aplicação**:
+- `/v1/matches` (e as demais rotas não-administrativas) exigem o `BOOTH_INGEST_TOKEN` via
+  `Authorization: Bearer` (`isAuthorized`, Tarefa C3).
+- `/v1/admin/*` e o bloco estático de `/admin` exigem `ADMIN_PANEL_PASSWORD` via HTTP Basic
+  (`isAdminAuthorized`, `src/admin-auth.ts`, Tarefa C10) — comparação em tempo constante, sem
+  sessão, sem cookie, sem dependência nova. O navegador mostra o prompt nativo de login sozinho;
+  nenhuma mudança foi necessária no `admin-app` para isso.
 
-Revisão final Fase C, achado crítico: `/v1/admin/*` não tinha nenhuma autenticação própria em
-código, e IAP sozinho não convive bem com o token do estande no mesmo serviço Cloud Run (o IAP
-intercepta toda a origem, inclusive `POST /v1/matches`, que a máquina do estande precisa alcançar
-sem uma identidade Google). Decisão da Tarefa C10: manter **um serviço só** (nenhum serviço novo
-para provisionar), IAP continua protegendo por identidade Google, e uma senha HTTP Basic simples
-entra em código por cima, cobrindo tanto `/v1/admin/*` quanto o bloco estático de `/admin` —
-`isAdminAuthorized` (`src/admin-auth.ts`), mesmo padrão de comparação em tempo constante de
-`isAuthorized`, sem sessão, sem cookie, sem dependência nova. O navegador mostra o prompt nativo
-de login sozinho; nenhuma mudança foi necessária no `admin-app` para isso (Basic Auth é resolvido
-pelo navegador, que reenvia a credencial automaticamente depois do primeiro prompt).
+**IAP não é usado nesta topologia**, e `scripts/deploy.sh --with-iap` recusa com essa explicação em
+vez de ligar algo que quebraria o estande. Se o painel precisar um dia de uma segunda camada de
+identidade Google, a única forma correta é um **segundo serviço Cloud Run**, separado do de
+ingestão — decisão de arquitetura em aberto, não algo que uma flag de script resolve.
 
-Consequência para desenvolvimento local: sem IAP na frente (rodando contra o emulador, como nos
-testes deste pacote), `/v1/admin/*` e `/admin` agora exigem `ADMIN_PANEL_PASSWORD` mesmo assim —
-um servidor que sobe sem essa variável recusa toda requisição administrativa, mesmo padrão de
-`isAuthorized`/`BOOTH_INGEST_TOKEN`. Isso é intencional: a senha não depende do IAP estar presente,
-mas o serviço ainda nunca deve ser exposto publicamente sem o IAP configurado na frente dele — a
-senha é uma segunda camada, não um substituto.
+A senha (`ADMIN_PANEL_PASSWORD`) é, portanto, a **única** camada de autenticação do painel — gerada
+por `deploy.sh` com `openssl rand -base64 32` (entropia suficiente para não depender de uma segunda
+camada). Um servidor que sobe sem essa variável recusa toda requisição administrativa, mesmo padrão
+de `isAuthorized`/`BOOTH_INGEST_TOKEN`.
 
 ## Variáveis de ambiente
 
@@ -161,9 +164,10 @@ account — nunca o banco Firestore, a menos que `--delete-database` seja passad
 e o operador digite `EXCLUIR`). Ver `scripts/deploy.sh`/`scripts/undeploy.sh` para os passos
 exatos e todas as variáveis de ambiente aceitas.
 
-O comando manual abaixo é o que `deploy.sh` roda no passo 7 (Cloud Run) — documentado aqui
-porque é o passo que o script sozinho não decide por você: se rodar com `--with-iap` ou deixar
-o IAP para configurar depois pelo Console (ver "Autenticação do painel de admin" acima).
+O comando manual abaixo é o que `deploy.sh` roda no passo 7 (Cloud Run) — documentado aqui para
+referência. **`--allow-unauthenticated`, não `--no-allow-unauthenticated`** — ver "Autenticação do
+painel de admin" acima para o porquê (a plataforma precisa deixar o tráfego passar; o código faz a
+autenticação real).
 
 ```bash
 gcloud run deploy jogo-navinha-api \
@@ -173,7 +177,7 @@ gcloud run deploy jogo-navinha-api \
   --set-secrets BOOTH_INGEST_TOKEN=booth-ingest-token:latest \
   --set-secrets ADMIN_PANEL_PASSWORD=admin-panel-password:latest \
   --set-env-vars GOOGLE_CLOUD_PROJECT=PROJETO \
-  --no-allow-unauthenticated
+  --allow-unauthenticated
 ```
 
 A service account precisa de `roles/datastore.user` e, a partir da Tarefa C4,
@@ -186,9 +190,9 @@ gerado.**
 ### Topologia de `/admin` (Tarefa C7)
 
 O `admin-app` compilado é servido pelo MESMO serviço Cloud Run desta API, sob `/admin` — um
-serviço a menos para provisionar, e o IAP (configurado no Cloud Run, não neste repositório)
-protege a rota inteira de uma vez, tanto `/admin` (a UI) quanto `/v1/admin/*` (a API que ela
-consome). Implementação, em `src/index.ts`:
+serviço a menos para provisionar. A senha HTTP Basic (`isAdminAuthorized`, ver "Autenticação do
+painel de admin" acima) protege a rota inteira de uma vez, tanto `/admin` (a UI) quanto
+`/v1/admin/*` (a API que ela consome). Implementação, em `src/index.ts`:
 
 - `express.static(ADMIN_APP_DIST)` montado em `/admin`, para os arquivos com hash
   (JS/CSS) do build do Vite.
@@ -209,8 +213,7 @@ consome). Implementação, em `src/index.ts`:
   fica indisponível. Isso é o que acontece se alguém rodar `node dist/index.js` sem antes
   rodar `npm run build --workspace=packages/admin-app` (ou o `vendor:admin-app` do Docker).
 
-O IAP em si continua sendo configuração de deploy, não código — ver "Autenticação do painel
-de admin" acima.
+Ver "Autenticação do painel de admin" acima para por que não há IAP nesta topologia.
 
 ### Por que este pacote usa Express 5, e o `daemon` usa Express 4
 

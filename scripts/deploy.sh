@@ -10,8 +10,14 @@
 # Uso:
 #   ./scripts/deploy.sh                # provisiona vibe-cabral, pede confirmação
 #   ./scripts/deploy.sh --yes          # sem confirmação (CI, automação)
-#   ./scripts/deploy.sh --with-iap     # também tenta ligar o IAP (ver aviso abaixo)
+#   ./scripts/deploy.sh --with-iap     # recusa com explicação — IAP no Cloud Run é por
+#                                      # serviço inteiro, e bloquearia a ingestão do estande
+#                                      # junto (ver Passo 8/8 abaixo, corrigido em 2026-08-24)
 #   PROJECT_ID=outro-projeto ./scripts/deploy.sh   # outro projeto GCP
+#
+# O serviço sobe com --allow-unauthenticated de propósito: as duas credenciais deste
+# projeto (o token Bearer do estande, a senha HTTP Basic do painel) são autenticação de
+# APLICAÇÃO — só funcionam se a plataforma deixar o tráfego chegar ao código.
 set -euo pipefail
 
 PROJECT_ID="${PROJECT_ID:-vibe-cabral}"
@@ -150,8 +156,13 @@ npm run vendor --workspace=packages/cloud-api
 
 echo ""
 echo "-- 7/8: Deploy do Cloud Run --"
-# Sem --allow-unauthenticated: o serviço nunca fica público sem o IAP configurado por cima
-# (ver Passo 8 e o README do cloud-api, seção "Autenticação do painel de admin").
+# CORRIGIDO ao vivo, 2026-08-24: era --no-allow-unauthenticated. Isso está ERRADO para esta
+# arquitetura — com o Cloud Run exigindo autenticação própria (IAM da plataforma), toda
+# requisição sem identidade Google é recusada com 403 ANTES de chegar ao código do serviço,
+# inclusive o token Bearer do estande (Tarefa C3) e a senha HTTP Basic do painel (Tarefa C10).
+# As duas camadas de autenticação deste projeto são de APLICAÇÃO, de propósito — só funcionam
+# se a plataforma deixar o tráfego passar. --allow-unauthenticated é o correto aqui: o serviço
+# fica alcançável na rede, e o código (`isAuthorized`/`isAdminAuthorized`) decide quem entra.
 gcloud run deploy "$SERVICE_NAME" \
   --source packages/cloud-api \
   --region "$REGION" \
@@ -160,36 +171,32 @@ gcloud run deploy "$SERVICE_NAME" \
   --set-secrets "BOOTH_INGEST_TOKEN=${BOOTH_TOKEN_SECRET}:latest" \
   --set-secrets "ADMIN_PANEL_PASSWORD=${ADMIN_PASSWORD_SECRET}:latest" \
   --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID},VERTEX_LOCATION=${VERTEX_LOCATION}" \
-  --no-allow-unauthenticated
+  --allow-unauthenticated
 
 SERVICE_URL="$(gcloud run services describe "$SERVICE_NAME" --region "$REGION" --project "$PROJECT_ID" --format='value(status.url)')"
 
 echo ""
 echo "-- 8/8: IAP --"
 if [ "$WITH_IAP" -eq 1 ]; then
-  echo "Tentando ligar o IAP via CLI (--with-iap)..."
-  echo "AVISO: a própria Google recomenda usar o Console na PRIMEIRA vez que o IAP é ligado"
-  echo "num projeto, porque a tela de consentimento OAuth ('brand') precisa existir antes, e"
-  echo "criá-la por CLI é mais frágil que pelo Console. Se o comando abaixo falhar por causa"
-  echo "disso, ligue o IAP uma vez pelo Console (Segurança > Identity-Aware Proxy) e rode este"
-  echo "script de novo sem --with-iap nas próximas vezes — os passos 1-7 continuam idempotentes."
-  gcloud run services update "$SERVICE_NAME" --region "$REGION" --project "$PROJECT_ID" --iap
-  gcloud beta services identity create --service=iap.googleapis.com --project="$PROJECT_ID" >/dev/null 2>&1 || true
-  PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
-  gcloud run services add-iam-policy-binding "$SERVICE_NAME" \
-    --region "$REGION" --project "$PROJECT_ID" \
-    --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-iap.iam.gserviceaccount.com" \
-    --role="roles/run.invoker"
+  echo "ERRO: --with-iap foi pedido, mas IAP no Cloud Run é POR SERVIÇO, não por rota."
+  echo "Ligá-lo aqui bloquearia '/v1/matches' também — o estande, que só carrega o token"
+  echo "Bearer da Tarefa C3 e nenhuma identidade Google, tomaria o MESMO 403 que motivou"
+  echo "esta correção. Isso não é uma limitação deste script: é uma limitação do IAP em"
+  echo "Cloud Run (confirmado na documentação oficial, 2026-08-24) — não existe forma de"
+  echo "isentar '/v1/matches' do IAP num único serviço."
   echo ""
-  echo "IAP ligado. Falta autorizar cada operador do painel individualmente:"
-  echo "  gcloud beta iap web add-iam-policy-binding --resource-type=cloud-run \\"
-  echo "    --service=$SERVICE_NAME --region=$REGION --project=$PROJECT_ID \\"
-  echo "    --member=user:EMAIL_DO_OPERADOR --role=roles/iap.httpsResourceAccessor"
+  echo "Para usar IAP de verdade, o painel precisaria de um SEGUNDO serviço Cloud Run,"
+  echo "separado do de ingestão — decisão de arquitetura fora do escopo deste script."
+  echo "Recusando ligar o IAP. Rode sem --with-iap; a senha HTTP Basic é a única camada"
+  echo "de autenticação do painel nesta topologia de serviço único, e é suficiente desde"
+  echo "que 'ADMIN_PANEL_PASSWORD' seja um valor forte (gerado por este script) e o serviço"
+  echo "não seja anunciado publicamente."
+  exit 1
 else
-  echo "Não solicitado (rode com --with-iap para tentar, ou configure pelo Console)."
-  echo "IMPORTANTE: sem IAP na frente, '$SERVICE_URL/admin' e '/v1/admin/*' ficam protegidos"
-  echo "só pela senha HTTP Basic (ADMIN_PANEL_PASSWORD) — funciona, mas não é a topologia final"
-  echo "decidida na Tarefa C10. Não deixe rodando assim durante o evento."
+  echo "IAP não é usado nesta topologia de serviço único (ver Tarefa C10, corrigido em"
+  echo "2026-08-24): protegeria '/v1/admin/*' mas bloquearia '/v1/matches' junto, já que o"
+  echo "IAP do Cloud Run é por serviço inteiro, não por rota. A senha HTTP Basic"
+  echo "(ADMIN_PANEL_PASSWORD) é a única camada de autenticação do painel aqui, por desenho."
 fi
 
 echo ""

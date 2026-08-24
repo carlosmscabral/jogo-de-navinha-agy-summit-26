@@ -155,7 +155,7 @@ que a memória da conversa que a criou tiver evaporado.
 | `packages/sim/` | Pacote novo: simulador headless de balanceamento. |
 | `packages/cloud-api/` | Pacote novo: serviço Cloud Run de ingestão, moderação e canonicalização. |
 | `packages/cloud-api/src/admin.ts` | Rotas `/v1/admin/*`: busca e correção de partidas, catálogo, saúde (C7). |
-| `packages/admin-app/` | Pacote novo: painel de administração, atrás de IAP (C7). |
+| `packages/admin-app/` | Pacote novo: painel de administração, atrás de senha HTTP Basic — sem IAP (C7, corrigido na C10). |
 | `scripts/lib/platform.sh` | Detecção de plataforma e caminhos comuns aos quatro scripts. |
 | `scripts/setup_monitors.sh`, `launch_kiosks.sh`, `reset_booth.sh`, `self_test.sh` | Operação do estande (U4, U5). |
 | `scripts/soak_matches.mjs` | Teste de carga de 100 partidas (U6). |
@@ -5371,11 +5371,21 @@ scores** e **gerenciar o catálogo de empresas** sem editar um arquivo por SSH n
 > encontrou uma contradição nesta afirmação: IAP é proteção **de todo o serviço** Cloud Run, e este
 > serviço também recebe o token de ingestão do estande (Tarefa C3) — com IAP ligado, o estande é
 > recusado pelo IAP antes de chegar ao token; com IAP desligado, `/v1/admin/*` fica aberto ao público.
-> Decisão: manter **um serviço só** (não abrir um segundo Cloud Run), IAP continua na frente por
-> identidade Google, **mais uma senha simples por HTTP Basic Auth** só nas rotas `/v1/admin/*` e em
-> `/admin` — ver **Tarefa C10**. A senha não é o "vaza fácil" que este parágrafo original temia: ela
-> nunca é digitada pelo visitante, só pelo operador administrando o painel, numa aba separada da que
-> o estande usa.
+> Decisão inicial (depois corrigida — ver o bloco abaixo, 2026-08-24): manter **um serviço só**,
+> "IAP continua na frente por identidade Google, mais uma senha HTTP Basic por cima" — ver
+> **Tarefa C10**.
+>
+> **Segunda correção, ao vivo no primeiro deploy real, 2026-08-24.** A decisão de 2026-08-23 acima
+> não resolvia a contradição que ela mesma descreveu — só a escondia atrás de uma frase. IAP no
+> Cloud Run é por **serviço inteiro**, sem exceção de rota: ligá-lo bloquearia `/v1/admin/*` **e**
+> `/v1/matches` juntos, exatamente o problema original. Confirmado na prática: `gcloud run deploy`
+> com `--no-allow-unauthenticated` rejeitava com 403 **toda** requisição, senha certa incluída,
+> porque a checagem da plataforma acontece antes do código do serviço rodar. **Decisão final:**
+> nesta topologia de serviço único, **não há IAP** — o Cloud Run sobe com
+> `--allow-unauthenticated`, e a senha HTTP Basic (`isAdminAuthorized`, Tarefa C10) é a única
+> camada de autenticação do painel, por desenho. Uma segunda camada de identidade Google exigiria
+> um segundo serviço Cloud Run só para o painel — decisão de arquitetura em aberto, não algo que
+> se resolve com uma flag de deploy.
 
 > **`voided` em vez de `DELETE` — para o evento real.** Anular marca e exclui dos agregados; apagar
 > destrói a evidência de que a partida existiu. Num evento onde alguém pode contestar uma pontuação, a
@@ -5384,7 +5394,6 @@ scores** e **gerenciar o catálogo de empresas** sem editar um arquivo por SSH n
 > inconsistentes de antes desta fase, empresas fictícias), a exclusão permanente existe como uma ação
 > separada e mais bem guardada — a razão de existir de `voided` (proteger o evento real) não se aplica
 > a dados que o próprio operador sabe que são lixo de desenvolvimento.
-> e restaurar um documento apagado do Firestore não é uma operação que se faça com o estande aberto.
 
 - [ ] **Passo 1: Escrever o teste da correção com recálculo**
 
@@ -5483,8 +5492,9 @@ estética. Reusa `@jogo/shared` e o `ENDPOINTS` da Tarefa C1.
 Em `firestore.rules`, `companies` entra como **leitura pública** (o estande pode querer buscá-la) e
 escrita negada, como as outras três. O painel escreve pelo Admin SDK, como todo o resto.
 
-Servir o `admin-app` pelo **mesmo** container Cloud Run da API, sob `/admin`, atrás do IAP. Um
-serviço a menos para provisionar, e o IAP protege a rota inteira de uma vez.
+Servir o `admin-app` pelo **mesmo** container Cloud Run da API, sob `/admin` — um serviço a menos
+para provisionar. **Sem IAP** (corrigido na Tarefa C10, 2026-08-24): a senha HTTP Basic protege
+`/admin` e `/v1/admin/*` de uma vez, e o serviço sobe com `--allow-unauthenticated`.
 
 - [ ] **Passo 6: Rodar e ver passar**
 
@@ -5622,13 +5632,16 @@ git commit -m "feat(admin): ações em lote — anular e excluir partidas, com c
 
 ---
 
-### Tarefa C10 — Senha do painel de admin, atrás do IAP no mesmo serviço
+### Tarefa C10 — Senha do painel de admin, sem IAP, um serviço só
 
 Fecha o achado crítico da revisão final: `/v1/admin/*` não tinha autenticação própria, e IAP sozinho
-não convive com o token do estande no mesmo serviço Cloud Run. Decisão: **um serviço só**, IAP
-protegendo por identidade Google (configuração de deploy, como já documentado), e uma senha simples
-por cima — comparação de tempo constante, mesmo padrão de `auth.ts`, sem sessão, sem cookie, sem
-dependência nova. HTTP Basic Auth: o navegador mostra o prompt nativo de login sozinho.
+não convive com o token do estande no mesmo serviço Cloud Run. Decisão original (**corrigida ao vivo
+no primeiro deploy real, 2026-08-24** — ver a nota na Tarefa C7): IAP no Cloud Run é por serviço
+inteiro, sem exceção de rota, então não há como usá-lo aqui sem bloquear `/v1/matches` junto. A
+decisão final é **sem IAP**: o Cloud Run sobe com `--allow-unauthenticated`, e uma senha HTTP Basic
+é a **única** camada de autenticação do painel — comparação em tempo constante, mesmo padrão de
+`auth.ts`, sem sessão, sem cookie, sem dependência nova. O navegador mostra o prompt nativo de login
+sozinho.
 
 **Arquivos:**
 - Criar: `packages/cloud-api/src/admin-auth.ts`, `admin-auth.test.ts`
