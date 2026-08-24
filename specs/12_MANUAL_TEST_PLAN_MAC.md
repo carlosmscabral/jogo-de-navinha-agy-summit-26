@@ -1047,14 +1047,26 @@ da Tarefa C3.
 
 - [ ] **13.5 — Escrita direta do navegador é recusada**
 
-No Console do navegador, na aba com o `leaderboard-app` aberto (ele já tem o SDK do Firebase
-carregado):
+> **Correção, achado ao vivo em 2026-08-24:** `firebase.firestore().collection(...)` dá
+> `ReferenceError: firebase is not defined` — não existe global `window.firebase` para chamar.
+> `leaderboard-app` e `admin-app` usam o SDK modular (`import { getFirestore } from
+> 'firebase/firestore'`), que o Vite empacota como módulos ES locais ao bundle, sem expor nada em
+> `window`. Testar as regras pelo Console do navegador precisa ir direto na API REST do Firestore
+> em vez de depender de um objeto global que nunca existiu nesta versão do SDK.
+
+No Console do navegador (em qualquer aba, nem precisa ser a do `leaderboard-app` — a REST API não
+depende do bundle carregado):
 
 ```js
-firebase.firestore().collection('matches').doc('x').set({ final_score: 999999 })
+fetch('https://firestore.googleapis.com/v1/projects/vibe-cabral/databases/jogo-navinha/documents/matches/x', {
+  method: 'PATCH',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ fields: { final_score: { integerValue: 999999 } } })
+}).then(r => r.json()).then(console.log)
 ```
 
-**Critério:** `PERMISSION_DENIED`.
+**Critério:** a resposta tem `error.status === "PERMISSION_DENIED"` (HTTP 403) — não um objeto de
+documento gravado.
 
 - [ ] **13.6 — Callsign ofensivo recusado pela API, não só pelo formulário**
 
