@@ -12,9 +12,17 @@
  * o token no Secret Manager — e um único estado "falhou" as tornaria indistinguíveis exatamente
  * quando distingui-las importa (achado análogo em `duboc/gemini-com-pe`). Por isso `auth_failed`
  * (a) trava o backoff no teto, porque tentativas rápidas não ajudam nesse caso, e (b) NÃO desliga
- * o worker: o operador troca o token sem reiniciar nada, e a fila precisa drenar sozinha assim que
- * isso acontecer. É também por isso que `token` é uma função e não uma string — uma string
- * capturada no construtor congelaria o token expirado para sempre.
+ * o worker, para a fila drenar sozinha assim que o token voltar a valer. É também por isso que
+ * `token` é uma função e não uma string — uma string capturada no construtor congelaria o token
+ * expirado para sempre.
+ *
+ * Precisão sobre o "sem reiniciar", medida no Gate M3 (2026-08-24): isso vale para o lado da
+ * NUVEM. Rotacionar o segredo no Secret Manager para casar com o token que o daemon já tem faz
+ * este worker sair de `auth_failed` sozinho, em no máximo 5 minutos, sem tocar no estande — que é
+ * o caminho realista durante o evento, com o kiosk em tela cheia na frente de um visitante.
+ * Corrigir o `packages/daemon/.env` do lado do ESTANDE, ao contrário, exige reiniciar o daemon:
+ * `getCloudApiToken` lê `process.env`, e o `--env-file-if-exists` do `npm start` carrega o
+ * arquivo uma única vez, na subida do processo. Nada muta `process.env` em runtime.
  */
 
 /** Estado observável de `status()`, consumido por `GET /api/sync/status` (self_test.sh / painel do operador). */
