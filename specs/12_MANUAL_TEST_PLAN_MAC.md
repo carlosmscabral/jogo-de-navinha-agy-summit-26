@@ -1247,8 +1247,14 @@ Registre no §17. Não decide mais nada sobre PNA — fica como registro do que 
 
 - [ ] **15.2 — Abrir o telão hospedado**
 
-Abra `https://vibe-cabral.web.app` no Chrome (o `deploy.sh` imprime esta URL no fim; a linha
-`Hosting URL` do próprio `firebase` é a autoritativa).
+Abra `https://jogo-navinha-telao.web.app` no Chrome (o `deploy.sh` imprime esta URL no fim; a
+linha `Hosting URL` do próprio `firebase` é a autoritativa).
+
+> **Não é `vibe-cabral.web.app`.** Esse é o site *padrão* do projeto, e ele já hospeda outra
+> aplicação sua — um PWA publicado em 15/08/2026. O telão vai para um site **dedicado**, nomeado
+> em `firebase.json` (`hosting.site`), que o `deploy.sh` cria se ainda não existir. Se a criação
+> falhar dizendo que o ID está em uso, é porque IDs de site são únicos no mundo inteiro: escolha
+> outro em `firebase.json` e rode de novo.
 
 **Critério:** carrega, mostra o selo `NUVEM` no cabeçalho, e atualiza ao vivo quando uma partida
 nova chega — jogue uma rápida no estande para confirmar, sem recarregar a página do telão.
@@ -1293,8 +1299,9 @@ npm run undeploy:gcp
 ```
 
 Remove o Cloud Run, os dois segredos e a service account, e **despublica o telão** do Firebase
-Hosting (`hosting:disable` — o endereço passa a responder "Site Not Found"; um `deploy.sh` futuro
-republica). Não apaga o banco Firestore por padrão. Para apagar tudo, inclusive os dados:
+Hosting (`hosting:disable --site` no site dedicado — o endereço passa a responder "Site Not
+Found"; um `deploy.sh` futuro republica). O `--site` é o que garante que o site padrão do
+projeto, com a sua outra aplicação, não seja tocado. Não apaga o banco Firestore por padrão. Para apagar tudo, inclusive os dados:
 `npm run undeploy:gcp -- --delete-database` (pede a mesma confirmação `EXCLUIR` do painel).
 
 - [ ] **16.3 — Limpar o estande local de novo, para o próximo ensaio**

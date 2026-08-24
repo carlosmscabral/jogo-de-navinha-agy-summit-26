@@ -15,6 +15,11 @@
 #                                             # continua exigindo a confirmação reforçada)
 set -uo pipefail  # sem -e: cada remoção é melhor-esforço, um recurso já ausente não é erro
 
+# Espelha o deploy.sh: tudo aqui é relativo à raiz do repositório, inclusive a leitura de
+# firebase.json que decide QUAL site do Hosting despublicar.
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$REPO_ROOT"
+
 PROJECT_ID="${PROJECT_ID:-vibe-cabral}"
 REGION="${REGION:-southamerica-east1}"
 FIRESTORE_DATABASE="${FIRESTORE_DATABASE:-jogo-navinha}"
@@ -37,6 +42,7 @@ done
 echo "== Undeploy da Fase C =="
 echo "Projeto:  $PROJECT_ID"
 echo "Remove:   Cloud Run '$SERVICE_NAME', segredos '$BOOTH_TOKEN_SECRET'/'$ADMIN_PASSWORD_SECRET', service account '$SERVICE_ACCOUNT_EMAIL'"
+echo "Despublica: só o site do telão nomeado em firebase.json — nunca o site padrão do projeto."
 if [ "$DELETE_DATABASE" -eq 1 ]; then
   echo "Remove também: o banco Firestore '$FIRESTORE_DATABASE' inteiro — TODOS OS DADOS."
 fi
@@ -62,13 +68,22 @@ gcloud run services delete "$SERVICE_NAME" --region "$REGION" --project "$PROJEC
 
 echo ""
 echo "-- Despublicando o telão (Firebase Hosting) --"
+# O `--site` NÃO é opcional: sem ele, `hosting:disable` age sobre o site PADRÃO do projeto
+# (`<project-id>.web.app`), que pode hospedar outra aplicação sua — e derrubá-la. Só o site
+# dedicado ao telão, nomeado em firebase.json, é nosso para mexer.
+#
 # `hosting:disable` tira o site do ar sem apagar o site nem o histórico de releases: o endereço
 # passa a responder uma página "Site Not Found" e um `deploy --only hosting` futuro republica
-# tudo. Não existe "delete" do site padrão de um projeto Firebase, então desabilitar é o mais
-# longe que dá para ir — e é o suficiente: o telão é conteúdo estático público, sem custo
-# perceptível e sem dado nenhum dentro.
-firebase hosting:disable --project "$PROJECT_ID" --force \
-  && echo "Telão fora do ar." || echo "Já estava fora, ou falhou (ver mensagem acima) — seguindo."
+# tudo. É o suficiente — o telão é conteúdo estático público, sem custo perceptível e sem dado
+# nenhum dentro. Para sumir com o site de vez: `firebase hosting:sites:delete <site>`.
+HOSTING_SITE="$(node -e "process.stdout.write(require('./firebase.json').hosting.site)" 2>/dev/null)"
+if [ -n "$HOSTING_SITE" ]; then
+  firebase hosting:disable --site "$HOSTING_SITE" --project "$PROJECT_ID" --force \
+    && echo "Telão ('$HOSTING_SITE') fora do ar." || echo "Já estava fora, ou falhou (ver mensagem acima) — seguindo."
+else
+  echo "Não consegui ler 'hosting.site' de firebase.json — pulando, para não arriscar"
+  echo "desabilitar o site padrão do projeto, que pode ser de outra aplicação."
+fi
 
 echo ""
 echo "-- Removendo segredos --"

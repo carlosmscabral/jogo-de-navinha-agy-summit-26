@@ -275,8 +275,25 @@ echo "-- 9/10: Hosting do telão --"
 #
 # O `--only hosting` é deliberado (o Passo 3 já publicou o Firestore): evita que este passo
 # republique regras por acidente.
+#
+# SITE DEDICADO, e este ponto é o que impede um acidente caro: um projeto Firebase já nasce com
+# um site padrão de mesmo nome (`<project-id>.web.app`), e `vibe-cabral.web.app` já hospeda outra
+# aplicação. Publicar o telão ali a SOBRESCREVERIA. O `site` em firebase.json aponta para um site
+# só nosso, e é a única fonte da verdade desse nome — lido daqui, nunca duplicado.
+HOSTING_SITE="$(node -e "process.stdout.write(require('./firebase.json').hosting.site)")"
+
+# IDs de site são únicos no mundo inteiro, não só no projeto. Se este já estiver tomado por
+# outra pessoa, a criação falha: troque o `site` em firebase.json e rode de novo. (Ter mais de
+# um site por projeto exige o plano Blaze — o que este projeto já é, por causa do Cloud Run.)
+if firebase hosting:sites:get "$HOSTING_SITE" --project="$PROJECT_ID" >/dev/null 2>&1; then
+  echo "Site '$HOSTING_SITE' já existe."
+else
+  echo "Criando o site '$HOSTING_SITE'..."
+  firebase hosting:sites:create "$HOSTING_SITE" --project="$PROJECT_ID"
+fi
+
 firebase deploy --project="$PROJECT_ID" --only hosting
-HOSTING_URL="https://${PROJECT_ID}.web.app"
+HOSTING_URL="https://${HOSTING_SITE}.web.app"
 
 echo ""
 echo "-- 10/10: IAP --"

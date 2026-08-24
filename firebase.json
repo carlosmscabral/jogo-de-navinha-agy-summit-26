@@ -7,6 +7,7 @@
     }
   ],
   "hosting": {
+    "site": "jogo-navinha-telao",
     "public": "packages/leaderboard-app/dist",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [{ "source": "**", "destination": "/index.html" }]

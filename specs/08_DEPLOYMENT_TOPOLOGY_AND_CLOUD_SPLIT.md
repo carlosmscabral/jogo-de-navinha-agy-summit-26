@@ -168,6 +168,11 @@ Hosting**, e **sem fallback para o bridge local**.
   duas telas, então o telão precisa poder rodar em qualquer outra máquina — e ele não fala com a
   API de ingestão, lê o Firestore direto. O `admin-app` está dentro do container por um motivo que
   não se aplica aqui: ele precisa da mesma senha HTTP Basic que protege `/v1/admin/*`.
+- *Num site dedicado, não no site padrão do projeto:* `vibe-cabral.web.app` já hospeda outra
+  aplicação, e publicar ali a sobrescreveria. O site do telão é nomeado em `firebase.json`
+  (`hosting.site` → `jogo-navinha-telao`), criado pelo `deploy.sh` se não existir, e é o único que
+  o `undeploy.sh` despublica (`hosting:disable --site`). Ter mais de um site por projeto exige o
+  plano Blaze, que este projeto já usa por causa do Cloud Run.
 - *Por que sem fallback:* servido por HTTPS de `*.web.app`, a chamada ao bridge é conteúdo misto
   pela política 1 acima — o telão nem chega perto do PNA. Era um caminho que só podia falhar, em
   silêncio, no console de uma TV. No lugar dele, o telão mostra `SEM SINAL` (via
