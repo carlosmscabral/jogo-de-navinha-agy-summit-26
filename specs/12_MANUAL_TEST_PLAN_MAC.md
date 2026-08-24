@@ -955,22 +955,53 @@ contra o projeto real.
 
 ## Bloco 13 — Gate M3, parte 2: ciclo completo contra o projeto real
 
-- [ ] **13.1 — Subir o estande apontando para a nuvem real**
+- [ ] **13.1 — Subir as três superfícies apontando para a nuvem real**
 
 ```bash
-npm run start:daemon
-npm run start:terminal
+npm run start:daemon      # Tela 1 (registro/jogo) — o player-app já vem servido em localhost:3000,
+                           # não precisa de mais nada para "ligar o player"
+npm run start:terminal    # Tela 2 (forja com o agy)
 ```
 
 (sem `FIRESTORE_EMULATOR_HOST` desta vez — o `cloud-api` já publicado no Cloud Run fala com o
 Firestore real via `BOOTH_CLOUD_API_BASE`, configurado no Bloco 11.3)
 
+**O telão (Tela 3) é um terceiro app, separado, que precisa ser iniciado à parte** —
+`npm run start:daemon`/`start:terminal` não o cobrem:
+
+```bash
+npm run dev:leaderboard
+```
+
+Antes da primeira vez, crie `packages/leaderboard-app/.env` (achado ao vivo, 2026-08-24 — o
+`leaderboard-app` lê `company_rankings`/`matches` direto do Firestore pelo SDK cliente, e precisa
+da mesma config de app Web que o `deploy.sh` já criou para o admin-app no Bloco 11):
+
+```
+VITE_BRIDGE_BASE=http://localhost:3000
+VITE_FIREBASE_API_KEY=<mesmos valores do app Web 'jogo-navinha-web' — veja o comando abaixo>
+VITE_FIREBASE_AUTH_DOMAIN=...
+VITE_FIREBASE_PROJECT_ID=...
+VITE_FIREBASE_STORAGE_BUCKET=...
+VITE_FIREBASE_MESSAGING_SENDER_ID=...
+VITE_FIREBASE_APP_ID=...
+```
+
+```bash
+firebase apps:sdkconfig WEB $(firebase apps:list --project vibe-cabral --json \
+  | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const a=JSON.parse(s).result.find(x=>x.displayName==="jogo-navinha-web");process.stdout.write(a.appId)})') \
+  --project vibe-cabral
+```
+
+Diferente do daemon (Bloco 11.3), este `.env` já é carregado sozinho pelo Vite — não precisa de
+nenhuma flag extra.
+
 - [ ] **13.2 — Uma partida completa, do registro ao debrief**
 
 Registre um piloto, forje com o `agy` real, jogue até o fim.
 
-**Critério:** o telão (`npm run dev:leaderboard` numa aba, ou o `leaderboard-app` hospedado se já
-publicado) mostra a partida em **menos de 1s** depois do debrief.
+**Critério:** o telão (a aba do `dev:leaderboard` do 13.1) mostra a partida em **menos de 1s**
+depois do debrief.
 
 - [ ] **13.3 — Os 13 campos de `MatchDocument`, não só dois**
 
