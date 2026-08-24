@@ -225,7 +225,23 @@ app.post('/v1/moderate', async (req: Request, res: Response) => {
   // indistinguível de um modelo que reprova todo mundo — os dois aparecem como `block`. Com o
   // número no log do Cloud Run dá para ver, no meio do evento, se o teto acima ainda tem folga.
   const startedAt = Date.now();
-  const result = await moderateCallsign(body.callsign, moderateWithVertex, MODERATION_L2_TIMEOUT_MS);
+  const result = await moderateCallsign(
+    body.callsign,
+    moderateWithVertex,
+    MODERATION_L2_TIMEOUT_MS,
+    // Só dispara quando o teto vence. Este log é o que responde, no meio do evento, se os
+    // estouros são teto curto ou chamada travada — sem ele os dois são a mesma linha.
+    (late) => {
+      void late.settle.then(({ ms, settled, detail }) => {
+        console.warn(
+          `[cloud-api] moderate: ESTOURO do teto (${late.timeoutMs}ms) em "${late.callsign}" — ` +
+          `a chamada abandonada terminou em ${ms}ms com "${settled}"${detail ? `: ${detail}` : ''}. ` +
+          'Se este número ficar logo acima do teto, o teto está curto; se for muito maior ou ' +
+          '"error", o problema é a chamada, e aumentar o teto não resolve.'
+        );
+      });
+    }
+  );
   console.log(
     `[cloud-api] moderate: verdict=${result.verdict} em ${Date.now() - startedAt}ms ` +
     `(teto ${MODERATION_L2_TIMEOUT_MS}ms)`

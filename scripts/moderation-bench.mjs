@@ -113,8 +113,19 @@ const argOf = (name, fallback) => {
   const i = argv.indexOf(name);
   return i >= 0 && argv[i + 1] ? argv[i + 1] : fallback;
 };
+// ATENÇÃO ao escolher este número: a concorrência da bateria não é a concorrência do estande.
+// Lá o fluxo é serial — um visitante se cadastra, espera o veredito, joga. Rodar 4 em paralelo
+// convida 429/503 no endpoint global, e o gaxios por baixo do @google-cloud/vertexai faz retry
+// com backoff em silêncio, o que infla a cauda e produz uma latência que ninguém no evento vai
+// experimentar. Para medir o que o visitante sente, use --concurrency 1.
 const CONCURRENCY = Number(argOf('--concurrency', '4'));
 const CSV_PATH = argOf('--csv', '/tmp/moderation-bench.csv');
+// Aceita tags (neutro, velada, odio, ...) ou callsigns exatos, separados por vírgula. Existe
+// para reexecutar barato só os suspeitos de uma rodada anterior em vez dos 100.
+const ONLY = argOf('--only', '');
+// Roda cada caso N vezes. Um estouro isolado pode ser azar de uma chamada; o mesmo callsign
+// estourando 5 de 5 é uma propriedade dele, e a diferença entre as duas leituras muda o conserto.
+const REPEAT = Number(argOf('--repeat', '1'));
 // Folgado de propósito: o teto real de decisão é o do servidor (8s). Este aqui só existe para a
 // requisição não ficar pendurada para sempre se o Cloud Run sumir no meio da bateria.
 const CLIENT_TIMEOUT_MS = 30_000;
@@ -177,8 +188,23 @@ async function runPool(items, size, worker) {
 
 const pct = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1)];
 
-console.error(`Rodando ${CASES.length} casos contra ${BASE}/v1/moderate (concorrência ${CONCURRENCY})...`);
-const results = await runPool(CASES, CONCURRENCY, moderateOne);
+const onlySet = new Set(ONLY.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean));
+const selected = onlySet.size
+  ? CASES.filter((c) => onlySet.has(c.tag.toUpperCase()) || onlySet.has(c.callsign.toUpperCase()))
+  : CASES;
+if (!selected.length) {
+  console.error(`--only "${ONLY}" não casou com nenhuma tag nem callsign da bateria.`);
+  process.exit(2);
+}
+const RUN_LIST = REPEAT > 1
+  ? selected.flatMap((c) => Array.from({ length: REPEAT }, () => c))
+  : selected;
+
+console.error(
+  `Rodando ${RUN_LIST.length} chamadas contra ${BASE}/v1/moderate ` +
+  `(${selected.length} casos${REPEAT > 1 ? ` × ${REPEAT} repetições` : ''}, concorrência ${CONCURRENCY})...`
+);
+const results = await runPool(RUN_LIST, CONCURRENCY, moderateOne);
 
 // --- Relatório ----------------------------------------------------------------------------
 
@@ -190,7 +216,22 @@ const errors = results.filter((r) => r.verdict === 'error' || r.verdict === 'una
 console.log('\n===== LATÊNCIA (ida e volta completa, do Mac até o Vertex e de volta) =====');
 console.log(`n=${lat.length}  min=${lat[0]}ms  p50=${pct(lat, 50)}ms  p90=${pct(lat, 90)}ms  ` +
             `p95=${pct(lat, 95)}ms  p99=${pct(lat, 99)}ms  max=${lat[lat.length - 1]}ms  média=${mean}ms`);
-console.log(`estouros do teto do servidor: ${timeouts.length}   respostas não-veredito: ${errors.length}`);
+// O histograma existe porque os percentis sozinhos mentem sobre a FORMA da distribuição. Na
+// rodada de 2026-08-24 o p90 de 8028ms parecia uma cauda longa comum; o histograma mostrou o que
+// era de verdade — 74 chamadas abaixo de 5s, DUAS entre 5s e 8s, e 16 empilhadas no teto. Isso
+// não é cauda, são dois regimes, e o conserto de cada um é diferente: cauda pede teto maior,
+// bimodalidade pede descobrir o que faz um subconjunto das chamadas mudar de comportamento.
+const BUCKETS = [1000, 2000, 3000, 4000, 5000, 6000, 8000, Infinity];
+console.log('\ndistribuição (é a forma que importa, não só os percentis):');
+let lo = 0;
+for (const hi of BUCKETS) {
+  const n = lat.filter((v) => v >= lo && v < hi).length;
+  const label = hi === Infinity ? `>=${lo / 1000}s`.padEnd(9) : `${lo / 1000}-${hi / 1000}s`.padEnd(9);
+  console.log(`  ${label} ${String(n).padStart(3)}  ${'█'.repeat(n)}`);
+  lo = hi;
+}
+
+console.log(`\nestouros do teto do servidor: ${timeouts.length}   respostas não-veredito: ${errors.length}`);
 if (timeouts.length) {
   console.log('  ⚠ um estouro é fail-closed: o visitante perde o codinome por lentidão, não por conteúdo.');
   console.log('    Casos: ' + timeouts.map((r) => r.callsign).join(', '));
@@ -203,7 +244,7 @@ const correct = graded.length - falsePos.length - falseNeg.length;
 
 console.log('\n===== ACERTO (desfecho efetivo das duas camadas vs. rótulo esperado) =====');
 console.log(`${correct}/${graded.length} corretos  |  ${falsePos.length} falsos positivos  |  ${falseNeg.length} falsos negativos`);
-console.log('(7 casos ambíguos ficam fora desta conta — ver a tabela por categoria abaixo.)');
+console.log(`(${results.length - graded.length} casos ambíguos ficam fora desta conta — ver a tabela por categoria abaixo.)`);
 
 const byTag = new Map();
 for (const r of results) {

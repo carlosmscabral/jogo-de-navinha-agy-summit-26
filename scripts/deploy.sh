@@ -215,6 +215,33 @@ echo "-- 8/9: Deploy do Cloud Run --"
 # As duas camadas de autenticação deste projeto são de APLICAÇÃO, de propósito — só funcionam
 # se a plataforma deixar o tráfego passar. --allow-unauthenticated é o correto aqui: o serviço
 # fica alcançável na rede, e o código (`isAuthorized`/`isAdminAuthorized`) decide quem entra.
+# MIN_INSTANCES / CPU_THROTTLING, acrescentados em 2026-08-24 depois da bateria de moderação:
+# o default do Cloud Run é escalar para zero, e num estande isso é o pior caso possível. O
+# tráfego aqui é esparso por natureza — um visitante a cada poucos minutos —, então o container
+# morre ENTRE visitantes e cada pessoa paga um cold start inteiro: boot do Node, construção
+# preguiçosa do cliente Vertex (packages/cloud-api/src/vertex.ts) e o primeiro token ADC, tudo
+# somado ao tempo do modelo. A bateria de 100 callsigns mostrou isso na primeira linha: o caso
+# CYBER_ACE, o primeiro da rodada, levou 8289ms e estourou o teto — o maior valor da rodada
+# inteira, num nome perfeitamente inocente. Com teto de 8s e falha fechada, um cold start não
+# deixa o visitante esperando: faz ele perder o codinome.
+#
+# --no-cpu-throttling (CPU sempre alocada) tem dois motivos. Um é latência: sem ele a instância
+# ociosa acorda com CPU limitada e a primeira requisição depois de uma pausa fica mais lenta. O
+# outro é medição: o log de resposta tardia em moderation-l2.ts roda DEPOIS de a resposta já ter
+# sido enviada, e com CPU estrangulada esse callback fica na fila até a próxima requisição —
+# reportando um tempo inflado pelo estrangulamento em vez do tempo real do modelo.
+#
+# Custo: uma instância acesa 24/7 é da ordem de US$ 15-20/mês. Para dois dias de evento é
+# irrelevante, mas o serviço não precisa ficar assim entre os testes — exporte MIN_INSTANCES=0
+# fora do evento e o comportamento volta ao default de escalar para zero.
+MIN_INSTANCES="${MIN_INSTANCES:-1}"
+CPU_THROTTLING_FLAG="--no-cpu-throttling"
+if [ "$MIN_INSTANCES" -eq 0 ]; then
+  # Sem instância mínima, CPU sempre alocada não faria sentido (não há instância para manter
+  # acesa) e o gcloud recusa a combinação em algumas versões.
+  CPU_THROTTLING_FLAG="--cpu-throttling"
+fi
+
 gcloud run deploy "$SERVICE_NAME" \
   --source packages/cloud-api \
   --region "$REGION" \
@@ -223,6 +250,8 @@ gcloud run deploy "$SERVICE_NAME" \
   --set-secrets "BOOTH_INGEST_TOKEN=${BOOTH_TOKEN_SECRET}:latest" \
   --set-secrets "ADMIN_PANEL_PASSWORD=${ADMIN_PASSWORD_SECRET}:latest" \
   --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID},VERTEX_LOCATION=${VERTEX_LOCATION}" \
+  --min-instances "$MIN_INSTANCES" \
+  "$CPU_THROTTLING_FLAG" \
   --allow-unauthenticated
 
 SERVICE_URL="$(gcloud run services describe "$SERVICE_NAME" --region "$REGION" --project "$PROJECT_ID" --format='value(status.url)')"
