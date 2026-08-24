@@ -1070,14 +1070,19 @@ documento gravado.
 
 - [ ] **13.6 — Callsign ofensivo recusado pela API, não só pelo formulário**
 
+> **Correção, achado ao vivo em 2026-08-24:** o `{...}` abaixo era um placeholder literal, não
+> JSON válido — `curl` falhava com `SyntaxError: Expected property name or '}'`. `energy_sliders`
+> exige as quatro chaves `offense`/`speed`/`defense`/`tech` (`packages/shared/src/types/ship.ts`).
+
 ```bash
 curl -s -X POST localhost:3000/api/session/start \
   -H 'Content-Type: application/json' \
-  -d '{"pilot": {"callsign": "PORRA", "company_raw": "Teste"}, "energy_sliders": {...}}'
+  -d '{"pilot": {"callsign": "PORRA", "company_raw": "Teste"}, "energy_sliders": {"offense": 25, "speed": 25, "defense": 25, "tech": 25}, "selected_mcps": [], "selected_subagents": []}'
 ```
 
-**Critério:** `422` com `error: "callsign_rejected"`. Repita com `"callsign": "SKILLER"` —
-**Critério:** aceito (o filtro de containment não pode reprovar isto, é o achado histórico D1/A2).
+**Critério:** `422` com `error: "callsign_rejected"`. Repita trocando só o `callsign` para
+`"SKILLER"` — **Critério:** aceito (o filtro de containment não pode reprovar isto, é o achado
+histórico D1/A2).
 
 - [ ] **13.7 — Empresa ofensiva não chega ao telão**
 
