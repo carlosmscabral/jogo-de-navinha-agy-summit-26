@@ -141,8 +141,29 @@ resposta instantânea quanto desambiguação por modelo.
 
 **Moderação de conteúdo é o caso oposto** e permanece **bloqueante**: um callsign ofensivo no telão é
 um incidente, e vale esperar. O filtro determinístico atual roda primeiro e decide sozinho na
-maioria dos casos; a chamada ao modelo só entra na dúvida, com timeout curto e **falha fechada** —
-na dúvida, rejeita e pede outro callsign. Ver [Spec 06](./06_RELIABILITY_FAILOVER_AND_SECURITY_SPEC.md).
+maioria dos casos; a chamada ao modelo só entra na dúvida, com **falha fechada** — na dúvida, o
+codinome não vai para o telão. Ver [Spec 06](./06_RELIABILITY_FAILOVER_AND_SECURITY_SPEC.md).
+
+> **Correção, 2026-08-24 (Gate M3, contra o projeto real).** Duas afirmações desta seção descreviam
+> um desenho que não sobreviveu ao primeiro contato com a nuvem real, e foram substituídas acima.
+>
+> **"Timeout curto"** era 1500ms, no daemon e na `cloud-api`. Medido ao vivo, o `gemini-3.7-flash`
+> no endpoint `global` leva **2,7s a 3,6s** saindo de `southamerica-east1`, mesmo com
+> `thinkingLevel: 'low'`. Pior: os dois tetos eram *iguais*, e o cronômetro do daemon começa antes
+> do hop até o Cloud Run — o abort local sempre vencia, então o `block` por timeout que a falha
+> fechada existe para emitir **nunca chegava ao daemon**. Chegava como abort, virava `unavailable`,
+> e caía no fail-open. A política estava invertida no seu exato oposto, e nenhum callsign jamais
+> tinha sido visto pelo modelo. Tetos hoje: **8000ms** no servidor, **10000ms** no daemon, nessa
+> ordem obrigatória (ver os comentários nos dois `.env.example`).
+>
+> **"Rejeita e pede outro callsign"** nunca existiu na interface. O `422 callsign_rejected` chegava
+> ao `player-app` como um `!res.ok` genérico, virava *"Não foi possível conectar ao servidor da
+> Forja. Verifique a conexão"*, e deixava o visitante numa tela onde o codinome nem é editável (ele
+> fica duas telas atrás). Por decisão do operador, o `block` da camada 2 agora **sanitiza para
+> `PILOTO_###`**, exatamente como a camada 1 já faz com palavrão. O objetivo desta seção — nome
+> ofensivo não chega ao telão — continua cumprido; o que muda é que o visitante não trava. Efeito
+> colateral bem-vindo: sem o 422, ninguém mapeia por tentativa e erro onde fica a fronteira do
+> modelo.
 
 ### 3.3. Moderação do campo empresa — lacuna encontrada em 2026-08-22
 

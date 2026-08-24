@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { validateCallsign } from './utils/moderation.js';
+import { validateCallsign, placeholderCallsign } from './utils/moderation.js';
 import {
   calculateSimilarity,
   cleanCompanyName,
@@ -58,6 +58,17 @@ describe('Moderation & Profanity Filter', () => {
   it('should reject repetitive keyboard mash', () => {
     const r1 = validateCallsign('AAAAAAA');
     assert.strictEqual(r1.isValid, false);
+  });
+
+  it('placeholderCallsign has the same shape layer 1 produces, so layer 2 is indistinguishable', () => {
+    // O daemon chama isto quando a camada 2 (Vertex) reprova (packages/daemon/src/index.ts).
+    // Se as duas camadas produzissem formatos diferentes, o telão denunciaria QUAL filtro pegou
+    // cada visitante -- e a recusa deixaria de ser silenciosa, que é metade do motivo de
+    // sanitizar em vez de devolver 422.
+    for (let i = 0; i < 50; i++) {
+      assert.match(placeholderCallsign(), /^PILOTO_\d{3}$/);
+    }
+    assert.match(validateCallsign('PORRA').sanitized, /^PILOTO_\d{3}$/);
   });
 
   it('exposes a stable reasonCode discriminator, distinct from the free-text reason', () => {

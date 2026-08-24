@@ -1092,9 +1092,13 @@ curl -s -X POST localhost:3000/api/session/reset   # obrigatório antes da próx
 
 **Critério:** `200` com `pilot.callsign` trocado por um `PILOTO_###` — **não** um `422`. A camada 1
 (dicionário local) sanitiza o palavrão em vez de recusar, e isso é deliberado: Spec 06 diz "para
-palavrão o efeito é aceitável, porque o `sanitized` vira `PILOTO_###`". O `422
-callsign_rejected` é o caminho da **camada 2** (Vertex), que só é consultada quando a camada 1
-aprova — ou seja, para a ofensa velada que o dicionário não pega. `PORRA` nunca chega lá.
+palavrão o efeito é aceitável, porque o `sanitized` vira `PILOTO_###`".
+
+> **`422 callsign_rejected` não existe mais** (decisão do operador, 2026-08-24). A camada 2 (Vertex),
+> consultada só quando a camada 1 aprova, também sanitiza para `PILOTO_###` em vez de recusar — o
+> 422 chegava ao `player-app` como "verifique a conexão" e travava o visitante numa tela onde o
+> codinome nem é editável. Ver a correção na Spec 05 §3.2. Um `block` da camada 2 hoje é visível só
+> no log do daemon: `[Daemon] Camada 2 recusou "<nome>" (<motivo>)`.
 
 Repita trocando só o `callsign` para `"SKILLER"` (e resete de novo depois):
 

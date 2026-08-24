@@ -27,6 +27,17 @@ const BLOCKED_WORDS = [
 const CONTAINMENT_MIN_LENGTH = 5;
 
 /**
+ * The safe-by-construction stand-in for a callsign that cannot go on the TV. Exported because
+ * layer 2 (the Vertex check in `packages/daemon/src/index.ts`) reaches the same outcome by a
+ * different route and must produce the same shape of name -- a visitor whose veiled insult the
+ * model caught should be indistinguishable, on the leaderboard, from one whose plain profanity
+ * the local dictionary caught.
+ */
+export function placeholderCallsign(): string {
+  return `PILOTO_${Math.floor(100 + Math.random() * 900)}`;
+}
+
+/**
  * Normalizes leet-speak (e.g., "p0rr4" -> "porra", "f*ck" -> "fck", "b!ch@" -> "bicha")
  */
 function normalizeLeetSpeak(input: string): string {
@@ -121,7 +132,7 @@ export function validateCallsign(rawCallsign: string): CallsignValidationResult 
         isValid: false,
         reason: 'Termo impróprio ou não permitido no evento.',
         reasonCode: 'profanity',
-        sanitized: `PILOTO_${Math.floor(100 + Math.random() * 900)}`
+        sanitized: placeholderCallsign()
       };
     }
 
@@ -137,7 +148,7 @@ export function validateCallsign(rawCallsign: string): CallsignValidationResult 
         isValid: false,
         reason: 'Termo impróprio ou não permitido no evento.',
         reasonCode: 'profanity',
-        sanitized: `PILOTO_${Math.floor(100 + Math.random() * 900)}`
+        sanitized: placeholderCallsign()
       };
     }
   }

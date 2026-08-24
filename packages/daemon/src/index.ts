@@ -10,7 +10,7 @@ import { WorkspaceGeneratorService } from './services/workspace-generator.js';
 import { FileWatcherService } from './services/file-watcher.js';
 import { moderateRemotely } from './services/remote-moderation.js';
 import { CloudSyncService } from './services/cloud-sync.js';
-import { validateCallsign, selectFallbackPreset, EnergySliders } from '@jogo/shared';
+import { validateCallsign, placeholderCallsign, selectFallbackPreset, EnergySliders } from '@jogo/shared';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -153,7 +153,7 @@ const CLOUD_API_BASE = process.env.BOOTH_CLOUD_API_BASE || null;
 // único lugar do arquivo que ainda capturava o token uma vez no carregamento do módulo.
 const getCloudApiToken = (): string | null => process.env.BOOTH_INGEST_TOKEN || null;
 // Este teto tem que ser ESTRITAMENTE MAIOR que o do servidor (MODERATION_L2_TIMEOUT_MS em
-// packages/cloud-api, hoje 4000), e a ordem não é estética. O cronômetro daqui começa ANTES do
+// packages/cloud-api, hoje 8000), e a ordem não é estética. O cronômetro daqui começa ANTES do
 // hop até o Cloud Run; o de lá só começa quando a requisição chega. Com os dois em 1500 (como
 // estavam até o Gate M3, 2026-08-24) o abort local sempre vencia, e o `block` por timeout que o
 // moderation-l2.ts existe para emitir NUNCA chegava aqui: virava um abort, que vira
@@ -227,6 +227,7 @@ app.post('/api/session/start', async (req, res) => {
     const { pilot, energy_sliders, selected_mcps, selected_subagents } = req.body;
 
     const validation = validateCallsign(pilot?.callsign || '');
+    let callsign = validation.sanitized;
 
     // Tarefa C4 — camada 2, só consultada quando a camada 1 local já aprovou. Se a camada 1
     // já achou problema (curto demais, profanidade, etc.), ela já saneou o callsign para um
@@ -235,17 +236,29 @@ app.post('/api/session/start', async (req, res) => {
     // o insulto velado que a camada 1 não pega tem chance de passar, e é aí que a camada 2 entra.
     if (validation.isValid) {
       const remote = await moderateRemotely(
-        CLOUD_API_BASE, getCloudApiToken(), validation.sanitized, MODERATION_L2_TIMEOUT_MS
+        CLOUD_API_BASE, getCloudApiToken(), callsign, MODERATION_L2_TIMEOUT_MS
       );
 
       if (remote.verdict === 'block') {
-        // Falha FECHADA do modelo (Spec 05 §3.2): o registro é recusado com o motivo, e não
-        // silenciosamente trocado por um placeholder — o visitante escolhe outro codinome.
-        res.status(422).json({
-          error: 'callsign_rejected',
-          reason: remote.reason || 'Codinome recusado pela moderação.'
-        });
-        return;
+        // Mesmo desfecho da camada 1: troca por um placeholder e segue. Isto contraria a letra
+        // da Spec 05 §3.2 ("o registro é recusado com o motivo […] o visitante escolhe outro
+        // codinome") e a contraria de propósito, por decisão do operador em 2026-08-24, depois
+        // que o Gate M3 mostrou o que aquele desenho custa no estande: o 422 chegava ao
+        // `App.tsx` como um `!res.ok` qualquer, virava "Não foi possível conectar ao servidor da
+        // Forja. Verifique a conexão", e deixava o visitante numa tela de onde o codinome nem é
+        // editável (ele fica duas telas atrás). Ou seja, a promessa de "escolhe outro codinome"
+        // nunca existiu na UI — o que existia era um visitante travado achando que era rede.
+        //
+        // O OBJETIVO da §3.2 continua cumprido, que é o que importa: o nome ofensivo não chega
+        // ao telão. O que muda é quem paga pelo veredito. Sanitizar também fecha um canal de
+        // sondagem que o 422 abria — com ele, dava para descobrir por tentativa e erro
+        // exatamente onde fica a fronteira do modelo; agora toda recusa é silenciosa e o
+        // atacante não recebe sinal nenhum.
+        console.warn(
+          `[Daemon] Camada 2 recusou "${callsign}" (${remote.reason || 'sem motivo declarado'}) — ` +
+          'trocando por um placeholder e seguindo, como a camada 1 já faz com palavrão.'
+        );
+        callsign = placeholderCallsign();
       }
 
       if (remote.verdict === 'unavailable') {
@@ -253,7 +266,7 @@ app.post('/api/session/start', async (req, res) => {
         // A camada 1 local já aprovou; o estande não pode parar de receber visitantes por causa
         // disso, mas o staff precisa saber se isso vira o dia inteiro sem moderação semântica.
         console.warn(
-          `[Daemon] Moderação semântica (camada 2) indisponível para "${validation.sanitized}" — ` +
+          `[Daemon] Moderação semântica (camada 2) indisponível para "${callsign}" — ` +
           'seguindo só com a aprovação local (camada 1). Se isso persistir, o Vertex está inalcançável.'
         );
       }
@@ -262,7 +275,7 @@ app.post('/api/session/start', async (req, res) => {
     const { canonical: canonicalCompany, confidence: companyConfidence } = sqliteBuffer.resolveCompany(pilot?.company_raw);
     const fullPilot = {
       ...pilot,
-      callsign: validation.sanitized,
+      callsign,
       company_canonical: canonicalCompany,
       company_confidence: companyConfidence
     };
