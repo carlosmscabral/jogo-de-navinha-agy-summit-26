@@ -132,10 +132,9 @@ export function RegistrationForm({ onRegister, onBack }: RegistrationFormProps) 
                       setCompanyRaw(company);
                       setCompanySuggestions([]);
                     }}
-                    className="w-full p-2.5 text-left text-xs text-slate-200 hover:bg-[#38bdf8]/20 hover:text-[#38bdf8] transition-all border-b border-slate-800 last:border-none font-mono flex items-center justify-between"
+                    className="w-full p-2.5 text-left text-xs text-slate-200 hover:bg-[#38bdf8]/20 hover:text-[#38bdf8] transition-all border-b border-slate-800 last:border-none font-mono"
                   >
-                    <span>{company}</span>
-                    <span className="text-[10px] text-slate-400">Patrocinador Summit</span>
+                    {company}
                   </button>
                 ))}
               </div>
