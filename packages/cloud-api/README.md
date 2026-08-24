@@ -150,6 +150,21 @@ Sem nenhuma chave de credencial: o Cloud Run usa a identidade da própria servic
 e o token de ingestão e a senha do painel vivem no Secret Manager — nunca em texto puro no
 comando de deploy.
 
+**Provisionamento completo, scriptado (2026-08-24):** `npm run deploy:gcp` (raiz do monorepo)
+faz todos os passos abaixo do zero — habilita as APIs, cria o banco Firestore nomeado, publica
+regras/índices, cria a service account e os segredos (gerando valores aleatórios na primeira
+vez), builda e publica no Cloud Run. É idempotente: rodar de novo sobre um projeto já
+provisionado só atualiza o que mudou, nunca recria ou sobrescreve um segredo já existente.
+Aceita `PROJECT_ID=outro-projeto npm run deploy:gcp -- --yes` para reproduzir em outro projeto
+sem editar nada versionado. `npm run undeploy:gcp` desfaz (Cloud Run, segredos, service
+account — nunca o banco Firestore, a menos que `--delete-database` seja passado explicitamente
+e o operador digite `EXCLUIR`). Ver `scripts/deploy.sh`/`scripts/undeploy.sh` para os passos
+exatos e todas as variáveis de ambiente aceitas.
+
+O comando manual abaixo é o que `deploy.sh` roda no passo 7 (Cloud Run) — documentado aqui
+porque é o passo que o script sozinho não decide por você: se rodar com `--with-iap` ou deixar
+o IAP para configurar depois pelo Console (ver "Autenticação do painel de admin" acima).
+
 ```bash
 gcloud run deploy jogo-navinha-api \
   --source packages/cloud-api \

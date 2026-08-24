@@ -120,6 +120,7 @@ que a memória da conversa que a criou tiver evaporado.
 | **C8** | Revisão final da Fase C, 2026-08-23 (Spec 11 §4.11) | `company_raw`/`company_confidence`/`score_breakdown` nunca chegavam ao Firestore — achado durante a implementação da C5, corrigido depois do merge. |
 | **C9** | Pedido do usuário, 2026-08-23 | Limpeza de dados de teste (placares inconsistentes, empresas fictícias) exigia ação em lote que a C7 não previa. |
 | **C10** | Revisão final da Fase C, 2026-08-23 (achado Crítico 4) | `/v1/admin/*` sem autenticação própria; IAP sozinho não convive com o token do estande no mesmo serviço. |
+| `scripts/deploy.sh`/`undeploy.sh` | Pedido do usuário, 2026-08-24 | Provisionamento scriptado e reproduzível (banco, regras, service account, segredos, Cloud Run), para o Gate M3 e para um eventual deploy futuro noutro projeto. Não é uma tarefa numerada — é ferramenta de operação, mesma categoria dos scripts da Fase D. |
 | **D1** *(tarefa)* | Spec 08 §7 | Runbook. Não confundir com o **defeito** D1 da tabela acima — a colisão de nomes é infeliz e antiga. |
 
 ---

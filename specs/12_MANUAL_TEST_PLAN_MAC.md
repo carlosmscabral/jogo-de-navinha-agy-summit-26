@@ -1,8 +1,14 @@
-# 12 — Plano de Teste Manual no Mac (Gates M1 e M2)
+# 12 — Plano de Teste Manual no Mac (Gates M1, M2 e M3)
 
-**Objetivo:** fechar os dois gates que nenhuma máquina consegue fechar sozinha —
-**M1** (a engine, offline, e a dificuldade que a partida realmente transmite) e
-**M2** (o ciclo completo com o `agy` real, incluindo as falhas provocadas).
+**Objetivo:** fechar os gates que nenhuma máquina consegue fechar sozinha —
+**M1** (a engine, offline, e a dificuldade que a partida realmente transmite),
+**M2** (o ciclo completo com o `agy` real, incluindo as falhas provocadas), e
+**M3** (a nuvem — Firestore, Cloud Run, Vertex AI — com um projeto real e o Wi-Fi na mão).
+
+> **Acrescentado em 2026-08-24.** Os Blocos 0–9 abaixo são o registro original de M1/M2, fechados
+> em 2026-08-16/18/22 — não foram tocados. Os Blocos 10 em diante são novos, para o Gate M3, depois
+> de Tarefas C0–C10 mergeadas em `main`. Leia [`11_KNOWN_GAPS_AND_OPEN_ITEMS.md`](./11_KNOWN_GAPS_AND_OPEN_ITEMS.md)
+> §4.9 e §4.10 antes de começar M3 — são riscos aceitos, não bugs a caçar durante o teste.
 
 **Pré-condição:** Fases A e B mergeadas em `main`. Estado conhecido do repositório em
 [`11_KNOWN_GAPS_AND_OPEN_ITEMS.md`](./11_KNOWN_GAPS_AND_OPEN_ITEMS.md) — **leia antes de começar**,
@@ -21,6 +27,13 @@ perder tempo investigando algo já conhecido.
 | 5 | M2 parte 1 — ciclo completo com `agy` real | 30 min |
 | 6 | M2 parte 2 — falhas provocadas | 25 min |
 | 7 | M2 parte 3 — higiene de processos e reset | 10 min |
+| 10 | M3 — preparação (limpeza local + CLIs) | 15 min |
+| 11 | M3 — provisionamento na nuvem (`deploy.sh`) | 20 min |
+| 12 | M3 parte 1 — validação contra o emulador | 15 min |
+| 13 | M3 parte 2 — ciclo completo contra o projeto real | 45 min |
+| 14 | M3 parte 3 — painel de administração | 20 min |
+| 15 | M3 parte 4 — o teste de 10 minutos do Chrome real | 10 min |
+| 16 | Limpeza pós-teste (opcional) | 10 min |
 
 **Como registrar:** cada passo tem uma caixa. Marque `[x]` quando passar. Quando **não** passar,
 **não marque** — anote o que aconteceu na tabela do §8 e siga em frente, salvo indicação contrária.
@@ -789,3 +802,418 @@ navegue à mão para `http://localhost:5173/dev.html`.
 
 **Wi-Fi.** Nos blocos 2 e 3, desligue o Wi-Fi **pelo menu do macOS**. Só desconectar do roteador
 deixa o sistema tentando reconectar e pode gerar tráfego que confunde a aba Network.
+
+---
+
+## Bloco 10 — Preparação para M3 (uma vez)
+
+- [ ] **10.1 — `main` atualizada, no commit certo**
+
+```bash
+git checkout main && git pull
+git log --oneline -1     # deve mostrar f3172ab ou mais recente
+git status --short       # vazio
+```
+
+- [ ] **10.2 — Limpar o SQLite local antigo**
+
+Qualquer banco de uma sessão anterior a Tarefa C8 (schema antigo) trava `saveMatch` — a Tarefa C8
+já corrigiu isso com auto-cura de schema (`ALTER TABLE`), mas comece limpo mesmo assim: dados de
+teste com placares inconsistentes e empresas fictícias de antes dos fixes não têm valor nenhum, e
+"apagar e deixar reseedar" evita qualquer dúvida sobre o que é dado real do ensaio de hoje.
+
+```bash
+npm run reset:db
+```
+
+Confirme `s` no prompt. Critério: o comando termina sem erro, e o próximo `npm run start:daemon`
+recria o banco do zero (você vai ver `[SQLiteBuffer] Banco local em ...` no log de boot).
+
+- [ ] **10.3 — CLIs autenticados**
+
+```bash
+gcloud auth list                          # sua conta deve aparecer como ACTIVE
+gcloud config get-value project           # confirme que é o projeto certo, ou deixe
+                                           # PROJECT_ID=vibe-cabral explícito no Bloco 11
+firebase login:list                       # sua conta deve aparecer
+```
+
+`gcloud auth login` e `firebase login` são comandos separados — logar num não loga no outro.
+
+- [ ] **10.4 — `openssl` disponível**
+
+```bash
+command -v openssl        # o deploy.sh usa openssl rand para gerar os segredos
+```
+
+Vem instalado por padrão no macOS; só falha se você tiver removido de propósito.
+
+- [ ] **10.5 — Pasta de resultados**
+
+```bash
+mkdir -p ~/Desktop/gate-m3
+```
+
+---
+
+## Bloco 11 — Provisionamento na nuvem
+
+Um projeto GCP do zero, ou um já usado antes — `deploy.sh` é idempotente nos dois casos (Bloco 11.1).
+
+- [ ] **11.1 — Rodar o provisionamento**
+
+```bash
+npm run deploy:gcp
+```
+
+Confirme `s` no prompt. Acompanhe os 8 passos no terminal. **Pare e leia com atenção o Passo 5**
+(segredos): os valores de `BOOTH_INGEST_TOKEN` e `ADMIN_PANEL_PASSWORD` só são mostrados **uma
+vez**, na criação. Copie os dois para `~/Desktop/gate-m3/segredos.txt` (fora do repositório —
+nunca commite isso) antes de rolar a tela.
+
+> Se algum passo falhar por falta de permissão (IAM), você precisa de `roles/owner` ou papéis
+> equivalentes (`roles/datastore.owner`, `roles/run.admin`, `roles/secretmanager.admin`,
+> `roles/iam.serviceAccountAdmin`) no projeto. Resolva a permissão e rode `npm run deploy:gcp` de
+> novo — os passos já concluídos (banco criado, regras publicadas) são detectados e pulados.
+
+- [ ] **11.2 — Anotar a URL do serviço**
+
+O último bloco do output mostra a URL do Cloud Run e lembra de configurar o estande. Anote a URL
+em `~/Desktop/gate-m3/segredos.txt` também.
+
+- [ ] **11.3 — Configurar o daemon local para falar com a nuvem**
+
+Em `packages/daemon/.env` (crie a partir de `.env.example` se ainda não existir):
+
+```
+BOOTH_CLOUD_API_BASE=<URL do Cloud Run do passo 11.2>
+BOOTH_INGEST_TOKEN=<valor gerado no passo 11.1>
+```
+
+- [ ] **11.4 — IAP — decisão consciente, não padrão**
+
+Sem `--with-iap`, o serviço fica protegido só pela senha HTTP Basic (`ADMIN_PANEL_PASSWORD`) — que
+funciona para este teste, mas **não é a topologia final** decidida na Tarefa C10 para o evento real.
+Duas opções, registre qual você escolheu no §17:
+
+```bash
+# Opção A: tentar ligar via CLI agora (pode precisar do Console na primeira vez — ver aviso do script)
+PROJECT_ID=vibe-cabral npm run deploy:gcp -- --yes --with-iap
+
+# Opção B: deixar para configurar pelo Console antes do evento, testar hoje sem IAP
+```
+
+---
+
+## Bloco 12 — Gate M3, parte 1: validação contra o emulador
+
+Antes do projeto real — mais rápido de iterar, e pega erro de configuração sem gastar cota.
+
+- [ ] **12.1 — Emulador do Firestore**
+
+```bash
+npx firebase emulators:start --only firestore
+```
+
+Deixe rodando num terminal à parte.
+
+- [ ] **12.2 — Build e suíte completa**
+
+Noutro terminal:
+
+```bash
+npm run build
+npm test
+```
+
+**Critério:** exatamente **duas** falhas conhecidas e nenhuma outra —
+`packages/sim`'s `balance-gate.test.ts` (45,8 p.p. de espalhamento, aceito) e, **neste Mac, com o
+emulador rodando na porta 8080 de verdade**, `firestore-rules.test.ts` deveria **passar** (o
+Mac não tem o conflito de porta 8080 que bloqueava isto nos ambientes de desenvolvimento em
+worktree). Se `firestore-rules.test.ts` falhar aqui, é um problema novo — investigue antes de
+prosseguir, não assuma que é o mesmo "conflito de sandbox" de antes.
+
+- [ ] **12.3 — Daemon local sobe apontando para o emulador**
+
+```bash
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 npm run start:daemon
+```
+
+**Critério:** log de boot sem erro, `GET localhost:3000/api/sync/status` responde.
+
+Pare o emulador (`Ctrl+C` no terminal do Bloco 12.1) antes do próximo bloco — a partir daqui é
+contra o projeto real.
+
+---
+
+## Bloco 13 — Gate M3, parte 2: ciclo completo contra o projeto real
+
+- [ ] **13.1 — Subir o estande apontando para a nuvem real**
+
+```bash
+npm run start:daemon
+npm run start:terminal
+```
+
+(sem `FIRESTORE_EMULATOR_HOST` desta vez — o `cloud-api` já publicado no Cloud Run fala com o
+Firestore real via `BOOTH_CLOUD_API_BASE`, configurado no Bloco 11.3)
+
+- [ ] **13.2 — Uma partida completa, do registro ao debrief**
+
+Registre um piloto, forje com o `agy` real, jogue até o fim.
+
+**Critério:** o telão (`npm run dev:leaderboard` numa aba, ou o `leaderboard-app` hospedado se já
+publicado) mostra a partida em **menos de 1s** depois do debrief.
+
+- [ ] **13.3 — Os 13 campos de `MatchDocument`, não só dois**
+
+No [Console do Firebase](https://console.firebase.google.com), projeto `vibe-cabral`, banco
+`jogo-navinha`, coleção `matches`, abra o documento da partida do 13.2. Confira, contra
+`packages/shared/src/types/cloud.ts`:
+
+```
+schema_version, match_id (formato UUID v4), pilot_id, callsign, company_raw, company_canonical,
+company_confidence, final_score, score_breakdown (objeto completo), telemetry (objeto completo),
+ship_spec_snapshot (objeto completo), created_at, needs_company_review (presente ou ausente, ok)
+```
+
+**Critério:** todos presentes e com valor plausível — `score_breakdown`, `company_raw` e
+`company_confidence` são exatamente os três campos que a Tarefa C8 passou a levar até aqui; se
+estiverem ausentes, a Tarefa C8 não está realmente em produção (cheque se o daemon local está na
+`main` atualizada).
+
+- [ ] **13.4 — Wi-Fi vai e volta no meio de uma partida**
+
+Desligue o Wi-Fi **pelo menu do macOS** no meio de uma partida (não no meio da 13.2 — jogue outra).
+
+**Critério:** o jogo não trava, o debrief aparece normalmente,
+`curl -s localhost:3000/api/sync/status` mostra `"pending": 1`.
+
+Religue o Wi-Fi.
+
+**Critério:** em menos de 60s o registro aparece no Firestore **uma única vez**. Repita o envio
+manualmente (`curl -X POST localhost:3000/api/sync/status` não reenvia — force reenviando o mesmo
+`POST /api/matches` outra vez com o mesmo corpo, ou aguarde o próprio worker tentar de novo) e
+confirme que `company_rankings` **não** soma de novo — é o teste de idempotência da Tarefa C3.
+
+- [ ] **13.5 — Escrita direta do navegador é recusada**
+
+No Console do navegador, na aba com o `leaderboard-app` aberto (ele já tem o SDK do Firebase
+carregado):
+
+```js
+firebase.firestore().collection('matches').doc('x').set({ final_score: 999999 })
+```
+
+**Critério:** `PERMISSION_DENIED`.
+
+- [ ] **13.6 — Callsign ofensivo recusado pela API, não só pelo formulário**
+
+```bash
+curl -s -X POST localhost:3000/api/session/start \
+  -H 'Content-Type: application/json' \
+  -d '{"pilot": {"callsign": "PORRA", "company_raw": "Teste"}, "energy_sliders": {...}}'
+```
+
+**Critério:** `422` com `error: "callsign_rejected"`. Repita com `"callsign": "SKILLER"` —
+**Critério:** aceito (o filtro de containment não pode reprovar isto, é o achado histórico D1/A2).
+
+- [ ] **13.7 — Empresa ofensiva não chega ao telão**
+
+Registre com `company_raw: "PORRA LTDA"`. **Critério:** aparece como `Independente` no telão, não
+o texto digitado (Tarefa C0b). Registre com `company_raw: "Startup do João"` (fora do catálogo, mas
+inofensivo). **Critério:** aparece como `Startup Do João`, sem virar `Independente`.
+
+- [ ] **13.8 — Auto-complete lê `config/companies.json` sem rebuild**
+
+Acrescente uma empresa nova a `config/companies.json`, reinicie o daemon (`npm run kill:daemon &&
+npm run start:daemon`, sem rebuildar nada), e digite as primeiras letras dela na tela de registro.
+
+**Critério:** aparece na lista de sugestões.
+
+- [ ] **13.9 — O banco `(default)` continua vazio**
+
+No Console do Firebase, troque o seletor de banco de `jogo-navinha` para `(default)`.
+
+**Critério:** nenhuma coleção nossa lá — nem `matches`, nem `pilots`, nem `company_rankings`. Se
+algo aparecer, algum cliente Admin SDK esqueceu de nomear o banco (`getFirestore()` sem argumento)
+— é exatamente o modo de falha silencioso que a Tarefa C2 foi desenhada para evitar.
+
+- [ ] **13.10 — Token de ingestão expirado**
+
+No Secret Manager, crie uma nova versão do segredo `booth-ingest-token` com lixo (`echo -n
+"lixo-invalido" | gcloud secrets versions add booth-ingest-token --data-file=-`), redeployie
+(`npm run deploy:gcp -- --yes`) e jogue uma partida com o daemon local ainda usando o
+`BOOTH_INGEST_TOKEN` antigo (não atualize o `.env` do daemon).
+
+**Critério:** `GET localhost:3000/api/sync/status` mostra `"state": "auth_failed"`, **não**
+`"retrying"`. Corrija o `.env` do daemon com o valor certo (releia do Secret Manager: `gcloud
+secrets versions access latest --secret=booth-ingest-token`), reinicie o daemon, e confirme que a
+fila pendente drena sozinha — sem precisar reenviar nada manualmente.
+
+---
+
+## Bloco 14 — Gate M3, parte 3: painel de administração
+
+- [ ] **14.1 — Sem senha, recusa**
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' <URL do Cloud Run>/admin
+curl -s -o /dev/null -w '%{http_code}\n' <URL do Cloud Run>/v1/admin/health
+```
+
+**Critério:** `401` nos dois.
+
+- [ ] **14.2 — Com a senha certa, entra**
+
+Abra `<URL do Cloud Run>/admin` no navegador. Quando o prompt nativo de login aparecer, qualquer
+usuário + a senha do passo 11.1 (`ADMIN_PANEL_PASSWORD`).
+
+**Critério:** o painel carrega, as quatro telas (Partidas, Empresas, Saúde, Rankings) respondem.
+
+- [ ] **14.3 — Corrigir uma partida**
+
+Na tela Partidas, mova a partida do 13.2 para outra empresa (Editar → salvar).
+
+**Critério:** os dois agregados de `company_rankings` (a antiga e a nova empresa) acertam — confira
+no Firebase Console ou na tela Rankings do próprio painel.
+
+- [ ] **14.4 — Anular o recordista**
+
+Jogue (ou identifique) a partida com o maior `final_score` de uma empresa. Anule-a (botão
+"Anular", confirmação simples).
+
+**Critério:** `top_individual_score` daquela empresa cai para o segundo colocado, não para zero
+nem permanece o valor anulado.
+
+- [ ] **14.5 — Seleção múltipla: anular em lote**
+
+Selecione 2-3 partidas de teste (checkbox), clique "Anular selecionadas".
+
+**Critério:** todas ficam marcadas `ANULADA`, os agregados refletem a remoção, e os documentos
+continuam existindo (consulte no Firestore).
+
+- [ ] **14.6 — Seleção múltipla: excluir definitivamente**
+
+Selecione as mesmas (ou outras) partidas de teste, digite `EXCLUIR` no campo de confirmação, clique
+"Excluir definitivamente".
+
+**Critério:** os documentos **somem de verdade** do Firestore (não ficam como `ANULADA`), e — pela
+Tarefa C9 + o fix wave da revisão final — **nenhum documento zerado de `company_rankings` ou
+`pilots` sobra** se essa era a última partida daquela empresa/piloto. Confira diretamente no
+Console: a empresa/piloto não deveria aparecer mais em `company_rankings`/`pilots` se não tinha
+mais nenhuma partida real.
+
+- [ ] **14.7 — Catálogo de empresas**
+
+Tela Empresas: adicione uma empresa, clique em exportar. **Critério:** baixa um JSON no formato de
+`config/companies.json` (`{"companies": [...]}`), pronto para copiar para o estande.
+
+---
+
+## Bloco 15 — Gate M3, parte 4: o teste de 10 minutos do Chrome real (Spec 08 §5)
+
+- [ ] **15.1 — Versão exata do Chrome**
+
+```bash
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --version
+```
+
+Registre no §17 — é o dado que decide se o Private Network Access do Chrome é ou não um problema
+real neste hardware.
+
+- [ ] **15.2 — Abrir o `leaderboard-app` hospedado**
+
+Abra a URL pública do telão (não `localhost`) no Chrome.
+
+**Critério:** carrega, mostra o selo `NUVEM` no cabeçalho, atualiza ao vivo quando uma nova partida
+chega (jogue uma rápida para confirmar).
+
+- [ ] **15.3 — Forçar a queda para o bridge local**
+
+Bloqueie o acesso ao Firestore (desligue o Wi-Fi do Mac que roda o telão, ou bloqueie o domínio
+`firestore.googleapis.com` no DevTools → Network → Network conditions, se disponível).
+
+**Critério:** o selo vira `LOCAL` (ou `SEM SINAL`, se o bridge também não for alcançável desta
+máquina), e o Chrome não bloqueia silenciosamente a chamada ao bridge local por Private Network
+Access — se bloquear, é o cenário que a Spec 08 §5 pede para decidir agora: o fallback vira um
+snapshot em cache no próprio Firestore, e essa é uma tarefa nova a abrir, não algo para resolver às
+pressas no dia do evento.
+
+---
+
+## Bloco 16 — Limpeza pós-teste (opcional)
+
+Depois de fechar M3, decida entre manter o ambiente no ar (se `vibe-cabral` já é o projeto do
+evento) ou desmontar (se isto foi um projeto de teste separado, ou você quer recomeçar do zero).
+
+- [ ] **16.1 — Manter** — nada a fazer. Considere rodar `npm run deploy:gcp -- --yes --with-iap`
+  se ainda não ligou o IAP (Bloco 11.4), antes do evento.
+- [ ] **16.2 — Desmontar a nuvem** (só se este NÃO for o projeto do evento):
+
+```bash
+npm run undeploy:gcp
+```
+
+Não apaga o banco Firestore por padrão. Para apagar tudo, inclusive os dados:
+`npm run undeploy:gcp -- --delete-database` (pede a mesma confirmação `EXCLUIR` do painel).
+
+- [ ] **16.3 — Limpar o estande local de novo, para o próximo ensaio**
+
+```bash
+npm run kill:all
+npm run reset:db
+```
+
+---
+
+## Bloco 17 — Registro de resultados (Gate M3)
+
+```
+Data:                     ____________
+Projeto GCP:              ____________
+Região:                   ____________
+Commit (git rev-parse --short HEAD):  ____________
+Chrome (versão exata, Bloco 15.1):     ____________
+IAP ligado?  [ ] sim  [ ] não (só senha HTTP Basic)
+
+Bloco 11 — provisionamento            [ ] passou  [ ] falhou
+Bloco 12 — validação no emulador      [ ] passou  [ ] falhou
+Bloco 13 — ciclo completo real        [ ] passou  [ ] falhou
+  13.3 — 13 campos presentes?         [ ] sim  [ ] não — faltando: ____________
+  13.4 — idempotência sob reenvio?    [ ] sim  [ ] não
+  13.9 — (default) continua vazio?    [ ] sim  [ ] NÃO ← bloqueador
+  13.10 — auth_failed distinguível?   [ ] sim  [ ] não
+Bloco 14 — painel de administração    [ ] passou  [ ] falhou
+  14.6 — exclusão remove agregados vazios?  [ ] sim  [ ] não
+Bloco 15 — Chrome real / fallback     [ ] passou  [ ] falhou
+  Private Network Access bloqueou o fallback local?  [ ] sim  [ ] não
+
+GATE M3:  [ ] fechado  [ ] não fechado
+
+Itens novos para 11_KNOWN_GAPS_AND_OPEN_ITEMS.md:
+____________________________________________________________
+```
+
+---
+
+## Bloco 18 — Problemas comuns específicos da nuvem
+
+**`gcloud` pede login de novo no meio do teste.** Tokens do `gcloud auth login` expiram por
+sessão; `gcloud auth login` de novo não afeta nenhum recurso já criado.
+
+**`firebase deploy` falha com "permission denied" mesmo com `gcloud` autenticado.** São
+autenticações separadas — rode `firebase login` também, não só `gcloud auth login`.
+
+**IAM demora para propagar.** `add-iam-policy-binding` pode levar até um minuto para valer —
+se o Cloud Run falhar por permissão logo após `deploy.sh` criar a service account, espere um
+pouco e tente de novo antes de investigar mais fundo.
+
+**`--with-iap` falha na primeira vez num projeto novo.** Esperado — a tela de consentimento OAuth
+("brand") do projeto ainda não existe, e criá-la por CLI é frágil. Ligue o IAP uma vez pelo
+Console (Segurança → Identity-Aware Proxy) e rode `deploy.sh` de novo sem `--with-iap` nas
+próximas vezes.
+
+**Faturamento não habilitado.** Firestore, Cloud Run e Vertex AI exigem uma conta de faturamento
+vinculada ao projeto — se `deploy.sh` falhar bem no início com um erro de billing, é isto, não um
+bug do script.
