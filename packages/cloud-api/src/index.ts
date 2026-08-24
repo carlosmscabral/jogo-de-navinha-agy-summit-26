@@ -46,9 +46,16 @@ const ADMIN_PANEL_PASSWORD = process.env.ADMIN_PANEL_PASSWORD;
 // /v1/moderate contra o projeto real devolveu "não respondeu a tempo" em 1.6s — o gemini-3.7-flash
 // no endpoint `global` não cabe em 1,5s saindo de southamerica-east1, nem com thinkingLevel 'low'.
 // O efeito era pior que lentidão: TODA moderação semântica do evento caía no fail-closed por
-// timeout, sem o modelo ter opinado uma única vez. Este teto tem que ser MENOR que o do daemon
-// (BOOTH_MODERATION_L2_TIMEOUT_MS, hoje 6000) — ver o comentário lá em packages/daemon/src/index.ts.
-const MODERATION_L2_TIMEOUT_MS = Number(process.env.MODERATION_L2_TIMEOUT_MS) || 4000;
+// timeout, sem o modelo ter opinado uma única vez.
+//
+// 8000 e não 4000 (o primeiro palpite deste mesmo dia) porque a medição seguinte, já com o
+// modelo respondendo de verdade, deu 2.7s / 3.6s / 3.6s em três chamadas — 400ms de folga contra
+// um teto de 4s não sobrevive a um cold start do Cloud Run nem ao Wi-Fi do evento. E o custo de
+// errar para baixo é assimétrico: estourar o teto aqui é fail-closed, ou seja, um visitante
+// INOCENTE recusado. Um teto largo só é pago no caso raro; um teto curto é pago por quem não fez
+// nada. Este valor tem que ser MENOR que o do daemon (BOOTH_MODERATION_L2_TIMEOUT_MS, hoje
+// 10000) — ver o comentário em packages/daemon/src/index.ts.
+const MODERATION_L2_TIMEOUT_MS = Number(process.env.MODERATION_L2_TIMEOUT_MS) || 8000;
 const COMPANY_CATALOG = loadCompanyCatalog();
 
 // Revisão final Fase C — Crítico 4: falhar JÁ NA SUBIDA, não só na primeira chamada real de

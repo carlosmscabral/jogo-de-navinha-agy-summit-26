@@ -159,8 +159,9 @@ const getCloudApiToken = (): string | null => process.env.BOOTH_INGEST_TOKEN || 
 // moderation-l2.ts existe para emitir NUNCA chegava aqui: virava um abort, que vira
 // `unavailable`, que é fail-open. Os dois lados falhando na mesma janela transformavam a política
 // de fail-closed do servidor no seu oposto exato, em silêncio. A folga de 2s cobre o round trip
-// mais um cold start eventual do Cloud Run.
-const MODERATION_L2_TIMEOUT_MS = Number(process.env.BOOTH_MODERATION_L2_TIMEOUT_MS) || 6000;
+// mais um cold start eventual do Cloud Run. O teto largo não custa latência no caso comum: a
+// moderação real leva ≈3s (medido no Gate M3), e o teto só decide o que acontece na cauda.
+const MODERATION_L2_TIMEOUT_MS = Number(process.env.BOOTH_MODERATION_L2_TIMEOUT_MS) || 10_000;
 
 // Tarefa C5 — worker de sincronização do buffer local com POST /v1/matches (Tarefa C3). `token`
 // relê `process.env` a cada tentativa em vez de capturar `CLOUD_API_TOKEN` uma vez: se o staff
