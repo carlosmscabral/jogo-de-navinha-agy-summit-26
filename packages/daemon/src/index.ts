@@ -9,6 +9,7 @@ import { SQLiteBufferService } from './services/sqlite-buffer.js';
 import { WorkspaceGeneratorService } from './services/workspace-generator.js';
 import { FileWatcherService } from './services/file-watcher.js';
 import { moderateRemotely } from './services/remote-moderation.js';
+import { startModeration, type PendingModeration } from './services/pending-moderation.js';
 import { CloudSyncService } from './services/cloud-sync.js';
 import { validateCallsign, placeholderCallsign, selectFallbackPreset, EnergySliders } from '@jogo/shared';
 
@@ -153,15 +154,21 @@ const CLOUD_API_BASE = process.env.BOOTH_CLOUD_API_BASE || null;
 // único lugar do arquivo que ainda capturava o token uma vez no carregamento do módulo.
 const getCloudApiToken = (): string | null => process.env.BOOTH_INGEST_TOKEN || null;
 // Este teto tem que ser ESTRITAMENTE MAIOR que o do servidor (MODERATION_L2_TIMEOUT_MS em
-// packages/cloud-api, hoje 8000), e a ordem não é estética. O cronômetro daqui começa ANTES do
+// packages/cloud-api, hoje 20000), e a ordem não é estética. O cronômetro daqui começa ANTES do
 // hop até o Cloud Run; o de lá só começa quando a requisição chega. Com os dois em 1500 (como
 // estavam até o Gate M3, 2026-08-24) o abort local sempre vencia, e o `block` por timeout que o
 // moderation-l2.ts existe para emitir NUNCA chegava aqui: virava um abort, que vira
 // `unavailable`, que é fail-open. Os dois lados falhando na mesma janela transformavam a política
-// de fail-closed do servidor no seu oposto exato, em silêncio. A folga de 2s cobre o round trip
-// mais um cold start eventual do Cloud Run. O teto largo não custa latência no caso comum: a
-// moderação real leva ≈3s (medido no Gate M3), e o teto só decide o que acontece na cauda.
-const MODERATION_L2_TIMEOUT_MS = Number(process.env.BOOTH_MODERATION_L2_TIMEOUT_MS) || 10_000;
+// de fail-closed do servidor no seu oposto exato, em silêncio. A folga cobre o round trip mais um
+// cold start eventual do Cloud Run.
+//
+// 25s (era 10s) desde que a moderação saiu do caminho crítico, no mesmo dia — ver
+// services/pending-moderation.ts. Enquanto o visitante esperava por este número, ele era um
+// orçamento de PACIÊNCIA e tinha que ser curto. Agora ele é só o limite de quanto tempo a
+// resposta pode demorar antes de a partida acabar, e isso são minutos. O log de resposta tardia
+// mostrou vereditos legítimos chegando em 11,5s, 14,8s e 16,2s que o teto de 8s descartava sem
+// ninguém ganhar nada; com 25s eles passam a valer, e ninguém espera um milissegundo a mais.
+const MODERATION_L2_TIMEOUT_MS = Number(process.env.BOOTH_MODERATION_L2_TIMEOUT_MS) || 25_000;
 
 // Tarefa C5 — worker de sincronização do buffer local com POST /v1/matches (Tarefa C3). `token`
 // relê `process.env` a cada tentativa em vez de capturar `CLOUD_API_TOKEN` uma vez: se o staff
@@ -174,6 +181,11 @@ const cloudSync = new CloudSyncService(sqliteBuffer, {
 cloudSync.start(30_000);
 
 let currentSessionMetadata: any = null;
+
+// O veredito da camada 2 em voo, colhido no POST /api/matches. Vive fora do handler porque ele
+// atravessa duas requisições: nasce no /api/session/start e é consumido minutos depois, quando a
+// partida termina. Ver services/pending-moderation.ts para o motivo de não ser aguardado na hora.
+let pendingModeration: PendingModeration | null = null;
 
 // --- REST Endpoints ---
 
@@ -227,50 +239,42 @@ app.post('/api/session/start', async (req, res) => {
     const { pilot, energy_sliders, selected_mcps, selected_subagents } = req.body;
 
     const validation = validateCallsign(pilot?.callsign || '');
-    let callsign = validation.sanitized;
+    const callsign = validation.sanitized;
 
-    // Tarefa C4 — camada 2, só consultada quando a camada 1 local já aprovou. Se a camada 1
-    // já achou problema (curto demais, profanidade, etc.), ela já saneou o callsign para um
-    // placeholder seguro por construção (ex.: "PILOTO_042") — perguntar ao modelo de novo não
-    // muda nada e só custaria uma chamada de rede. É só no caminho "aprovado localmente" que
-    // o insulto velado que a camada 1 não pega tem chance de passar, e é aí que a camada 2 entra.
-    if (validation.isValid) {
-      const remote = await moderateRemotely(
-        CLOUD_API_BASE, getCloudApiToken(), callsign, MODERATION_L2_TIMEOUT_MS
-      );
+    // Tarefa C4 — camada 2, disparada aqui mas NÃO aguardada aqui (mudança de 2026-08-24, Gate
+    // M3). O visitante segue para a tela de instruções imediatamente; o veredito é colhido lá na
+    // frente, no POST /api/matches, que é o primeiro ponto onde o codinome realmente precisa
+    // estar correto. O porquê, com os números medidos, está em services/pending-moderation.ts.
+    //
+    // A troca por placeholder num `block` contraria a letra da Spec 05 §3.2 ("o registro é
+    // recusado com o motivo […] o visitante escolhe outro codinome") e a contraria de propósito,
+    // por decisão do operador em 2026-08-24, depois que o Gate M3 mostrou o que aquele desenho
+    // custa no estande: o 422 chegava ao `App.tsx` como um `!res.ok` qualquer, virava "Não foi
+    // possível conectar ao servidor da Forja. Verifique a conexão", e deixava o visitante numa
+    // tela de onde o codinome nem é editável (ele fica duas telas atrás). Ou seja, a promessa de
+    // "escolhe outro codinome" nunca existiu na UI — o que existia era um visitante travado
+    // achando que era rede.
+    //
+    // O OBJETIVO da §3.2 continua cumprido, que é o que importa: o nome ofensivo não chega ao
+    // telão. O que muda é quem paga pelo veredito. Sanitizar também fecha um canal de sondagem
+    // que o 422 abria — com ele, dava para descobrir por tentativa e erro exatamente onde fica a
+    // fronteira do modelo; agora toda recusa é silenciosa e o atacante não recebe sinal nenhum.
+    pendingModeration = startModeration(callsign, validation.isValid, {
+      moderate: (name) => moderateRemotely(
+        CLOUD_API_BASE, getCloudApiToken(), name, MODERATION_L2_TIMEOUT_MS
+      ),
+      placeholder: placeholderCallsign
+    });
 
-      if (remote.verdict === 'block') {
-        // Mesmo desfecho da camada 1: troca por um placeholder e segue. Isto contraria a letra
-        // da Spec 05 §3.2 ("o registro é recusado com o motivo […] o visitante escolhe outro
-        // codinome") e a contraria de propósito, por decisão do operador em 2026-08-24, depois
-        // que o Gate M3 mostrou o que aquele desenho custa no estande: o 422 chegava ao
-        // `App.tsx` como um `!res.ok` qualquer, virava "Não foi possível conectar ao servidor da
-        // Forja. Verifique a conexão", e deixava o visitante numa tela de onde o codinome nem é
-        // editável (ele fica duas telas atrás). Ou seja, a promessa de "escolhe outro codinome"
-        // nunca existiu na UI — o que existia era um visitante travado achando que era rede.
-        //
-        // O OBJETIVO da §3.2 continua cumprido, que é o que importa: o nome ofensivo não chega
-        // ao telão. O que muda é quem paga pelo veredito. Sanitizar também fecha um canal de
-        // sondagem que o 422 abria — com ele, dava para descobrir por tentativa e erro
-        // exatamente onde fica a fronteira do modelo; agora toda recusa é silenciosa e o
-        // atacante não recebe sinal nenhum.
-        console.warn(
-          `[Daemon] Camada 2 recusou "${callsign}" (${remote.reason || 'sem motivo declarado'}) — ` +
-          'trocando por um placeholder e seguindo, como a camada 1 já faz com palavrão.'
-        );
-        callsign = placeholderCallsign();
+    // Quando o veredito chega, o nome definitivo entra na metadata da sessão. Isso importa
+    // porque `currentSessionMetadata.pilot` é espelhado na ship spec (ver o merge lá em cima) —
+    // sem isto, um nome reprovado sobreviveria dentro do snapshot da nave mesmo depois de o
+    // placeholder ter substituído o callsign em todo o resto.
+    void pendingModeration.final.then((finalCallsign) => {
+      if (currentSessionMetadata?.pilot && finalCallsign !== currentSessionMetadata.pilot.callsign) {
+        currentSessionMetadata.pilot.callsign = finalCallsign;
       }
-
-      if (remote.verdict === 'unavailable') {
-        // Falha ABERTA do transporte (Spec 08 §6.2): o Vertex está inalcançável, não em dúvida.
-        // A camada 1 local já aprovou; o estande não pode parar de receber visitantes por causa
-        // disso, mas o staff precisa saber se isso vira o dia inteiro sem moderação semântica.
-        console.warn(
-          `[Daemon] Moderação semântica (camada 2) indisponível para "${callsign}" — ` +
-          'seguindo só com a aprovação local (camada 1). Se isso persistir, o Vertex está inalcançável.'
-        );
-      }
-    }
+    });
 
     const { canonical: canonicalCompany, confidence: companyConfidence } = sqliteBuffer.resolveCompany(pilot?.company_raw);
     const fullPilot = {
@@ -408,8 +412,21 @@ app.post('/api/session/start', async (req, res) => {
   }
 });
 
-app.post('/api/matches', (req, res) => {
+app.post('/api/matches', async (req, res) => {
   const matchRecord = req.body;
+
+  // O ponto onde o codinome finalmente precisa estar certo: daqui ele vai para o SQLite, para o
+  // telão e para a nuvem. A camada 2 foi disparada lá no /api/session/start e teve todo o tempo
+  // da forja e da partida para responder — na prática este await custa zero. Nos casos
+  // patológicos ele é limitado pelo timeout interno de `moderateRemotely`
+  // (BOOTH_MODERATION_L2_TIMEOUT_MS), então não pode pendurar a requisição.
+  //
+  // Sobrescrever em vez de confiar no que o cliente mandou também fecha um buraco que existia
+  // antes desta mudança: um POST direto a este endpoint com qualquer callsign no corpo pulava a
+  // moderação inteira. Agora o daemon é a autoridade, não o que chegou na requisição.
+  if (pendingModeration) {
+    matchRecord.callsign = await pendingModeration.final;
+  }
 
   try {
     sqliteBuffer.saveMatch(matchRecord);
@@ -452,6 +469,10 @@ app.post('/api/session/reset', (req, res) => {
     lastKnownAgyPid = null;
     fileWatcher.stopWatching();
     currentSessionMetadata = null;
+    // Sem isto, o veredito do visitante ANTERIOR sobreviveria ao reset e seria aplicado ao
+    // callsign do próximo — que é o jeito exato de um visitante inocente herdar o placeholder
+    // de quem passou antes dele pela cabine.
+    pendingModeration = null;
 
     // 1. Remove active session indicator
     const activeFile = path.join(sessionDir, '.session_active');

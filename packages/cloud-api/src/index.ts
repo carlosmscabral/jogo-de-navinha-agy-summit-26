@@ -48,14 +48,29 @@ const ADMIN_PANEL_PASSWORD = process.env.ADMIN_PANEL_PASSWORD;
 // O efeito era pior que lentidão: TODA moderação semântica do evento caía no fail-closed por
 // timeout, sem o modelo ter opinado uma única vez.
 //
-// 8000 e não 4000 (o primeiro palpite deste mesmo dia) porque a medição seguinte, já com o
-// modelo respondendo de verdade, deu 2.7s / 3.6s / 3.6s em três chamadas — 400ms de folga contra
-// um teto de 4s não sobrevive a um cold start do Cloud Run nem ao Wi-Fi do evento. E o custo de
-// errar para baixo é assimétrico: estourar o teto aqui é fail-closed, ou seja, um visitante
-// INOCENTE recusado. Um teto largo só é pago no caso raro; um teto curto é pago por quem não fez
-// nada. Este valor tem que ser MENOR que o do daemon (BOOTH_MODERATION_L2_TIMEOUT_MS, hoje
-// 10000) — ver o comentário em packages/daemon/src/index.ts.
-const MODERATION_L2_TIMEOUT_MS = Number(process.env.MODERATION_L2_TIMEOUT_MS) || 8000;
+// O custo de errar para baixo é assimétrico: estourar o teto aqui é fail-closed, ou seja, um
+// visitante INOCENTE perde o codinome. Um teto largo só é pago no caso raro; um teto curto é pago
+// por quem não fez nada. Este valor tem que ser MENOR que o do daemon
+// (BOOTH_MODERATION_L2_TIMEOUT_MS, hoje 25000) — ver o comentário em packages/daemon/src/index.ts.
+//
+// A escala mudou duas vezes em 2026-08-24, e o segundo motivo é o interessante. Primeiro 8000,
+// escolhido quando o visitante ESPERAVA por esta resposta na tela de cadastro: ali o teto era um
+// orçamento de paciência, e uma bateria de 100 callsigns confirmou que 8s cobria 96% dos casos.
+// Depois 20000, quando a moderação saiu do caminho crítico do visitante
+// (packages/daemon/src/services/pending-moderation.ts) e o teto deixou de ser pago por alguém
+// olhando a tela. O que decidiu o número novo foi o log de resposta tardia introduzido logo
+// abaixo: as chamadas que o teto de 8s abandonava terminavam BEM, em 8,3s / 11,5s / 14,8s /
+// 16,2s / 47,8s / 78,0s. Com 20s, as quatro primeiras viram veredito de verdade em vez de
+// fail-closed por lentidão. As duas últimas continuam estourando, e tudo bem: são SIEG_HEIL e
+// VOLKISCH, cujo desfecho correto é bloqueio de qualquer forma.
+//
+// Detalhe que os números acima revelam e que vale ter em mente ao mexer neste valor: a latência
+// acompanha o quanto a ENTRADA é ofensiva — os dois dog-whistles nazistas foram os dois mais
+// lentos por uma margem enorme. O provável mecanismo é a maquinaria de segurança do próprio
+// Vertex reagindo ao conteúdo do prompt, que por definição carrega o texto ofensivo. Ou seja: o
+// serviço fica mais lento exatamente nos casos em que mais precisamos dele, e é por isso que o
+// fail-closed neste teto é a política certa.
+const MODERATION_L2_TIMEOUT_MS = Number(process.env.MODERATION_L2_TIMEOUT_MS) || 20_000;
 const COMPANY_CATALOG = loadCompanyCatalog();
 
 // Revisão final Fase C — Crítico 4: falhar JÁ NA SUBIDA, não só na primeira chamada real de
