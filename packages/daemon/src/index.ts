@@ -152,7 +152,15 @@ const CLOUD_API_BASE = process.env.BOOTH_CLOUD_API_BASE || null;
 // Manager sem exigir reiniciar o daemon. Antes desta correção, o site de moderação era o
 // único lugar do arquivo que ainda capturava o token uma vez no carregamento do módulo.
 const getCloudApiToken = (): string | null => process.env.BOOTH_INGEST_TOKEN || null;
-const MODERATION_L2_TIMEOUT_MS = Number(process.env.BOOTH_MODERATION_L2_TIMEOUT_MS) || 1500;
+// Este teto tem que ser ESTRITAMENTE MAIOR que o do servidor (MODERATION_L2_TIMEOUT_MS em
+// packages/cloud-api, hoje 4000), e a ordem não é estética. O cronômetro daqui começa ANTES do
+// hop até o Cloud Run; o de lá só começa quando a requisição chega. Com os dois em 1500 (como
+// estavam até o Gate M3, 2026-08-24) o abort local sempre vencia, e o `block` por timeout que o
+// moderation-l2.ts existe para emitir NUNCA chegava aqui: virava um abort, que vira
+// `unavailable`, que é fail-open. Os dois lados falhando na mesma janela transformavam a política
+// de fail-closed do servidor no seu oposto exato, em silêncio. A folga de 2s cobre o round trip
+// mais um cold start eventual do Cloud Run.
+const MODERATION_L2_TIMEOUT_MS = Number(process.env.BOOTH_MODERATION_L2_TIMEOUT_MS) || 6000;
 
 // Tarefa C5 — worker de sincronização do buffer local com POST /v1/matches (Tarefa C3). `token`
 // relê `process.env` a cada tentativa em vez de capturar `CLOUD_API_TOKEN` uma vez: se o staff

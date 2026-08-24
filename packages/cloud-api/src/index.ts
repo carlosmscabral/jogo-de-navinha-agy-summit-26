@@ -42,7 +42,13 @@ const ADMIN_PANEL_PASSWORD = process.env.ADMIN_PANEL_PASSWORD;
 // Tarefa C4 — moderação de camada 2 (bloqueante) e canonicalização (assíncrona). Ver
 // vertex.ts para a pesquisa de parâmetros do Passo 1 e moderation-l2.ts/canonicalize.ts
 // para a distinção fail-closed vs fail-open que rege este arquivo.
-const MODERATION_L2_TIMEOUT_MS = Number(process.env.MODERATION_L2_TIMEOUT_MS) || 1500;
+// O default era 1500ms e era curto demais: medido ao vivo no Gate M3 (2026-08-24), um POST
+// /v1/moderate contra o projeto real devolveu "não respondeu a tempo" em 1.6s — o gemini-3.7-flash
+// no endpoint `global` não cabe em 1,5s saindo de southamerica-east1, nem com thinkingLevel 'low'.
+// O efeito era pior que lentidão: TODA moderação semântica do evento caía no fail-closed por
+// timeout, sem o modelo ter opinado uma única vez. Este teto tem que ser MENOR que o do daemon
+// (BOOTH_MODERATION_L2_TIMEOUT_MS, hoje 6000) — ver o comentário lá em packages/daemon/src/index.ts.
+const MODERATION_L2_TIMEOUT_MS = Number(process.env.MODERATION_L2_TIMEOUT_MS) || 4000;
 const COMPANY_CATALOG = loadCompanyCatalog();
 
 // Revisão final Fase C — Crítico 4: falhar JÁ NA SUBIDA, não só na primeira chamada real de
@@ -208,7 +214,15 @@ app.post('/v1/moderate', async (req: Request, res: Response) => {
     res.status(400).json({ error: 'body must be { callsign: string }' });
     return;
   }
+  // A latência é o dado de operação que faltava no Gate M3: sem ela, um teto curto demais é
+  // indistinguível de um modelo que reprova todo mundo — os dois aparecem como `block`. Com o
+  // número no log do Cloud Run dá para ver, no meio do evento, se o teto acima ainda tem folga.
+  const startedAt = Date.now();
   const result = await moderateCallsign(body.callsign, moderateWithVertex, MODERATION_L2_TIMEOUT_MS);
+  console.log(
+    `[cloud-api] moderate: verdict=${result.verdict} em ${Date.now() - startedAt}ms ` +
+    `(teto ${MODERATION_L2_TIMEOUT_MS}ms)`
+  );
   res.status(200).json(result);
 });
 
