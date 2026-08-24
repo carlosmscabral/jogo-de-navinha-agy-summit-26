@@ -20,6 +20,13 @@ const BLOCKED_WORDS = [
 ];
 
 /**
+ * Minimum length a blocked term needs before it is also searched as a *substring* of the dense
+ * leet-normalized form. See the containment check in `validateCallsign` for why this is 5 and
+ * not 4.
+ */
+const CONTAINMENT_MIN_LENGTH = 5;
+
+/**
  * Normalizes leet-speak (e.g., "p0rr4" -> "porra", "f*ck" -> "fck", "b!ch@" -> "bicha")
  */
 function normalizeLeetSpeak(input: string): string {
@@ -103,10 +110,13 @@ export function validateCallsign(rawCallsign: string): CallsignValidationResult 
   // Check profanity against raw words and leet-speak normalized forms
   const denseLeet = normalizeLeetSpeak(trimmed);
   const words = trimmed.toLowerCase().split(/[\s_-]+/);
+  // Per-word leet normalization keeps evasions like "p0rr4" or "sh1t" caught by exact match, so
+  // the substring pass below no longer has to reach down to 4-letter terms to stay useful.
+  const leetWords = words.map(normalizeLeetSpeak);
 
   for (const blocked of BLOCKED_WORDS) {
-    // Exact word match
-    if (words.includes(blocked)) {
+    // Exact word match, raw or leet-normalized
+    if (words.includes(blocked) || leetWords.includes(blocked)) {
       return {
         isValid: false,
         reason: 'Termo impróprio ou não permitido no evento.',
@@ -115,8 +125,14 @@ export function validateCallsign(rawCallsign: string): CallsignValidationResult 
       };
     }
 
-    // Leet speak containment match (for blocked words with length >= 4)
-    if (blocked.length >= 4 && denseLeet.includes(blocked)) {
+    // Substring search on the dense form catches profanity concatenated into a single token
+    // ("porraloka"), but it cannot tell a deliberate evasion from an innocent word that merely
+    // contains the term. At length 4 it blocked SKILLER, SKILL, KILLJOY (kill), COCKPIT (cock)
+    // and PICANHA (pica) -- all plausible callsigns (Spec 06, "o casamento por containment
+    // super-bloqueia"; confirmed live in Gate M3). Raising the floor to 5 drops exactly those
+    // false positives: the 4-letter terms stay covered by the exact-match pass above, and
+    // anything concatenated that still slips through is layer 2's job.
+    if (blocked.length >= CONTAINMENT_MIN_LENGTH && denseLeet.includes(blocked)) {
       return {
         isValid: false,
         reason: 'Termo impróprio ou não permitido no evento.',

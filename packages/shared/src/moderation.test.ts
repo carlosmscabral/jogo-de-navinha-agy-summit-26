@@ -38,6 +38,23 @@ describe('Moderation & Profanity Filter', () => {
     assert.strictEqual(r3.isValid, false);
   });
 
+  it('does not block innocent callsigns that merely contain a short blocked term', () => {
+    // Spec 06, "o casamento por containment super-bloqueia": substring search at length 4 blocked
+    // SKILLER/SKILL/KILLJOY (kill), COCKPIT (cock) and PICANHA (pica). Never fixed until Gate M3
+    // caught SKILLER coming back as PILOTO_987 from a live POST /api/session/start.
+    for (const callsign of ['SKILLER', 'SKILL', 'KILLJOY', 'COCKPIT', 'PICANHA']) {
+      assert.strictEqual(validateCallsign(callsign).isValid, true, callsign);
+    }
+  });
+
+  it('still catches leet-speak evasion of 4-letter terms after the containment floor moved to 5', () => {
+    // These no longer match by containment, so they prove the per-word leet-normalized exact pass
+    // carries them -- without it, raising the floor would have quietly opened a hole.
+    for (const callsign of ['k1ll', 'sh1t', 'put4', 'f0da']) {
+      assert.strictEqual(validateCallsign(callsign).isValid, false, callsign);
+    }
+  });
+
   it('should reject repetitive keyboard mash', () => {
     const r1 = validateCallsign('AAAAAAA');
     assert.strictEqual(r1.isValid, false);

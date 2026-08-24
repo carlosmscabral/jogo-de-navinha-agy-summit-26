@@ -1070,19 +1070,43 @@ documento gravado.
 
 - [ ] **13.6 — Callsign ofensivo recusado pela API, não só pelo formulário**
 
-> **Correção, achado ao vivo em 2026-08-24:** o `{...}` abaixo era um placeholder literal, não
-> JSON válido — `curl` falhava com `SyntaxError: Expected property name or '}'`. `energy_sliders`
-> exige as quatro chaves `offense`/`speed`/`defense`/`tech` (`packages/shared/src/types/ship.ts`).
+> **Correção, achado ao vivo em 2026-08-24 — três erros neste bloco, um deles travava o estande.**
+> 1. O `{...}` original era um placeholder literal, não JSON válido — `curl` falhava com
+>    `SyntaxError`. `energy_sliders` exige `offense`/`speed`/`defense`/`tech`.
+> 2. `"selected_mcps": []` **trava a sessão**. O schema exige `minItems: 1`
+>    (`packages/shared/src/schema/gen-schema.ts`), e a REGRA ZERO proíbe o `agy` de inventar
+>    números sem MCP ativo — ele não consegue produzir spec válida de jeito nenhum, a tela fica
+>    presa no cadastro e nenhuma sessão nova inicia. Sempre mande pelo menos um MCP.
+> 3. O critério `422` estava errado para `PORRA` (veja abaixo).
+
+`POST /api/session/start` **inicia uma sessão real do `agy`** — não é uma chamada inócua. Faça o
+reset depois de cada uma das duas chamadas abaixo, senão a próxima não inicia:
 
 ```bash
 curl -s -X POST localhost:3000/api/session/start \
   -H 'Content-Type: application/json' \
-  -d '{"pilot": {"callsign": "PORRA", "company_raw": "Teste"}, "energy_sliders": {"offense": 25, "speed": 25, "defense": 25, "tech": 25}, "selected_mcps": [], "selected_subagents": []}'
+  -d '{"pilot": {"callsign": "PORRA", "company_raw": "Teste"}, "energy_sliders": {"offense": 25, "speed": 25, "defense": 25, "tech": 25}, "selected_mcps": ["weapons-arsenal"], "selected_subagents": []}'
+
+curl -s -X POST localhost:3000/api/session/reset   # obrigatório antes da próxima chamada
 ```
 
-**Critério:** `422` com `error: "callsign_rejected"`. Repita trocando só o `callsign` para
-`"SKILLER"` — **Critério:** aceito (o filtro de containment não pode reprovar isto, é o achado
-histórico D1/A2).
+**Critério:** `200` com `pilot.callsign` trocado por um `PILOTO_###` — **não** um `422`. A camada 1
+(dicionário local) sanitiza o palavrão em vez de recusar, e isso é deliberado: Spec 06 diz "para
+palavrão o efeito é aceitável, porque o `sanitized` vira `PILOTO_###`". O `422
+callsign_rejected` é o caminho da **camada 2** (Vertex), que só é consultada quando a camada 1
+aprova — ou seja, para a ofensa velada que o dicionário não pega. `PORRA` nunca chega lá.
+
+Repita trocando só o `callsign` para `"SKILLER"` (e resete de novo depois):
+
+**Critério:** aceito, com `pilot.callsign` igual a `SKILLER` — o filtro de containment não pode
+reprovar isto (achado histórico D1/A2).
+
+> **Bug real encontrado aqui em 2026-08-24:** `SKILLER` voltava como `PILOTO_987`. A correção que
+> a Spec 06 pediu ("restringir o containment a termos mais longos") nunca tinha sido implementada:
+> `kill` tem 4 letras e a busca por substring na forma densa reprovava `SKILLER`, `SKILL`,
+> `KILLJOY`, `COCKPIT` e `PICANHA`. Corrigido subindo o piso do containment para 5 e passando a
+> normalizar leet-speak por palavra (para `k1ll`/`sh1t` continuarem barrados), com testes de
+> regressão em `packages/shared/src/moderation.test.ts`.
 
 - [ ] **13.7 — Empresa ofensiva não chega ao telão**
 
