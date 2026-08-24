@@ -1,7 +1,26 @@
 /**
- * Data source for the telão (TV leaderboard): Firestore `onSnapshot` as the
- * primary path, the local bridge (fetch + WebSocket) as the safety net.
- * Spec 05 §7.2 — a frozen scoreboard is worse than one a few seconds behind.
+ * Data source for the telão (TV leaderboard).
+ *
+ * As duas fontes são EXCLUSIVAS e escolhidas uma única vez, na montagem:
+ *   - Firestore `onSnapshot`, quando o projeto está configurado (produção, e dev com `.env`);
+ *   - o bridge local (fetch + WebSocket), quando NÃO está — dev sem `.env` e a topologia
+ *     puramente local do estande, sem nuvem nenhuma.
+ *
+ * O que NÃO existe mais é a queda de uma para a outra. Ela existiu (Spec 05 §7.2, "um placar
+ * congelado é pior que um alguns segundos atrasado") enquanto o telão era servido pelo próprio
+ * bridge. Decidido em 2026-08-24, no Gate M3: o telão passa a ser hospedado no Firebase Hosting,
+ * porque a máquina do estande pode não conseguir tocar duas telas. Servido por HTTPS, a queda
+ * para `http://<ip-do-estande>:3000` é impossível — é conteúdo misto, o Chrome bloqueia antes de
+ * qualquer preflight, e nenhum cabeçalho (nem o `Access-Control-Allow-Private-Network` do Private
+ * Network Access) muda isso. Mantê-la seria um caminho que só falha, e falha em silêncio, no
+ * console de uma TV que ninguém está olhando.
+ *
+ * No lugar dela, o selo passa a dizer a verdade. Perda de rede NÃO dispara o callback de erro do
+ * `onSnapshot` — o SDK do Firestore reconecta sozinho e continua servindo do cache local, então o
+ * telão ficava exibindo "NUVEM" sobre dados congelados por tempo indeterminado. Com
+ * `includeMetadataChanges: true`, o SDK emite um snapshot quando `metadata.fromCache` vira `true`,
+ * e é isso que vira "SEM SINAL": os últimos dados conhecidos continuam na tela (melhor que uma tela
+ * vazia), com um selo que admite que estão parados.
  *
  * This file has three clearly separated sections:
  *   1. Pure logic (`mergeLeaderboardState`, `applyAccurateCounts`, `pickSource`)
@@ -13,8 +32,8 @@
  *      `subscribe` function, no emulator involved.
  *   3. Side-effecting plumbing (`subscribeToLeaderboard` and below) — the
  *      three `onSnapshot` listeners (wrapped in `subscribeWithRetry`), the
- *      periodic exact-count refresh (`getCountFromServer`), and the bridge
- *      fetch/WebSocket fallback (moved here from `App.tsx`, not duplicated).
+ *      periodic exact-count refresh (`getCountFromServer`), and the local
+ *      bridge client (moved here from `App.tsx`, not duplicated).
  *      Exercised manually against the Firestore emulator (see task report),
  *      not by the unit tests.
  */
@@ -190,7 +209,10 @@ export function applyAccurateCounts(state: LeaderboardState, counts: AccurateCou
 }
 
 export type SourceEvent =
+  /** Snapshot vindo do servidor: os dados na tela são os do Firestore, agora. */
   | 'CLOUD_SNAPSHOT'
+  /** Snapshot servido do cache local: o SDK perdeu o backend e o que está na tela parou. */
+  | 'CLOUD_CACHE'
   | 'CLOUD_TIMEOUT'
   | 'CLOUD_ERROR'
   | 'LOCAL_SNAPSHOT'
@@ -202,18 +224,24 @@ export type SourceEvent =
  * in `subscribeToLeaderboard`, which feeds events into this reducer as they
  * happen. This is also what makes automatic recovery to the cloud trivial to
  * reason about and to test: `CLOUD_SNAPSHOT` always wins, from any state.
+ *
+ * Sem `current` em nenhum ramo desde 2026-08-24: as duas fontes deixaram de coexistir (ver o
+ * comentário no topo do arquivo), então não há mais evento tardio de uma chegando depois que a
+ * outra assumiu. Cada evento determina o estado sozinho.
  */
 export function pickSource(current: SourceStatus, event: SourceEvent): SourceStatus {
   switch (event) {
     case 'CLOUD_SNAPSHOT':
       return 'cloud';
+    case 'LOCAL_SNAPSHOT':
+      return 'local';
+    // Nuvem parada, muda ou ausente é a MESMA coisa para quem olha o telão: os números
+    // congelaram. Não há segunda fonte para tentar — o selo é a única saída honesta.
+    case 'CLOUD_CACHE':
     case 'CLOUD_TIMEOUT':
     case 'CLOUD_ERROR':
-      return 'local';
-    case 'LOCAL_SNAPSHOT':
-      return current === 'cloud' ? current : 'local';
     case 'LOCAL_FAILURE':
-      return current === 'cloud' ? current : 'offline';
+      return 'offline';
     default:
       return current;
   }
@@ -278,7 +306,7 @@ export function subscribeWithRetry<T>(options: RetryableSubscriptionOptions<T>):
 }
 
 // ---------------------------------------------------------------------------
-// Side-effecting plumbing — Firestore onSnapshot + local bridge fallback.
+// Side-effecting plumbing — Firestore onSnapshot, OU o bridge local (exclusivos).
 // ---------------------------------------------------------------------------
 
 // Finding 3 (revisão final Fase C): esta janela vale só para a PRIMEIRA conexão — ver
@@ -292,9 +320,11 @@ let cachedDb: Firestore | null = null;
 
 /**
  * Lazily builds the Firebase app/Firestore singleton from Vite env vars.
- * Returns null when the project isn't configured (e.g. local dev without
- * `.env`), in which case `subscribeToLeaderboard` skips straight to the
- * local bridge.
+ * Returns null when the project isn't configured — dev sem `.env`, ou a topologia puramente
+ * local do estande — e nesse caso `subscribeToLeaderboard` usa só o bridge local, para sempre.
+ * Em produção (Firebase Hosting) as seis `VITE_FIREBASE_*` vão gravadas no bundle pelo
+ * `scripts/deploy.sh`; se o selo do telão nunca sair de "LOCAL"/"SEM SINAL" lá, foi build feito
+ * sem elas.
  */
 function getFirestoreDb(): Firestore | null {
   const env = import.meta.env;
@@ -330,6 +360,9 @@ interface LocalBridgeHandlers {
  * The pre-existing polling + WebSocket bridge client, moved here verbatim
  * from `App.tsx` (not duplicated) and adapted to report success/failure to
  * the source-switching logic instead of writing straight into React state.
+ *
+ * Só roda quando o Firestore NÃO está configurado (ver `getFirestoreDb`). Não é mais rede de
+ * segurança da nuvem: é a fonte única da topologia local. Ver o comentário no topo do arquivo.
  */
 function subscribeToLocalBridge(handlers: LocalBridgeHandlers): () => void {
   let stopped = false;
@@ -401,9 +434,9 @@ function subscribeToLocalBridge(handlers: LocalBridgeHandlers): () => void {
 }
 
 /**
- * Wires Firestore `onSnapshot` (primary) and the local bridge (fallback)
- * together and reports both the merged leaderboard data and the active
- * source to `handlers`. Returns a single cleanup function.
+ * Escolhe a fonte UMA vez (Firestore se configurado, bridge local caso contrário) e reporta
+ * tanto os dados mesclados quanto a fonte ativa para `handlers`. Devolve uma única função de
+ * limpeza.
  */
 export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => void {
   let status: SourceStatus = 'offline';
@@ -415,11 +448,10 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
   let countsIntervalHandle: ReturnType<typeof setInterval> | null = null;
   let localUnsubscribe: (() => void) | null = null;
   let recencyInitialized = false;
-  // Finding 3 (revisão final Fase C): true a partir do primeiro snapshot que QUALQUER uma
-  // das três assinaturas onSnapshot entrega com sucesso. A partir daí, silêncio deixa de
-  // ser, por si só, sinal de falha — só o callback de erro do próprio onSnapshot (tratado
-  // por onCloudError/subscribeWithRetry) derruba para o bridge local. Ver comentário em
-  // armWatchdog()/onCloudSuccess() logo abaixo para o porquê.
+  // Finding 3 (revisão final Fase C): true a partir do primeiro snapshot SERVIDO PELO SERVIDOR
+  // que qualquer uma das três assinaturas onSnapshot entrega. A partir daí, silêncio deixa de
+  // ser, por si só, sinal de falha — quem passa a acusar rede caída é `metadata.fromCache`.
+  // Ver comentário em armWatchdog()/onCloudSuccess() logo abaixo para o porquê.
   let hasEverConnected = false;
 
   function setStatus(event: SourceEvent) {
@@ -450,7 +482,7 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
    * real-time without hammering Firestore on every match/company update.
    * Failures are logged and skipped — the next tick tries again, and the
    * three onSnapshot listeners remain the authority on source health, so a
-   * transient count-fetch failure doesn't flip the NUVEM/LOCAL badge.
+   * transient count-fetch failure doesn't flip the NUVEM/SEM SINAL badge.
    *
    * Minor 10 (revisão final Fase C): unlike `mergeLeaderboardState` above, these two
    * `getCountFromServer` counts do NOT exclude `voided` matches — a voided match still
@@ -487,21 +519,23 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
    * correção, `onCloudSuccess()` rearmava este watchdog a cada snapshot — mas
    * `onSnapshot` só dispara quando há dado novo, e no estande partidas reais chegam com
    * minutos de intervalo. Um watchdog de 5s rearmado a cada snapshot disparava sozinho em
-   * QUALQUER período ocioso normal, derrubando para o bridge local (tipicamente
-   * inalcançável de uma TV hospedada) e alternando de volta na próxima partida real — o
-   * telão passava a maior parte do tempo na fonte errada mesmo com o Firestore saudável.
-   * `hasEverConnected` faz este watchdog só existir enquanto NENHUM snapshot chegou ainda;
-   * uma vez confirmada a conexão inicial, esta função vira no-op para sempre — daí em
-   * diante, só o callback de erro do próprio onSnapshot (via subscribeWithRetry) decide
-   * quando cair para local.
+   * QUALQUER período ocioso normal e o telão passava a maior parte do tempo acusando falha
+   * mesmo com o Firestore saudável. `hasEverConnected` faz este watchdog só existir enquanto
+   * NENHUM snapshot do servidor chegou ainda; uma vez confirmada a conexão inicial, esta
+   * função vira no-op para sempre.
+   *
+   * Desde 2026-08-24 ele é DIAGNÓSTICO, não corretivo: o estado inicial já é 'offline' (o selo
+   * nasce "SEM SINAL"), e sem uma segunda fonte para acionar não há mais nada a fazer quando
+   * ele dispara além de deixar registro no console. Mantido porque esse registro é a única
+   * pista, para quem abrir o DevTools da TV, entre "o Firestore nunca respondeu" e "respondeu
+   * e não havia dado nenhum" — dois estados que na tela são idênticos.
    */
   function armWatchdog() {
     clearWatchdog();
     if (hasEverConnected) return;
     watchdogHandle = setTimeout(() => {
-      console.warn('[leaderboard-source] No initial Firestore snapshot within watchdog window, falling back to local bridge');
+      console.warn('[leaderboard-source] No initial Firestore snapshot within watchdog window');
       setStatus('CLOUD_TIMEOUT');
-      startLocalFallback();
     }, CLOUD_WATCHDOG_MS);
   }
 
@@ -512,14 +546,14 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
     }
   }
 
-  function stopLocalFallback() {
+  function stopLocalBridge() {
     if (localUnsubscribe) {
       localUnsubscribe();
       localUnsubscribe = null;
     }
   }
 
-  function startLocalFallback() {
+  function startLocalBridge() {
     if (localUnsubscribe) return; // already running
     localUnsubscribe = subscribeToLocalBridge({
       onData: (state) => {
@@ -537,19 +571,37 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
   if (db) {
     armWatchdog();
 
-    const onCloudSuccess = () => {
-      clearWatchdog();
-      hasEverConnected = true; // ver comentário em armWatchdog(): silêncio depois disto não é mais falha.
-      setStatus('CLOUD_SNAPSHOT');
-      stopLocalFallback();
+    /**
+     * `snap.metadata.fromCache` é o que denuncia rede caída, e é a única coisa que denuncia:
+     * perder a conexão NÃO chama o callback de erro do `onSnapshot` (o SDK só reconecta em
+     * silêncio, servindo do cache). Emitimos o estado nos dois casos — os últimos dados
+     * conhecidos continuam na tela; só o selo muda. `metadata` é opcional aqui por causa dos
+     * dublês de teste mais antigos, que não o carregam; ausente é lido como "veio do servidor",
+     * o comportamento anterior.
+     */
+    const onCloudSuccess = (snap: QuerySnapshot<DocumentData>) => {
+      const fromCache = snap.metadata?.fromCache === true;
+      if (!fromCache) {
+        clearWatchdog();
+        hasEverConnected = true; // ver armWatchdog(): silêncio depois disto não é mais falha.
+      }
+      setStatus(fromCache ? 'CLOUD_CACHE' : 'CLOUD_SNAPSHOT');
       emitMerged();
     };
 
     const onCloudError = (context: string) => (err: unknown) => {
       console.error(`[leaderboard-source] Firestore ${context} listener error`, err);
       setStatus('CLOUD_ERROR');
-      startLocalFallback();
     };
+
+    /**
+     * `includeMetadataChanges: true` é o que faz o SDK emitir um snapshot quando só o
+     * `fromCache` mudou — sem isso, cair a rede não produz evento nenhum (os dados não
+     * mudaram) e o telão continuaria exibindo "NUVEM" para sempre. `docChanges()` sem
+     * argumento continua ignorando mudanças de metadata, então isto NÃO faz o modal de
+     * celebração repetir.
+     */
+    const SNAPSHOT_OPTIONS = { includeMetadataChanges: true } as const;
 
     const topByScoreQuery = query(
       collection(db, 'matches'),
@@ -558,10 +610,11 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
     );
     unsubscribers.push(
       subscribeWithRetry<QuerySnapshot<DocumentData>>({
-        subscribe: (onNext, onError) => onSnapshot(topByScoreQuery, onNext, onError),
+        subscribe: (onNext, onError) =>
+          onSnapshot(topByScoreQuery, SNAPSHOT_OPTIONS, onNext, onError),
         onNext: (snap) => {
           matchesByScore = snap.docs.map((d) => normalizeMatchDoc(d.data()));
-          onCloudSuccess();
+          onCloudSuccess(snap);
         },
         onError: onCloudError('matches-by-score')
       })
@@ -582,7 +635,7 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
           // resubscription from replaying the celebration modal for matches
           // that already existed before the hiccup.
           recencyInitialized = false;
-          return onSnapshot(topByRecencyQuery, onNext, onError);
+          return onSnapshot(topByRecencyQuery, SNAPSHOT_OPTIONS, onNext, onError);
         },
         onNext: (snap) => {
           matchesByRecency = snap.docs.map((d) => normalizeMatchDoc(d.data()));
@@ -603,7 +656,7 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
             }
           }
           recencyInitialized = true;
-          onCloudSuccess();
+          onCloudSuccess(snap);
         },
         onError: onCloudError('matches-by-recency')
       })
@@ -616,10 +669,11 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
     );
     unsubscribers.push(
       subscribeWithRetry<QuerySnapshot<DocumentData>>({
-        subscribe: (onNext, onError) => onSnapshot(rankingsQuery, onNext, onError),
+        subscribe: (onNext, onError) =>
+          onSnapshot(rankingsQuery, SNAPSHOT_OPTIONS, onNext, onError),
         onNext: (snap) => {
           rankings = snap.docs.map((d) => d.data() as CompanyRankingDocument);
-          onCloudSuccess();
+          onCloudSuccess(snap);
         },
         onError: onCloudError('company-rankings')
       })
@@ -629,13 +683,13 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
     countsIntervalHandle = setInterval(() => refreshCounts(db), COUNT_REFRESH_MS);
   } else {
     console.warn('[leaderboard-source] Firebase project id not configured, using local bridge only');
-    startLocalFallback();
+    startLocalBridge();
   }
 
   return () => {
     clearWatchdog();
     if (countsIntervalHandle) clearInterval(countsIntervalHandle);
-    stopLocalFallback();
+    stopLocalBridge();
     unsubscribers.forEach((unsub) => unsub());
   };
 }

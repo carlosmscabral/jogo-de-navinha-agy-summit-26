@@ -158,36 +158,47 @@ describe('pickSource', () => {
     expect(pickSource('offline', 'CLOUD_SNAPSHOT')).toBe('cloud');
   });
 
-  it('cai para o bridge local quando o Firestore não entrega snapshot no prazo', () => {
-    expect(pickSource('cloud', 'CLOUD_TIMEOUT')).toBe('local');
-    expect(pickSource('offline', 'CLOUD_TIMEOUT')).toBe('local');
+  it('acusa SEM SINAL quando o Firestore não entrega o snapshot inicial no prazo', () => {
+    expect(pickSource('cloud', 'CLOUD_TIMEOUT')).toBe('offline');
+    expect(pickSource('offline', 'CLOUD_TIMEOUT')).toBe('offline');
   });
 
-  it('cai para o bridge local quando o Firestore reporta erro', () => {
-    expect(pickSource('cloud', 'CLOUD_ERROR')).toBe('local');
+  it('acusa SEM SINAL quando o Firestore reporta erro', () => {
+    expect(pickSource('cloud', 'CLOUD_ERROR')).toBe('offline');
   });
 
-  it('sinaliza offline quando nenhuma das duas fontes responde', () => {
-    expect(pickSource('local', 'LOCAL_FAILURE')).toBe('offline');
-    expect(pickSource('offline', 'LOCAL_FAILURE')).toBe('offline');
+  it('acusa SEM SINAL quando o snapshot passa a vir do cache — rede caída', () => {
+    // O caso que motivou o evento CLOUD_CACHE: perder a rede não chama o callback de erro do
+    // onSnapshot, então sem isto o telão exibiria "NUVEM" sobre números congelados. Ver o
+    // comentário no topo de firestore-source.ts.
+    expect(pickSource('cloud', 'CLOUD_CACHE')).toBe('offline');
   });
 
-  it('permanece local quando o bridge local entrega dados com sucesso', () => {
+  it('volta para a nuvem sozinho no primeiro snapshot que vier do servidor de novo', () => {
+    expect(pickSource('offline', 'CLOUD_SNAPSHOT')).toBe('cloud');
+  });
+
+  it('reporta a fonte local quando o bridge é a única fonte e entrega dados', () => {
     expect(pickSource('local', 'LOCAL_SNAPSHOT')).toBe('local');
     expect(pickSource('offline', 'LOCAL_SNAPSHOT')).toBe('local');
   });
 
-  it('volta para a nuvem sozinho quando o Firestore reaparece', () => {
-    expect(pickSource('local', 'CLOUD_SNAPSHOT')).toBe('cloud');
-    expect(pickSource('offline', 'CLOUD_SNAPSHOT')).toBe('cloud');
+  it('acusa SEM SINAL quando o bridge, fonte única, para de responder', () => {
+    expect(pickSource('local', 'LOCAL_FAILURE')).toBe('offline');
+    expect(pickSource('offline', 'LOCAL_FAILURE')).toBe('offline');
   });
 
-  it('ignora um snapshot local tardio depois que a nuvem já assumiu', () => {
-    expect(pickSource('cloud', 'LOCAL_SNAPSHOT')).toBe('cloud');
-  });
-
-  it('ignora uma falha local tardia depois que a nuvem já assumiu', () => {
-    expect(pickSource('cloud', 'LOCAL_FAILURE')).toBe('cloud');
+  it('NÃO mistura as duas fontes: cada evento decide sozinho, sem olhar o estado anterior', () => {
+    // A partir de 2026-08-24 as fontes são exclusivas (Firestore OU bridge, escolhido na
+    // montagem). Se alguém reintroduzir uma queda de uma para a outra, os ramos que
+    // dependiam de `current` voltam junto — e este teste quebra antes disso passar batido.
+    const todos: SourceStatus[] = ['cloud', 'local', 'offline'];
+    for (const partida of todos) {
+      expect(pickSource(partida, 'CLOUD_SNAPSHOT')).toBe('cloud');
+      expect(pickSource(partida, 'LOCAL_SNAPSHOT')).toBe('local');
+      expect(pickSource(partida, 'CLOUD_CACHE')).toBe('offline');
+      expect(pickSource(partida, 'LOCAL_FAILURE')).toBe('offline');
+    }
   });
 });
 
@@ -348,6 +359,7 @@ describe('subscribeWithRetry', () => {
   });
 
   it('recupera a fonte sozinho para "cloud" depois de um erro permanente do onSnapshot, sem o chamador fazer nada', () => {
+    // (o estado intermediário depois do erro é 'offline' — não há mais segunda fonte)
     let status: SourceStatus = 'offline';
     let callCount = 0;
 
@@ -370,8 +382,8 @@ describe('subscribeWithRetry', () => {
       baseDelayMs: 1000
     });
 
-    // O erro permanente derruba para local...
-    expect(status).toBe('local');
+    // O erro permanente derruba o selo para SEM SINAL...
+    expect(status).toBe('offline');
 
     // ...e o wrapper reinscreve sozinho depois do backoff, sem o chamador
     // precisar reagir ao erro manualmente.
@@ -390,6 +402,9 @@ describe('subscribeWithRetry', () => {
 type FakeSnapshotHandler = { next: (v: any) => void; error: (e: any) => void };
 
 const onSnapshotHandlers: FakeSnapshotHandler[] = [];
+/** As opções passadas em cada chamada de `onSnapshot`, na ordem — usado para provar o
+ *  `includeMetadataChanges`, sem o qual a detecção de rede caída nunca dispara. */
+const onSnapshotOptions: unknown[] = [];
 
 vi.mock('firebase/app', () => ({
   initializeApp: vi.fn(() => ({}))
@@ -401,17 +416,26 @@ vi.mock('firebase/firestore', () => ({
   query: vi.fn((...args: unknown[]) => args[0]),
   orderBy: vi.fn(),
   limit: vi.fn(),
-  onSnapshot: vi.fn((_query: unknown, onNext: (v: any) => void, onError: (e: any) => void) => {
-    onSnapshotHandlers.push({ next: onNext, error: onError });
-    return () => {};
-  }),
+  onSnapshot: vi.fn(
+    (
+      _query: unknown,
+      options: unknown,
+      onNext: (v: any) => void,
+      onError: (e: any) => void
+    ) => {
+      onSnapshotOptions.push(options);
+      onSnapshotHandlers.push({ next: onNext, error: onError });
+      return () => {};
+    }
+  ),
   getCountFromServer: vi.fn(async () => ({ data: () => ({ count: 0 }) }))
 }));
 
-function fakeMatchSnapshot(docsData: unknown[]) {
+function fakeMatchSnapshot(docsData: unknown[], fromCache = false) {
   return {
     docs: docsData.map((data) => ({ data: () => data })),
-    docChanges: () => []
+    docChanges: () => [],
+    metadata: { fromCache, hasPendingWrites: false }
   };
 }
 
@@ -420,6 +444,7 @@ describe('subscribeToLeaderboard (Firestore mockado)', () => {
     vi.useFakeTimers();
     vi.stubEnv('VITE_FIREBASE_PROJECT_ID', 'test-project');
     onSnapshotHandlers.length = 0;
+    onSnapshotOptions.length = 0;
   });
 
   afterEach(() => {
@@ -427,7 +452,7 @@ describe('subscribeToLeaderboard (Firestore mockado)', () => {
     vi.unstubAllEnvs();
   });
 
-  it('Finding 3: não cai para o bridge local durante silêncio normal depois do snapshot inicial', () => {
+  it('Finding 3: não acusa falha durante silêncio normal depois do snapshot inicial', () => {
     const onSourceChange = vi.fn();
     const unsubscribe = subscribeToLeaderboard({ onData: vi.fn(), onSourceChange });
 
@@ -439,19 +464,61 @@ describe('subscribeToLeaderboard (Firestore mockado)', () => {
     // Bem além do antigo watchdog de 5s — um intervalo real entre partidas no estande.
     vi.advanceTimersByTime(60_000);
 
-    expect(onSourceChange).not.toHaveBeenCalledWith('local');
+    expect(onSourceChange).not.toHaveBeenCalled();
 
     unsubscribe();
   });
 
-  it('Finding 3: ainda cai para o bridge local se o PRIMEIRO snapshot nunca chegar', () => {
+  it('Finding 3: continua SEM SINAL, e deixa registro, se o PRIMEIRO snapshot nunca chegar', () => {
+    // O selo já nasce 'offline', então o watchdog não tem estado novo a anunciar — por isso
+    // `onSourceChange` NÃO é chamado, e a única saída dele é o aviso no console. Ver o
+    // comentário em armWatchdog(): ele virou diagnóstico, não correção.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const onSourceChange = vi.fn();
     const unsubscribe = subscribeToLeaderboard({ onData: vi.fn(), onSourceChange });
 
     // Nenhum onSnapshotHandlers[].next() é chamado — simula a conexão inicial nunca completando.
     vi.advanceTimersByTime(5_000);
 
-    expect(onSourceChange).toHaveBeenCalledWith('local');
+    expect(onSourceChange).not.toHaveBeenCalledWith('cloud');
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('No initial Firestore snapshot')
+    );
+
+    warn.mockRestore();
+    unsubscribe();
+  });
+
+  it('assina com includeMetadataChanges — sem isso, rede caída não gera evento nenhum', () => {
+    const unsubscribe = subscribeToLeaderboard({ onData: vi.fn(), onSourceChange: vi.fn() });
+
+    expect(onSnapshotOptions).toHaveLength(3);
+    for (const options of onSnapshotOptions) {
+      expect(options).toEqual({ includeMetadataChanges: true });
+    }
+
+    unsubscribe();
+  });
+
+  it('vira SEM SINAL quando os snapshots passam a vir do cache, e volta para NUVEM sozinho', () => {
+    // O cenário do Bloco 15: telão hospedado, Wi-Fi cai. O onSnapshot NÃO chama o callback de
+    // erro; o SDK só passa a servir do cache. Antes desta correção o selo continuava "NUVEM"
+    // sobre números congelados por tempo indeterminado.
+    const onData = vi.fn();
+    const onSourceChange = vi.fn();
+    const unsubscribe = subscribeToLeaderboard({ onData, onSourceChange });
+
+    onSnapshotHandlers.forEach((h) => h.next(fakeMatchSnapshot([])));
+    expect(onSourceChange).toHaveBeenLastCalledWith('cloud');
+
+    onData.mockClear();
+    onSnapshotHandlers[0].next(fakeMatchSnapshot([], true));
+    expect(onSourceChange).toHaveBeenLastCalledWith('offline');
+    // Os últimos dados conhecidos continuam sendo emitidos: a tela não esvazia, só o selo muda.
+    expect(onData).toHaveBeenCalled();
+
+    onSnapshotHandlers[0].next(fakeMatchSnapshot([], false));
+    expect(onSourceChange).toHaveBeenLastCalledWith('cloud');
 
     unsubscribe();
   });

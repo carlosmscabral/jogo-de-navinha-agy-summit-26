@@ -51,6 +51,7 @@ if [ "$SKIP_CONFIRM" -ne 1 ]; then
 fi
 
 command -v gcloud >/dev/null 2>&1 || { echo "gcloud não encontrado no PATH." >&2; exit 1; }
+command -v firebase >/dev/null 2>&1 || { echo "firebase (firebase-tools) não encontrado no PATH." >&2; exit 1; }
 
 gcloud config set project "$PROJECT_ID" >/dev/null
 
@@ -58,6 +59,16 @@ echo ""
 echo "-- Removendo o serviço Cloud Run --"
 gcloud run services delete "$SERVICE_NAME" --region "$REGION" --project "$PROJECT_ID" --quiet \
   && echo "Removido." || echo "Já não existia, ou falhou (ver mensagem acima) — seguindo."
+
+echo ""
+echo "-- Despublicando o telão (Firebase Hosting) --"
+# `hosting:disable` tira o site do ar sem apagar o site nem o histórico de releases: o endereço
+# passa a responder uma página "Site Not Found" e um `deploy --only hosting` futuro republica
+# tudo. Não existe "delete" do site padrão de um projeto Firebase, então desabilitar é o mais
+# longe que dá para ir — e é o suficiente: o telão é conteúdo estático público, sem custo
+# perceptível e sem dado nenhum dentro.
+firebase hosting:disable --project "$PROJECT_ID" --force \
+  && echo "Telão fora do ar." || echo "Já estava fora, ou falhou (ver mensagem acima) — seguindo."
 
 echo ""
 echo "-- Removendo segredos --"

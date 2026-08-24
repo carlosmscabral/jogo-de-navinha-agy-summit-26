@@ -72,8 +72,13 @@ O buffer SQLite existe e a idempotência por `match_id` está garantida pelo `IN
 
 - **[U3, D10] O worker de sincronização.** `getPendingMatches()` e `markMatchSynced()` existem e nada
   os chama. Especificado em [Spec 05](./05_LEADERBOARD_AND_CLOUD_SPEC.md) §5.
-- **Fallback do placar.** A TV deve cair para o snapshot do bridge local quando o Firestore ficar
-  inacessível, com indicação discreta de modo local.
+- **Sinalização de placar parado.** A versão original deste item pedia que a TV caísse para o
+  snapshot do bridge local quando o Firestore ficasse inacessível. **Revisto em 2026-08-24:** o
+  telão é servido por HTTPS pelo Firebase Hosting, e conteúdo misto impede qualquer chamada ao
+  bridge — esse fallback não podia funcionar. No lugar dele, a TV mantém os últimos números na tela
+  e troca o selo para `SEM SINAL` assim que os snapshots passam a vir do cache do SDK. Ver
+  [Spec 08](./08_DEPLOYMENT_TOPOLOGY_AND_CLOUD_SPLIT.md) §5 e
+  [Spec 05](./05_LEADERBOARD_AND_CLOUD_SPEC.md) §7.
 
 > **[D9] Caminho do banco.** O default `'./booth_local.sqlite'` é relativo ao diretório de invocação, e
 > o `USER_GUIDE.md` documenta outro caminho. Dois diretórios de partida produzem dois bancos, e o

@@ -1217,7 +1217,25 @@ Tela Empresas: adicione uma empresa, clique em exportar. **Critério:** baixa um
 
 ---
 
-## Bloco 15 — Gate M3, parte 4: o teste de 10 minutos do Chrome real (Spec 08 §5)
+## Bloco 15 — Gate M3, parte 4: o telão no Chrome real
+
+> **Decisão registrada em 2026-08-24, durante este Gate.** A pergunta original deste bloco era
+> se o Private Network Access do Chrome bloquearia a queda do telão para o bridge local. Ela
+> deixou de existir, por duas decisões encadeadas:
+>
+> 1. **O telão é hospedado no Firebase Hosting**, não servido pelo bridge nem pelo container do
+>    Cloud Run. Motivo de campo: a máquina do estande pode não conseguir tocar duas telas, então
+>    o telão precisa poder rodar em outra máquina qualquer. Motivo técnico: o admin-app está
+>    dentro do container porque compartilha a senha HTTP Basic de `/v1/admin/*`; o telão é
+>    público, e não fala com aquela API — ele lê o Firestore direto. Ver o comentário do Passo
+>    9 em `scripts/deploy.sh`.
+> 2. **O telão não tem mais queda para o bridge local.** Servido por HTTPS, uma chamada a
+>    `http://<ip-do-estande>:3000` é conteúdo misto: o Chrome bloqueia antes de qualquer
+>    preflight, e nenhum cabeçalho (nem o `Access-Control-Allow-Private-Network` do PNA) muda
+>    isso. Era um caminho que só podia falhar, em silêncio, no console de uma TV.
+>
+> No lugar dele, o selo passou a dizer a verdade quando os dados param — é isso que este bloco
+> agora verifica. Ver o comentário no topo de `packages/leaderboard-app/src/firestore-source.ts`.
 
 - [ ] **15.1 — Versão exata do Chrome**
 
@@ -1225,26 +1243,39 @@ Tela Empresas: adicione uma empresa, clique em exportar. **Critério:** baixa um
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --version
 ```
 
-Registre no §17 — é o dado que decide se o Private Network Access do Chrome é ou não um problema
-real neste hardware.
+Registre no §17. Não decide mais nada sobre PNA — fica como registro do que foi testado.
 
-- [ ] **15.2 — Abrir o `leaderboard-app` hospedado**
+- [ ] **15.2 — Abrir o telão hospedado**
 
-Abra a URL pública do telão (não `localhost`) no Chrome.
+Abra `https://vibe-cabral.web.app` no Chrome (o `deploy.sh` imprime esta URL no fim; a linha
+`Hosting URL` do próprio `firebase` é a autoritativa).
 
-**Critério:** carrega, mostra o selo `NUVEM` no cabeçalho, atualiza ao vivo quando uma nova partida
-chega (jogue uma rápida para confirmar).
+**Critério:** carrega, mostra o selo `NUVEM` no cabeçalho, e atualiza ao vivo quando uma partida
+nova chega — jogue uma rápida no estande para confirmar, sem recarregar a página do telão.
 
-- [ ] **15.3 — Forçar a queda para o bridge local**
+> **Se o selo nunca sair de `SEM SINAL`:** o build foi feito sem as seis `VITE_FIREBASE_*`. O Vite
+> grava esses valores no bundle em tempo de build, e só o `deploy.sh` (Passo 6) as conhece — um
+> `npm run build` na raiz produz um telão sem nuvem. Rode `npm run deploy:gcp` de novo.
 
-Bloqueie o acesso ao Firestore (desligue o Wi-Fi do Mac que roda o telão, ou bloqueie o domínio
-`firestore.googleapis.com` no DevTools → Network → Network conditions, se disponível).
+- [ ] **15.3 — Cortar a rede e conferir se o selo admite**
 
-**Critério:** o selo vira `LOCAL` (ou `SEM SINAL`, se o bridge também não for alcançável desta
-máquina), e o Chrome não bloqueia silenciosamente a chamada ao bridge local por Private Network
-Access — se bloquear, é o cenário que a Spec 08 §5 pede para decidir agora: o fallback vira um
-snapshot em cache no próprio Firestore, e essa é uma tarefa nova a abrir, não algo para resolver às
-pressas no dia do evento.
+Com o telão aberto e em `NUVEM`, desligue o Wi-Fi da máquina do telão (ou DevTools → Network →
+throttling `Offline`).
+
+**Critério, em ordem:**
+
+1. Os números **continuam na tela** — não esvazia, não dá tela branca. São os últimos dados
+   conhecidos, servidos do cache do SDK do Firestore.
+2. Em alguns segundos o selo vira **`SEM SINAL`**. Esse é o comportamento novo: perder a rede
+   **não** dispara o callback de erro do `onSnapshot`, então antes desta correção o telão ficava
+   exibindo `NUVEM` sobre números congelados por tempo indeterminado. Quem denuncia agora é
+   `metadata.fromCache`, e só chega porque as assinaturas usam `includeMetadataChanges: true`.
+3. Religue o Wi-Fi: o selo volta sozinho para **`NUVEM`**, sem recarregar a página, e as partidas
+   que entraram durante a queda aparecem.
+
+**Se o passo 2 falhar** (selo continua `NUVEM` com a rede caída), é o defeito que este bloco
+existe para pegar — anote no §17 e não trate como cosmético: no evento, significa um telão
+mentindo sobre estar atualizado.
 
 ---
 
@@ -1261,7 +1292,9 @@ evento) ou desmontar (se isto foi um projeto de teste separado, ou você quer re
 npm run undeploy:gcp
 ```
 
-Não apaga o banco Firestore por padrão. Para apagar tudo, inclusive os dados:
+Remove o Cloud Run, os dois segredos e a service account, e **despublica o telão** do Firebase
+Hosting (`hosting:disable` — o endereço passa a responder "Site Not Found"; um `deploy.sh` futuro
+republica). Não apaga o banco Firestore por padrão. Para apagar tudo, inclusive os dados:
 `npm run undeploy:gcp -- --delete-database` (pede a mesma confirmação `EXCLUIR` do painel).
 
 - [ ] **16.3 — Limpar o estande local de novo, para o próximo ensaio**
@@ -1292,8 +1325,11 @@ Bloco 13 — ciclo completo real        [ ] passou  [ ] falhou
   13.10 — auth_failed distinguível?   [ ] sim  [ ] não
 Bloco 14 — painel de administração    [ ] passou  [ ] falhou
   14.6 — exclusão remove agregados vazios?  [ ] sim  [ ] não
-Bloco 15 — Chrome real / fallback     [ ] passou  [ ] falhou
-  Private Network Access bloqueou o fallback local?  [ ] sim  [ ] não
+Bloco 15 — telão no Chrome real       [ ] passou  [ ] falhou
+  15.2 — selo NUVEM e atualiza ao vivo?     [ ] sim  [ ] não
+  15.3 — vira SEM SINAL ao cortar a rede?   [ ] sim  [ ] NÃO ← telão mentindo
+  15.3 — volta para NUVEM sozinho?          [ ] sim  [ ] não
+  URL do telão (Hosting):  ____________
 
 GATE M3:  [ ] fechado  [ ] não fechado
 

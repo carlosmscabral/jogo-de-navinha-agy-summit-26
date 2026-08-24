@@ -62,8 +62,8 @@ cloud-first: é o que permite que a política seja segura em todo o resto.
 | API de gravação | Cloud Run + Firebase Admin SDK | Mantém a credencial privilegiada fora do estande. |
 | Moderação semântica de callsign | Cloud Run → Vertex AI | Sem chave de modelo na máquina do estande. |
 | Canonicalização de empresa | Cloud Run → Vertex AI | Idem; assíncrona (§6.2). |
-| `leaderboard-app` | Firebase Hosting ou Cloud Run | Pode ser aberto de qualquer tela, inclusive um Chromebook puro. |
-| Painel de administração | Cloud Run | Milestone 3 do `USER_GUIDE`; naturalmente remoto. |
+| `leaderboard-app` | Firebase Hosting (§5) | Pode ser aberto de qualquer tela, inclusive um Chromebook puro. |
+| Painel de administração | Cloud Run, dentro do container da API | Precisa da mesma senha HTTP Basic de `/v1/admin/*` — por isso não vai para o Hosting. |
 
 ### 2.3. Diagrama da topologia recomendada
 
@@ -83,7 +83,7 @@ graph TD
     end
 
     subgraph TV [Tela 3: TV Publica]
-        LEAD[leaderboard-app hospedado em GCP]
+        LEAD[leaderboard-app no Firebase Hosting]
     end
 
     subgraph GCP [Camada C - Google Cloud]
@@ -102,7 +102,6 @@ graph TD
     RUN -->|Admin SDK| FS
     RUN -->|moderacao e canonicalizacao| VERTEX
     FS -->|onSnapshot somente leitura| LEAD
-    LEAD -.->|fallback se Firestore inacessivel| BRIDGE
 ```
 
 ---
@@ -143,33 +142,43 @@ A Topologia A é o estado atual e falha no requisito de consolidação e de sobr
 
 ---
 
-## 5. A Restrição de Rede Local do Chrome (bloqueio a verificar)
+## 5. A Restrição de Rede Local do Chrome (resolvida)
 
-Uma página servida por HTTPS a partir da nuvem que faz `fetch` para `http://localhost:3000` esbarra em
-duas políticas distintas do Chrome:
+Uma página servida por HTTPS a partir da nuvem que fala com um endereço local esbarra em duas
+políticas distintas do Chrome, e a diferença entre elas é o que decide cada caso abaixo:
 
-1. **Mixed content:** `localhost` e `127.0.0.1` são tratados como *potentially trustworthy origins*,
-   então esse caso específico normalmente **não** é bloqueado como conteúdo misto.
+1. **Mixed content:** uma página HTTPS **não pode** chamar `http://` nem abrir `ws://`. A exceção é
+   `localhost`/`127.0.0.1`, tratados como *potentially trustworthy origins*. Um IP de LAN
+   (`192.168.x.x`) **não** é exceção: o bloqueio acontece antes de qualquer preflight, e nenhum
+   cabeçalho de resposta o desfaz.
 2. **Private Network Access / Local Network Access:** requisições de um contexto público para um
    endereço local exigem preflight CORS com `Access-Control-Request-Private-Network` e, em versões
    recentes do Chrome, podem disparar **prompt de permissão ao usuário** — inaceitável em modo kiosk,
-   onde não há ninguém para clicar.
+   onde não há ninguém para clicar. Só entra em cena quando a política 1 já foi vencida.
 
-Essa política vem mudando entre versões do Chrome, e o comportamento de `ws://localhost` a partir de
-página HTTPS é ainda menos estável que o de `fetch`.
-
-**Decisão:** não apostar nisso. O `player-app` é **servido pelo próprio session bridge** em
+**Decisão para o `player-app`:** não apostar nisso. Ele é **servido pelo próprio session bridge** em
 `http://localhost:3000`, tornando a origem local e a questão inexistente. É uma mudança pequena
 (servir estáticos com `express.static` a partir do build do Vite) que elimina uma classe inteira de
 falha em kiosk e ainda remove a necessidade de rodar o dev server do Vite no dia do evento.
 
-O `leaderboard-app` **não** tem esse problema: ele fala com Firestore e Cloud Run, ambos públicos, e
-por isso pode e deve ser hospedado.
+**Decisão para o `leaderboard-app` (2026-08-24, durante o Gate M3):** hospedado no **Firebase
+Hosting**, e **sem fallback para o bridge local**.
 
-**Verificação a executar mesmo assim** (10 minutos, no Gate M3): abrir o `leaderboard-app` hospedado e
-confirmar no DevTools que seu fallback para o bridge local, quando acionado, não é bloqueado —
-registrando a versão exata do Chrome usada. Se for bloqueado, o fallback passa a ser um snapshot em
-cache no próprio Firestore em vez de uma chamada ao bridge.
+- *Por que Hosting, e não o container do Cloud Run:* a máquina do estande pode não conseguir tocar
+  duas telas, então o telão precisa poder rodar em qualquer outra máquina — e ele não fala com a
+  API de ingestão, lê o Firestore direto. O `admin-app` está dentro do container por um motivo que
+  não se aplica aqui: ele precisa da mesma senha HTTP Basic que protege `/v1/admin/*`.
+- *Por que sem fallback:* servido por HTTPS de `*.web.app`, a chamada ao bridge é conteúdo misto
+  pela política 1 acima — o telão nem chega perto do PNA. Era um caminho que só podia falhar, em
+  silêncio, no console de uma TV. No lugar dele, o telão mostra `SEM SINAL` (via
+  `snapshot.metadata.fromCache`) mantendo os últimos números na tela. Ver Spec 05 §7.
+
+O bridge continua sendo a fonte do telão numa topologia puramente local (desenvolvimento, ou um
+ensaio sem nuvem): as duas fontes são exclusivas e a escolha é feita uma vez, na montagem, pela
+presença das `VITE_FIREBASE_*` no bundle.
+
+**Verificação no Gate M3:** Bloco 15 do [plano de teste](./12_MANUAL_TEST_PLAN_MAC.md) — abrir o
+telão hospedado, cortar a rede, e confirmar que o selo vira `SEM SINAL` sem esvaziar a tela.
 
 ---
 
@@ -299,6 +308,8 @@ Custo não é fator de decisão aqui; disponibilidade e risco operacional são.
 - [ ] Com o cabo de rede desconectado, um ciclo completo de visitante roda de ponta a ponta e o score
       aparece no Firestore em até 60s após a reconexão, sem duplicação.
 - [ ] O `player-app` é servido pelo bridge local e não depende de nenhum dev server no dia do evento.
+- [ ] O telão é servido pelo Firebase Hosting e, com a rede cortada, mantém os últimos números na
+      tela exibindo `SEM SINAL` — nunca `NUVEM` sobre dados congelados (Bloco 15 do plano de teste).
 - [ ] O endereço de cada serviço vem de configuração, não de literal no código (fecha D7).
 - [ ] Toda escrita do Admin SDK nomeia o banco `jogo-navinha` explicitamente; o `(default)` de
       `vibe-cabral` permanece intocado, verificável por ele continuar vazio de coleções nossas.

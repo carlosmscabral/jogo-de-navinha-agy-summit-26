@@ -65,7 +65,7 @@ command -v firebase >/dev/null 2>&1 || { echo "firebase (firebase-tools) não en
 gcloud config set project "$PROJECT_ID" >/dev/null
 
 echo ""
-echo "-- 1/9: Habilitando APIs necessárias (idempotente) --"
+echo "-- 1/10: Habilitando APIs necessárias (idempotente) --"
 gcloud services enable \
   firestore.googleapis.com \
   run.googleapis.com \
@@ -73,10 +73,11 @@ gcloud services enable \
   aiplatform.googleapis.com \
   cloudbuild.googleapis.com \
   artifactregistry.googleapis.com \
+  firebasehosting.googleapis.com \
   --project="$PROJECT_ID"
 
 echo ""
-echo "-- 2/9: Banco Firestore nomeado '$FIRESTORE_DATABASE' --"
+echo "-- 2/10: Banco Firestore nomeado '$FIRESTORE_DATABASE' --"
 if gcloud firestore databases describe --database="$FIRESTORE_DATABASE" --project="$PROJECT_ID" >/dev/null 2>&1; then
   echo "Já existe — não mexe no que já está lá (o (default) do projeto continua intocado)."
 else
@@ -89,13 +90,13 @@ else
 fi
 
 echo ""
-echo "-- 3/9: Regras e índices do Firestore --"
+echo "-- 3/10: Regras e índices do Firestore --"
 # --project sobrescreve .firebaserc — funciona mesmo sem esse arquivo existir localmente,
 # o que é o que torna este passo reproduzível para outro projeto sem editar nada versionado.
 firebase deploy --project="$PROJECT_ID" --only "firestore:$FIRESTORE_DATABASE"
 
 echo ""
-echo "-- 4/9: Service account do Cloud Run --"
+echo "-- 4/10: Service account do Cloud Run --"
 if gcloud iam service-accounts describe "$SERVICE_ACCOUNT_EMAIL" --project="$PROJECT_ID" >/dev/null 2>&1; then
   echo "Já existe: $SERVICE_ACCOUNT_EMAIL"
 else
@@ -115,7 +116,7 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --condition=None >/dev/null
 
 echo ""
-echo "-- 5/9: Segredos (Secret Manager) --"
+echo "-- 5/10: Segredos (Secret Manager) --"
 # Só cria se ainda não existir — nunca sobrescreve um segredo que o operador já configurou
 # (rotacionar é uma decisão separada, deliberada, não um efeito colateral de rodar este script
 # de novo). Gerados aqui, mostrados uma única vez: guarde-os, não há como reler o valor depois.
@@ -149,7 +150,7 @@ create_secret_if_missing "$BOOTH_TOKEN_SECRET"
 create_secret_if_missing "$ADMIN_PASSWORD_SECRET"
 
 echo ""
-echo "-- 6/9: App Web do Firebase (config do SDK cliente, tela Rankings do admin-app) --"
+echo "-- 6/10: App Web do Firebase (config do SDK cliente: telão e tela Rankings do admin-app) --"
 # Achado ao vivo, 2026-08-24: a tela Rankings do admin-app lê `company_rankings` direto do
 # Firestore pelo SDK cliente (mesmo padrão do leaderboard-app, Tarefa C6/C7) — precisa de um
 # "app Web" registrado no projeto Firebase, um tipo de recurso que nenhum passo anterior cria.
@@ -199,15 +200,19 @@ export VITE_FIREBASE_MESSAGING_SENDER_ID="$(sdk_config_field messagingSenderId)"
 export VITE_FIREBASE_APP_ID="$(sdk_config_field appId)"
 
 echo ""
-echo "-- 7/9: Build local (shared, admin-app, vendorização do cloud-api) --"
-# As VITE_FIREBASE_* exportadas acima precisam estar no ambiente ANTES do build do
-# admin-app — o Vite grava esses valores no bundle nesse momento, não depois.
+echo "-- 7/10: Build local (shared, admin-app, leaderboard-app, vendorização do cloud-api) --"
+# As VITE_FIREBASE_* exportadas acima precisam estar no ambiente ANTES dos builds do
+# admin-app e do leaderboard-app — o Vite grava esses valores no bundle nesse momento, não
+# depois. É por isso que o telão é construído AQUI e não por `npm run build` na raiz: só este
+# script sabe as seis variáveis. Um telão construído sem elas sobe, mas nasce sem nuvem — o
+# selo fica em "SEM SINAL" para sempre e nada explica por quê.
 npm run build --workspace=packages/shared
 npm run build --workspace=packages/admin-app
+npm run build --workspace=packages/leaderboard-app
 npm run vendor --workspace=packages/cloud-api
 
 echo ""
-echo "-- 8/9: Deploy do Cloud Run --"
+echo "-- 8/10: Deploy do Cloud Run --"
 # CORRIGIDO ao vivo, 2026-08-24: era --no-allow-unauthenticated. Isso está ERRADO para esta
 # arquitetura — com o Cloud Run exigindo autenticação própria (IAM da plataforma), toda
 # requisição sem identidade Google é recusada com 403 ANTES de chegar ao código do serviço,
@@ -257,7 +262,24 @@ gcloud run deploy "$SERVICE_NAME" \
 SERVICE_URL="$(gcloud run services describe "$SERVICE_NAME" --region "$REGION" --project "$PROJECT_ID" --format='value(status.url)')"
 
 echo ""
-echo "-- 9/9: IAP --"
+echo "-- 9/10: Hosting do telão --"
+# Decidido em 2026-08-24, no Gate M3: o telão vai para o Firebase Hosting, NÃO para dentro do
+# container do Cloud Run como o admin-app. Os dois motivos:
+#
+#   1. O admin-app está no container porque precisa da MESMA senha HTTP Basic de `/v1/admin/*`
+#      (`requireAdminAuth` roda antes do `express.static`, em src/index.ts). O telão é público —
+#      postura de autenticação diferente, hospedagem diferente. Não é inconsistência.
+#   2. O telão não fala com esta API: ele lê o Firestore direto, por `onSnapshot`. Dentro do
+#      container, ganharia uma dependência de disponibilidade que hoje não tem — um deploy ruim
+#      da API às 9h da manhã derrubaria o telão junto.
+#
+# O `--only hosting` é deliberado (o Passo 3 já publicou o Firestore): evita que este passo
+# republique regras por acidente.
+firebase deploy --project="$PROJECT_ID" --only hosting
+HOSTING_URL="https://${PROJECT_ID}.web.app"
+
+echo ""
+echo "-- 10/10: IAP --"
 if [ "$WITH_IAP" -eq 1 ]; then
   echo "ERRO: --with-iap foi pedido, mas IAP no Cloud Run é POR SERVIÇO, não por rota."
   echo "Ligá-lo aqui bloquearia '/v1/matches' também — o estande, que só carrega o token"
@@ -284,6 +306,9 @@ echo ""
 echo "== Deploy concluído =="
 echo "URL do serviço: $SERVICE_URL"
 echo "Painel de admin: $SERVICE_URL/admin"
+# A linha "Hosting URL" que o próprio firebase imprimiu no Passo 9 é a autoritativa: este
+# endereço é o do site padrão, e ele só difere se o ID '$PROJECT_ID' já estivesse tomado.
+echo "Telão (abrir na TV):  $HOSTING_URL"
 echo ""
 echo "Configurar no estande (packages/daemon/.env ou variável de ambiente):"
 echo "  BOOTH_CLOUD_API_BASE=$SERVICE_URL"

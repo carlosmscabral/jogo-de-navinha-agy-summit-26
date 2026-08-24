@@ -52,7 +52,7 @@ graph TD
         RUN[Cloud Run: API de ingestao]
         FS[(Cloud Firestore)]
         VERTEX[Vertex AI: gemini-3.7-flash]
-        TVAPP[Leaderboard App hospedado]
+        TVAPP[Leaderboard App no Firebase Hosting]
     end
 
     TV[TV do estande: qualquer browser]
@@ -65,7 +65,6 @@ graph TD
     RUN -->|canonicalizacao assincrona| VERTEX
     FS -->|onSnapshot| TVAPP
     TVAPP --> TV
-    TVAPP -.->|fallback se Firestore cair| BRIDGE
 ```
 
 **Por que a escrita não vai direto do browser para o Firestore:** a regra de segurança da §6 nega toda
@@ -441,19 +440,39 @@ Mudanças necessárias:
    para o Firestore e build local apontando para o bridge.
 2. **Assinatura `onSnapshot`** em `matches` e `company_rankings`, substituindo o `fetch` de montagem
    mais WebSocket.
-3. **Fallback para o bridge local** quando o Firestore estiver inacessível por mais de alguns segundos,
-   com um indicador discreto de "modo local" na tela. Um telão congelado é pior que um telão
-   ligeiramente desatualizado.
-4. O canal WebSocket local passa a se chamar `/events` — ver
+3. **As duas fontes são exclusivas, escolhidas uma vez na montagem** — não há queda de uma para a
+   outra. Firestore quando as `VITE_FIREBASE_*` estiverem no bundle; bridge local quando não
+   estiverem (desenvolvimento, e a topologia puramente local). Ver a decisão de 2026-08-24 abaixo.
+4. **Selo honesto no lugar do fallback.** Quando os snapshots passarem a vir do cache do SDK, o telão
+   mostra `SEM SINAL` mantendo os últimos números na tela. Um telão desatualizado que *avisa* é
+   aceitável; um telão desatualizado que diz `NUVEM` é pior que um telão em branco.
+5. O canal WebSocket local passa a se chamar `/events` — ver
    [Spec 03](./03_AGY_HARNESS_AND_INTEGRATION_SPEC.md) §2.2.
+
+> **Decisão de 2026-08-24, durante o Gate M3 — o telão sai do Firebase Hosting e perde o fallback.**
+>
+> O telão é publicado no **Firebase Hosting** (`firebase.json` → `hosting`, Passo 9 do
+> `scripts/deploy.sh`), não pelo bridge nem pelo container do Cloud Run. Motivo de campo: a máquina
+> do estande pode não conseguir tocar duas telas, então o telão precisa poder rodar em qualquer
+> outra máquina. Motivo técnico: o `admin-app` está dentro do container porque compartilha a senha
+> HTTP Basic de `/v1/admin/*`; o telão é público e não fala com aquela API — lê o Firestore direto.
+>
+> Consequência: servido por HTTPS, o telão **não pode** chamar `http://<ip-do-estande>:3000`. É
+> conteúdo misto — o Chrome bloqueia antes de qualquer preflight, e nenhum cabeçalho muda isso
+> (Private Network Access nem chega a entrar em cena). O fallback era um caminho que só podia
+> falhar, em silêncio, no console de uma TV. Foi removido; o selo do item 4 o substitui.
+>
+> Detalhe de implementação que faz o item 4 funcionar: perder a rede **não** dispara o callback de
+> erro do `onSnapshot` — o SDK reconecta sozinho e serve do cache. O único sinal é
+> `snapshot.metadata.fromCache`, e ele só gera evento com `includeMetadataChanges: true` na
+> assinatura.
 
 > **Plano B nomeado para o item 2, caso a leitura pública vire um problema:** trocar o `onSnapshot`
 > por *polling* de 1,5s contra um endpoint `GET /v1/rankings` do próprio Cloud Run. Some a leitura
 > pública do Firestore e o project ID do bundle do telão, ao custo de latência e de um endpoint a
 > mais. Fica registrado porque o `duboc/gemini-com-pe` roda exatamente assim em produção — não é
 > especulação, é uma troca de poucas horas com precedente. **Não é o plano A**: `onSnapshot` dá
-> latência melhor no telão, o fallback local já está desenhado, e os dados expostos são os mesmos que
-> ficam num telão à vista de todos.
+> latência melhor no telão, e os dados expostos são os mesmos que ficam num telão à vista de todos.
 
 ---
 
