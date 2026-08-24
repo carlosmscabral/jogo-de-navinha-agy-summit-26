@@ -1029,10 +1029,21 @@ Desligue o Wi-Fi **pelo menu do macOS** no meio de uma partida (não no meio da 
 
 Religue o Wi-Fi.
 
-**Critério:** em menos de 60s o registro aparece no Firestore **uma única vez**. Repita o envio
-manualmente (`curl -X POST localhost:3000/api/sync/status` não reenvia — force reenviando o mesmo
-`POST /api/matches` outra vez com o mesmo corpo, ou aguarde o próprio worker tentar de novo) e
-confirme que `company_rankings` **não** soma de novo — é o teste de idempotência da Tarefa C3.
+> **Correção, achado ao vivo em 2026-08-24: "menos de 60s" está errado se a queda durou mais que
+> uns 2 minutos.** O backoff é exponencial com teto de 5 minutos
+> (`BASE_BACKOFF_MS * 2^consecutiveFailures`, capado em `MAX_BACKOFF_MS`) — com
+> `consecutiveFailures: 8`, a próxima tentativa só dispara **256s** depois da última falha, e a
+> partir de 9 falhas o teto de **300s** já valeu. Não há endpoint de "sincronizar agora"; o único
+> gatilho é o fim de `POST /api/matches`. Para não esperar o timer natural durante o teste:
+> `npm run kill:daemon && npm run start:daemon` (zera `consecutiveFailures` e tenta de novo
+> imediatamente), ou jogue mais uma partida rápida (qualquer `POST /api/matches` novo dispara
+> `syncNow()` no final, drenando a fila acumulada junto).
+
+**Critério:** depois de reconectar (e, se o backoff já tiver crescido demais, reiniciar o daemon
+ou jogar mais uma partida para forçar a próxima tentativa), o registro aparece no Firestore **uma
+única vez**. Repita o envio manualmente (força reenviar o mesmo `POST /api/matches` outra vez com
+o mesmo corpo) e confirme que `company_rankings` **não** soma de novo — é o teste de idempotência
+da Tarefa C3.
 
 - [ ] **13.5 — Escrita direta do navegador é recusada**
 

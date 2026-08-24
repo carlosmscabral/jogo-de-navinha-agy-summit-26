@@ -159,6 +159,10 @@ export class CloudSyncService {
     // implementação para respeitar o teto de POST /v1/matches (Spec 05 §5).
     const batch = pending.slice(0, BATCH_SIZE);
 
+    console.log(
+      `[CloudSync] Sync attempt starting -- ${batch.length}/${pending.length} pending match(es) in this batch.`
+    );
+
     let res: Response | null = null;
     let error: unknown = null;
     try {
@@ -187,6 +191,16 @@ export class CloudSyncService {
       );
     } else if (this.state === 'auth_failed' && classification === 'ok') {
       console.log('[CloudSync] Ingest token accepted again -- resuming normal sync, no restart needed.');
+    } else if (classification === 'retrying') {
+      // Not gated on a state transition like auth_failed above: a plain network/5xx failure is
+      // exactly the kind of attempt the operator needs to see happening in real time, every time,
+      // while it's happening -- unlike auth_failed, this doesn't repeat on a 5-minute ceiling, it
+      // repeats on the growing backoff computed below, and each attempt is a distinct data point
+      // (server back up yet? still down?).
+      console.warn(
+        `[CloudSync] Sync attempt failed (${res ? `HTTP ${res.status}` : 'network error, no response'}) -- ` +
+        `${this.consecutiveFailures + 1} consecutive failure(s) so far.`
+      );
     }
     this.state = classification;
 
@@ -209,6 +223,10 @@ export class CloudSyncService {
     const rejected = Array.isArray(body.rejected)
       ? (body.rejected as Array<{ match_id: string; reason: string }>)
       : [];
+
+    console.log(
+      `[CloudSync] Sync attempt ok -- ${accepted.length} accepted, ${rejected.length} rejected.`
+    );
 
     for (const matchId of accepted) {
       try {
@@ -253,6 +271,15 @@ export class CloudSyncService {
           : this.consecutiveFailures > 0
             ? this.backoffMsFor(this.consecutiveFailures)
             : intervalMs;
+        // Only worth announcing when it deviates from the steady-state 30s heartbeat -- that's
+        // exactly the number an operator can't otherwise get without asking someone to compute
+        // backoffMsFor(consecutiveFailures) by hand mid-outage.
+        if (this.state !== 'ok') {
+          console.log(
+            `[CloudSync] Next sync attempt in ${Math.round(delay / 1000)}s ` +
+            `(state=${this.state}, consecutiveFailures=${this.consecutiveFailures}).`
+          );
+        }
         this.timer = setTimeout(tick, delay);
       });
     };
