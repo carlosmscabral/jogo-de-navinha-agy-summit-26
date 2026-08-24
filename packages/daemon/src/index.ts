@@ -11,6 +11,7 @@ import { FileWatcherService } from './services/file-watcher.js';
 import { moderateRemotely } from './services/remote-moderation.js';
 import { startModeration, type PendingModeration } from './services/pending-moderation.js';
 import { CloudSyncService } from './services/cloud-sync.js';
+import { parseEnvFile, findShadowedKeys, buildShadowWarning } from './services/env-precedence.js';
 import { validateCallsign, placeholderCallsign, selectFallbackPreset, EnergySliders } from '@jogo/shared';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -551,4 +552,15 @@ const PORT = Number(process.env.PORT) || 3000;
 server.listen(PORT, () => {
   console.log(`[Local Bridge Daemon] Running at http://localhost:${PORT}`);
   console.log(`[Local Bridge Daemon] Workspace session path: ${sessionDir}`);
+
+  // `npm start` passa `--env-file-if-exists=.env`, resolvido a partir do CWD -- o mesmo caminho
+  // que se lê aqui. Ver `services/env-precedence.ts` para por que este aviso existe.
+  const envPath = path.resolve(process.cwd(), '.env');
+  if (fs.existsSync(envPath)) {
+    const warning = buildShadowWarning(
+      findShadowedKeys(parseEnvFile(fs.readFileSync(envPath, 'utf-8')), process.env),
+      envPath
+    );
+    if (warning) console.warn(warning);
+  }
 });
