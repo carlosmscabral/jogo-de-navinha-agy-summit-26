@@ -113,6 +113,13 @@ echo "-- 5/8: Segredos (Secret Manager) --"
 # Só cria se ainda não existir — nunca sobrescreve um segredo que o operador já configurou
 # (rotacionar é uma decisão separada, deliberada, não um efeito colateral de rodar este script
 # de novo). Gerados aqui, mostrados uma única vez: guarde-os, não há como reler o valor depois.
+#
+# A concessão de roles/secretmanager.secretAccessor roda SEMPRE, mesmo quando o segredo já
+# existia — corrigido depois de descobrir ao vivo (primeiro deploy real, 2026-08-24) que só
+# criar o segredo não basta: sem o papel no próprio segredo, o Cloud Run recusa a revisão com
+# "Permission denied on secret ... at the secret, project or higher level." add-iam-policy-
+# binding é idempotente, então rodar de novo sobre um segredo que já tinha o papel não duplica
+# nada — é seguro reexecutar este passo em qualquer estado.
 create_secret_if_missing() {
   local name="$1"
   if gcloud secrets describe "$name" --project="$PROJECT_ID" >/dev/null 2>&1; then
@@ -127,6 +134,10 @@ create_secret_if_missing() {
       --project="$PROJECT_ID"
     echo "  Valor gerado (guarde agora, não será mostrado de novo): $value"
   fi
+  gcloud secrets add-iam-policy-binding "$name" \
+    --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" \
+    --role="roles/secretmanager.secretAccessor" \
+    --project="$PROJECT_ID" >/dev/null
 }
 create_secret_if_missing "$BOOTH_TOKEN_SECRET"
 create_secret_if_missing "$ADMIN_PASSWORD_SECRET"

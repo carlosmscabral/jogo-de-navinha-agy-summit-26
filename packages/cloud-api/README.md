@@ -177,7 +177,11 @@ gcloud run deploy jogo-navinha-api \
 ```
 
 A service account precisa de `roles/datastore.user` e, a partir da Tarefa C4,
-`roles/aiplatform.user`. **Nenhum arquivo de chave é gerado.**
+`roles/aiplatform.user`, **mais `roles/secretmanager.secretAccessor` em cada um dos dois
+segredos** (`booth-ingest-token`, `admin-panel-password`) — sem isso o Cloud Run recusa a
+revisão com "Permission denied on secret" ao tentar montar `--set-secrets` (achado ao vivo no
+primeiro deploy real, 2026-08-24; `deploy.sh` já concede isso). **Nenhum arquivo de chave é
+gerado.**
 
 ### Topologia de `/admin` (Tarefa C7)
 
