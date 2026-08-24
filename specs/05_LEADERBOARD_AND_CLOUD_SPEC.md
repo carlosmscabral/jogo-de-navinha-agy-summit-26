@@ -190,6 +190,13 @@ chamada ao modelo (camada 2) é **disparada no registro e colhida na gravação 
 > A falha fechada do servidor continua sendo a política certa, e a bateria provou por quê: **9 dos 16
 > estouros originais eram nomes genuinamente ofensivos**, incluindo `SS_PANZER`. Fail-open teria posto
 > os nove no telão.
+>
+> **Estado final, mesma data, depois de `74ab835`: 93/93, 0 falso positivo, 0 falso negativo, 0
+> estouro** — p50 2645ms, p90 3484ms, max 4192ms. A cauda que motivou tudo isto sumiu junto com o
+> cold start (`min-instances=1`, `--no-cpu-throttling`) e com a serialização da bateria. **Isso não
+> reabre a decisão de tirar a camada 2 do caminho crítico**: a cauda era uma propriedade do serviço
+> sob carga esparsa, não um defeito consertado, e o assíncrono é o que garante que ela não volte a
+> aparecer na cara do visitante. Ele custa nada quando o modelo responde em 2,6s.
 
 ### 3.3. Moderação do campo empresa — lacuna encontrada em 2026-08-22
 
