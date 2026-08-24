@@ -3,6 +3,11 @@ dist
 *.tsbuildinfo
 .env
 .env.*
-*.test.ts
+# Sem `**/`, o Docker só casa isto na raiz do contexto de build, nunca em `src/*.test.ts` —
+# achado ao vivo no primeiro `gcloud run deploy` real (nenhum sandbox deste projeto teve
+# Docker disponível para pegar isto antes): os testes entravam na imagem e o `tsc` do
+# Dockerfile quebrava porque eles importam `./test-helpers.js`, que a linha de baixo exclui
+# corretamente (caminho exato, não glob).
+**/*.test.ts
 src/test-helpers.ts
 README.md
