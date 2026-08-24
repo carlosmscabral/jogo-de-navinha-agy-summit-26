@@ -156,7 +156,9 @@ comando de deploy.
 **Provisionamento completo, scriptado (2026-08-24):** `npm run deploy:gcp` (raiz do monorepo)
 faz todos os passos abaixo do zero — habilita as APIs, cria o banco Firestore nomeado, publica
 regras/índices, cria a service account e os segredos (gerando valores aleatórios na primeira
-vez), builda e publica no Cloud Run. É idempotente: rodar de novo sobre um projeto já
+vez), registra um app Web no Firebase e injeta a config dele (`VITE_FIREBASE_*`) no build do
+admin-app — sem isso a tela Rankings falha com "is not configured", achado ao vivo no primeiro
+deploy real — e builda e publica no Cloud Run. É idempotente: rodar de novo sobre um projeto já
 provisionado só atualiza o que mudou, nunca recria ou sobrescreve um segredo já existente.
 Aceita `PROJECT_ID=outro-projeto npm run deploy:gcp -- --yes` para reproduzir em outro projeto
 sem editar nada versionado. `npm run undeploy:gcp` desfaz (Cloud Run, segredos, service

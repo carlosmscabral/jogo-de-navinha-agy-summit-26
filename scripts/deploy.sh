@@ -12,7 +12,7 @@
 #   ./scripts/deploy.sh --yes          # sem confirmação (CI, automação)
 #   ./scripts/deploy.sh --with-iap     # recusa com explicação — IAP no Cloud Run é por
 #                                      # serviço inteiro, e bloquearia a ingestão do estande
-#                                      # junto (ver Passo 8/8 abaixo, corrigido em 2026-08-24)
+#                                      # junto (ver Passo 9/9 abaixo, corrigido em 2026-08-24)
 #   PROJECT_ID=outro-projeto ./scripts/deploy.sh   # outro projeto GCP
 #
 # O serviço sobe com --allow-unauthenticated de propósito: as duas credenciais deste
@@ -65,7 +65,7 @@ command -v firebase >/dev/null 2>&1 || { echo "firebase (firebase-tools) não en
 gcloud config set project "$PROJECT_ID" >/dev/null
 
 echo ""
-echo "-- 1/8: Habilitando APIs necessárias (idempotente) --"
+echo "-- 1/9: Habilitando APIs necessárias (idempotente) --"
 gcloud services enable \
   firestore.googleapis.com \
   run.googleapis.com \
@@ -76,7 +76,7 @@ gcloud services enable \
   --project="$PROJECT_ID"
 
 echo ""
-echo "-- 2/8: Banco Firestore nomeado '$FIRESTORE_DATABASE' --"
+echo "-- 2/9: Banco Firestore nomeado '$FIRESTORE_DATABASE' --"
 if gcloud firestore databases describe --database="$FIRESTORE_DATABASE" --project="$PROJECT_ID" >/dev/null 2>&1; then
   echo "Já existe — não mexe no que já está lá (o (default) do projeto continua intocado)."
 else
@@ -89,13 +89,13 @@ else
 fi
 
 echo ""
-echo "-- 3/8: Regras e índices do Firestore --"
+echo "-- 3/9: Regras e índices do Firestore --"
 # --project sobrescreve .firebaserc — funciona mesmo sem esse arquivo existir localmente,
 # o que é o que torna este passo reproduzível para outro projeto sem editar nada versionado.
 firebase deploy --project="$PROJECT_ID" --only "firestore:$FIRESTORE_DATABASE"
 
 echo ""
-echo "-- 4/8: Service account do Cloud Run --"
+echo "-- 4/9: Service account do Cloud Run --"
 if gcloud iam service-accounts describe "$SERVICE_ACCOUNT_EMAIL" --project="$PROJECT_ID" >/dev/null 2>&1; then
   echo "Já existe: $SERVICE_ACCOUNT_EMAIL"
 else
@@ -115,7 +115,7 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --condition=None >/dev/null
 
 echo ""
-echo "-- 5/8: Segredos (Secret Manager) --"
+echo "-- 5/9: Segredos (Secret Manager) --"
 # Só cria se ainda não existir — nunca sobrescreve um segredo que o operador já configurou
 # (rotacionar é uma decisão separada, deliberada, não um efeito colateral de rodar este script
 # de novo). Gerados aqui, mostrados uma única vez: guarde-os, não há como reler o valor depois.
@@ -149,13 +149,65 @@ create_secret_if_missing "$BOOTH_TOKEN_SECRET"
 create_secret_if_missing "$ADMIN_PASSWORD_SECRET"
 
 echo ""
-echo "-- 6/8: Build local (shared, admin-app, vendorização do cloud-api) --"
+echo "-- 6/9: App Web do Firebase (config do SDK cliente, tela Rankings do admin-app) --"
+# Achado ao vivo, 2026-08-24: a tela Rankings do admin-app lê `company_rankings` direto do
+# Firestore pelo SDK cliente (mesmo padrão do leaderboard-app, Tarefa C6/C7) — precisa de um
+# "app Web" registrado no projeto Firebase, um tipo de recurso que nenhum passo anterior cria.
+# Sem isso, o build fica com VITE_FIREBASE_PROJECT_ID etc. vazios (Vite grava esses valores no
+# bundle em tempo de build, não de execução) e a tela falha com "is not configured".
+#
+# A API key deste config NÃO é segredo — é normal e esperado ela aparecer no bundle JS
+# público; a segurança de verdade são as regras do Firestore (Passo 3), que só permitem
+# leitura pública e negam toda escrita de cliente. Por isso não vai para o Secret Manager.
+WEB_APP_NAME="${WEB_APP_NAME:-jogo-navinha-web}"
+
+find_web_app_id() {
+  firebase apps:list --project "$PROJECT_ID" --json 2>/dev/null | node -e '
+    let s = "";
+    process.stdin.on("data", (d) => (s += d));
+    process.stdin.on("end", () => {
+      const apps = JSON.parse(s).result || [];
+      const found = apps.find((a) => a.displayName === process.argv[1] && a.platform === "WEB");
+      process.stdout.write(found ? found.appId : "");
+    });
+  ' "$WEB_APP_NAME"
+}
+
+WEB_APP_ID="$(find_web_app_id)"
+if [ -z "$WEB_APP_ID" ]; then
+  echo "Criando app Web '$WEB_APP_NAME'..."
+  firebase apps:create WEB "$WEB_APP_NAME" --project "$PROJECT_ID" >/dev/null
+  WEB_APP_ID="$(find_web_app_id)"
+else
+  echo "App Web '$WEB_APP_NAME' já existe ($WEB_APP_ID)."
+fi
+
+sdk_config_field() {
+  firebase apps:sdkconfig WEB "$WEB_APP_ID" --project "$PROJECT_ID" --json 2>/dev/null | node -e '
+    let s = "";
+    process.stdin.on("data", (d) => (s += d));
+    process.stdin.on("end", () => {
+      process.stdout.write(JSON.parse(s).result.sdkConfig[process.argv[1]] || "");
+    });
+  ' "$1"
+}
+export VITE_FIREBASE_API_KEY="$(sdk_config_field apiKey)"
+export VITE_FIREBASE_AUTH_DOMAIN="$(sdk_config_field authDomain)"
+export VITE_FIREBASE_PROJECT_ID="$(sdk_config_field projectId)"
+export VITE_FIREBASE_STORAGE_BUCKET="$(sdk_config_field storageBucket)"
+export VITE_FIREBASE_MESSAGING_SENDER_ID="$(sdk_config_field messagingSenderId)"
+export VITE_FIREBASE_APP_ID="$(sdk_config_field appId)"
+
+echo ""
+echo "-- 7/9: Build local (shared, admin-app, vendorização do cloud-api) --"
+# As VITE_FIREBASE_* exportadas acima precisam estar no ambiente ANTES do build do
+# admin-app — o Vite grava esses valores no bundle nesse momento, não depois.
 npm run build --workspace=packages/shared
 npm run build --workspace=packages/admin-app
 npm run vendor --workspace=packages/cloud-api
 
 echo ""
-echo "-- 7/8: Deploy do Cloud Run --"
+echo "-- 8/9: Deploy do Cloud Run --"
 # CORRIGIDO ao vivo, 2026-08-24: era --no-allow-unauthenticated. Isso está ERRADO para esta
 # arquitetura — com o Cloud Run exigindo autenticação própria (IAM da plataforma), toda
 # requisição sem identidade Google é recusada com 403 ANTES de chegar ao código do serviço,
@@ -176,7 +228,7 @@ gcloud run deploy "$SERVICE_NAME" \
 SERVICE_URL="$(gcloud run services describe "$SERVICE_NAME" --region "$REGION" --project "$PROJECT_ID" --format='value(status.url)')"
 
 echo ""
-echo "-- 8/8: IAP --"
+echo "-- 9/9: IAP --"
 if [ "$WITH_IAP" -eq 1 ]; then
   echo "ERRO: --with-iap foi pedido, mas IAP no Cloud Run é POR SERVIÇO, não por rota."
   echo "Ligá-lo aqui bloquearia '/v1/matches' também — o estande, que só carrega o token"
