@@ -893,6 +893,13 @@ BOOTH_CLOUD_API_BASE=<URL do Cloud Run do passo 11.2>
 BOOTH_INGEST_TOKEN=<valor gerado no passo 11.1>
 ```
 
+`npm run start:daemon`/`dev` carrega este arquivo sozinho (`node --env-file-if-exists=.env`,
+achado ao vivo em 2026-08-24 — antes disso `.env` era só documentação, nada lia de verdade).
+Se `GET localhost:3000/api/sync/status` mostrar `"state": "disabled"` mesmo com o arquivo
+preenchido, confirme que está na `main` atualizada (`git log --oneline -1`, precisa ser
+`6deac4a` ou mais recente) — numa árvore mais antiga, exporte as duas variáveis no shell antes
+de `npm run start:daemon` como contorno.
+
 - [ ] **11.4 — Sem IAP, de propósito (corrigido ao vivo em 2026-08-24)**
 
 O serviço sobe com `--allow-unauthenticated` e fica protegido só pela senha HTTP Basic

@@ -6,8 +6,8 @@
   "main": "./dist/index.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "tsc -w & node --watch dist/index.js",
+    "start": "node --env-file-if-exists=.env dist/index.js",
+    "dev": "tsc -w & node --env-file-if-exists=.env --watch dist/index.js",
     "test": "node --test 'dist/**/*.test.js'"
   },
   "dependencies": {
