@@ -1315,6 +1315,13 @@ npm run reset:db
 
 ## Bloco 17 — Registro de resultados (Gate M3)
 
+> **Execução de 2026-08-24: Gate M3 FECHADO.** Projeto `vibe-cabral`, região
+> `southamerica-east1`, banco `jogo-navinha`, Chrome `151.0.7922.139`. O registro completo — o que
+> cada bloco provou, os cinco defeitos corrigidos durante o gate e as duas decisões de arquitetura
+> que só o deploy real derrubou — está em
+> [`11_KNOWN_GAPS_AND_OPEN_ITEMS.md`](./11_KNOWN_GAPS_AND_OPEN_ITEMS.md) §3, e os resíduos adiados
+> no §4.12. O formulário abaixo fica em branco de propósito: é o gabarito para a próxima execução.
+
 ```
 Data:                     ____________
 Projeto GCP:              ____________

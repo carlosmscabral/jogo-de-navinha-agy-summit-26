@@ -1,8 +1,8 @@
 # 11 — Lacunas Conhecidas e Itens em Aberto
 
-**Estado em 2026-08-22, após o merge das Fases A e B de
+**Estado em 2026-08-24, após o merge das Fases A, B e C de
 [`10_IMPLEMENTATION_PLAN.md`](./10_IMPLEMENTATION_PLAN.md), o fechamento do §2.2 e o fechamento dos
-Gates M1 e M2 no [plano de teste manual](./12_MANUAL_TEST_PLAN_MAC.md).**
+Gates M1, M2 e M3 no [plano de teste manual](./12_MANUAL_TEST_PLAN_MAC.md).**
 
 Este documento existe para que nada que está quebrado, não verificado ou deliberadamente adiado
 fique só na cabeça de quem implementou. Ele é a lista honesta do que **não** está pronto. Cada item
@@ -149,15 +149,15 @@ em `BALANCE`, na engine de combate ou em `combat-model.ts`, recapture — proced
 ## 3. Verificação que nenhuma máquina fez
 
 Tudo abaixo exige um humano com um Mac, um navegador real e o `agy` autenticado. Nada disso é
-verificável em CI. **M0, M1 e M2 foram executados à mão e estão fechados**; M3-M5 dependem de fases
-que não começaram.
+verificável em CI. **M0 a M3 foram executados à mão e estão fechados**; M4 e M5 dependem da Fase D,
+que não começou.
 
 | Gate | Depende de | O que prova | Estado |
 |------|-----------|-------------|--------|
 | **M0** | Fase A | Build limpo, testes executam e aparecem por nome | ✅ fechado |
 | **M1** | Fase B | Engine sobe offline; a dificuldade prevista pelo simulador é a que a partida transmite (5 partidas à mão) | ✅ **fechado em 2026-08-22** |
 | **M2** | Fases A + B | Ciclo completo com `agy` real; failover; portão de auditoria; latência do handoff < 500ms; limpeza de processos | ✅ **fechado em 2026-08-22** |
-| **M3** | Fase C | Score chega ao Firestore; nada se perde com o Wi-Fi caindo | ⬜ aberto (fase não iniciada) |
+| **M3** | Fase C | Score chega ao Firestore; nada se perde com o Wi-Fi caindo | ✅ **fechado em 2026-08-24** |
 | **M4** | Fase D | Ciclo de visitante em 2m00s-2m45s, 20 ciclos sem processo órfão | ⬜ aberto (fase não iniciada) |
 | **M5** | Fase D | 100 partidas consecutivas, memória e processos estáveis | ⬜ aberto (fase não iniciada) |
 
@@ -175,7 +175,43 @@ que não começaram.
   disputado: a aprovação só valeu depois de provar, pelo `callsign` e pela linha de log do
   `triggerFallback`, que a nave que voou era a do fallback e **não** a spec não auditada.
 
-**Defeitos encontrados por esses gates, todos corrigidos antes do fechamento:** a densidade de
+**Como M3 fechou** (Blocos 10 a 17, executados em 2026-08-24 contra o projeto real `vibe-cabral`,
+região `southamerica-east1`, banco `jogo-navinha`, Chrome **151.0.7922.139**):
+
+- **Blocos 11-13** — provisionamento pelo `scripts/deploy.sh`, validação no emulador, e o ciclo
+  completo real: os 13 campos presentes no documento da partida, idempotência confirmada sob
+  reenvio do mesmo `match_id`, o banco `(default)` do projeto continuando vazio, e `auth_failed`
+  distinguível de falha de rede.
+- **Bloco 14** — painel de administração sob senha HTTP Basic, incluindo a exclusão definitiva
+  removendo os agregados que ficariam zerados, e o catálogo de empresas (14.7).
+- **Bloco 15** — telão hospedado, aberto no Chrome real: selo `NUVEM`, atualização ao vivo sem
+  recarregar, e a queda de rede levando o selo a `SEM SINAL` **sem esvaziar a tela**, com retorno
+  imediato a `NUVEM` ao restabelecer. A pergunta original deste bloco (Private Network Access
+  bloquearia a queda para o bridge local?) foi respondida por eliminação — ver §5 da
+  [Spec 08](./08_DEPLOYMENT_TOPOLOGY_AND_CLOUD_SPLIT.md).
+
+**Defeitos encontrados pelo M3, todos corrigidos antes do fechamento:** o `.dockerignore` que não
+excluía os `*.test.ts` aninhados (padrão sem `**/`); a service account do Cloud Run sem
+`roles/secretmanager.secretAccessor`, que rejeitava a revisão inteira; o `packages/daemon/.env` que
+nunca era carregado (`node dist/index.js` puro, sem `--env-file`); a moderação de camada 2 que nunca
+havia rodado, porque os dois timeouts eram iguais e o relógio do daemon começava antes do salto de
+rede; e o 401 que sobreviveu a tokens idênticos dos dois lados, porque `--env-file` do Node cede
+precedência a uma variável já exportada no shell.
+
+**Duas decisões de arquitetura que só o deploy real derrubou:**
+
+1. **IAP não pode coexistir com a autenticação do estande.** IAP no Cloud Run vale para o *serviço
+   inteiro*, não por rota — não há como proteger `/v1/admin/*` deixando `/v1/matches` alcançável
+   pelo cliente que só carrega um Bearer. A senha HTTP Basic é a única camada de autenticação do
+   painel nesta topologia de serviço único, e `deploy.sh --with-iap` agora recusa com essa
+   explicação. O plano "IAP mais senha" passou por três revisões no papel sem ninguém verificar a
+   semântica real do IAP.
+2. **O fallback do telão para o bridge local nunca poderia ter funcionado.** Servido por HTTPS, o
+   telão não pode chamar `http://<ip-do-estande>:3000`: é conteúdo misto, bloqueado antes de
+   qualquer preflight. O PNA nem chegava a entrar em cena. O caminho foi removido e substituído
+   pelo selo `SEM SINAL` guiado por `metadata.fromCache`.
+
+**Defeitos encontrados pelos gates M1 e M2, todos corrigidos antes do fechamento:** a densidade de
 projéteis do boss nas três fases (mais o erro de escala de 0,8× no harness de dev, que invalidava
 qualquer julgamento de dificuldade anterior a ele), as armas secundárias que não perseguiam alvo nem
 davam retorno ao jogador, o orçamento dos sliders de energia que deixava passar uma nave de 107 PU, e
@@ -449,6 +485,28 @@ evento fica permanentemente sem `score_breakdown`**, um campo não-opcional de `
 > precisa parar de ser descartado) e passar os três campos adiante.
 
 **Fechar ao concluir a Tarefa C8, não antes.**
+
+### 4.12 Resíduos do Gate M3, 2026-08-24
+
+Encontrados durante a execução do M3 e conscientemente adiados para não interromper o gate. Nenhum
+é bloqueador; os dois primeiros cabem num único deploy.
+
+- **A busca do painel não procura por `match_id`.** O filtro `q` de `listMatches`
+  (`packages/cloud-api/src/admin.ts`) casa contra callsign e empresa, mas não contra o ID da
+  partida — justamente o que se tem em mãos ao investigar uma partida específica vinda de um log.
+- **Comentários obsoletos sobre IAP.** `packages/cloud-api/src/index.ts:108-113` e
+  `packages/admin-app/src/api.ts` ainda descrevem a topologia com IAP, que o M3 derrubou. Comentário
+  errado é pior que comentário nenhum: o próximo a ler vai acreditar.
+- **A celebração de recorde na reconexão não foi observada.** O critério "o modal de recorde não
+  reaparece quando a rede volta" depende de um recorde de Top 3 acontecer *durante* a queda, o que
+  não ocorreu no ensaio. O código está correto por construção — `snap.docChanges()` sem argumentos
+  exclui mudanças que são só de metadados, então o retorno do `fromCache` não gera mudança de
+  documento — e há teste unitário cobrindo isso, mas ninguém viu na TV. Encenável em 2 minutos
+  quando o telão estiver montado: derrubar a rede, gravar uma partida de Top 3 pelo painel, religar.
+- **O segredo `booth-ingest-token` está com valor inválido de propósito.** A versão 3 é
+  `lixo-invalido`, deixada assim pelo teste 13.10 (`auth_failed`). **Rotacionar antes do evento**,
+  redeployar e atualizar o `.env` do estande — senão nenhuma partida sincroniza. Lembrar da
+  precedência do `--env-file`: uma variável exportada no terminal vence o arquivo.
 
 ---
 
