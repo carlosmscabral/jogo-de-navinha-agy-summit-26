@@ -94,5 +94,17 @@ export function createGameInstance(container: HTMLElement | string, options: Gam
     scene: [CustomGameScene]
   };
 
-  return new Phaser.Game(config);
+  const game = new Phaser.Game(config);
+
+  // Phaser's Game.onHidden/onBlur (wired internally to window blur/visibilitychange) pause the
+  // entire loop -- including keyboard input -- meant for "tab switched away, save battery," not
+  // a fullscreen kiosk. macOS's own Wi-Fi toggle overlay (menu bar/Control Center) steals window
+  // focus and fires blur on its own, freezing the ship mid-match with no network code involved at
+  // all (found live, Gate M3). There's no GameConfig flag for this in Phaser 3 (removed since
+  // Phaser 2's `disableVisibilityChange`) -- unregistering Game's own handlers is the supported
+  // way to keep the loop (and input) running regardless of window focus.
+  game.events.off(Phaser.Core.Events.HIDDEN);
+  game.events.off(Phaser.Core.Events.BLUR);
+
+  return game;
 }
