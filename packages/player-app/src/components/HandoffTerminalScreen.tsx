@@ -1,15 +1,23 @@
-import React, { useState, useEffect } from 'react';
-import { Terminal, Rocket, AlertCircle, RefreshCw, Flame, Shield, Gauge, Play, CheckCircle2, Activity, Circle, LifeBuoy } from 'lucide-react';
+import React, { useState, useEffect, type ReactNode } from 'react';
+import { Terminal, Rocket, AlertCircle, RefreshCw, Flame, Shield, Gauge, Play, CheckCircle2, Activity, Circle, LifeBuoy, Zap, Sparkles } from 'lucide-react';
 import {
+  BALANCE,
   PilotInfo,
   EnergySliders,
   McpServerName,
   SubagentName,
   ShipSpecification,
+  SynergyName,
   MCP_CATALOG,
+  STAT_LABELS,
+  STAT_UNITS,
+  PRIMARY_WEAPON_LABELS,
+  SECONDARY_WEAPON_LABELS,
   lookupMcpServer,
   lookupMcpTool
 } from '@jogo/shared';
+import { SYNERGY_EFFECTS, synergyLabel } from './synergy-preview.js';
+import { ShipPreviewCanvas } from './ShipPreviewCanvas.js';
 import { ENDPOINTS } from '../config.js';
 
 interface HandoffTerminalScreenProps {
@@ -233,6 +241,24 @@ export function HandoffTerminalScreen({
     return 'Calibração e telemetria sincronizadas com sucesso.';
   };
 
+  const primary = detectedSpec?.weapons?.primary;
+  const secondary = detectedSpec?.weapons?.secondary;
+  const primaryLabel = primary?.type ? PRIMARY_WEAPON_LABELS[primary.type] ?? primary.type : DASH;
+  const secondaryLabel = secondary?.type
+    ? SECONDARY_WEAPON_LABELS[secondary.type] ?? secondary.type
+    : DASH;
+
+  // A nave entregue é a fonte da verdade sobre o que foi usado; o estado local é só o palpite de
+  // antes da forja, e ele diverge quando a sessão cai num preset de emergência.
+  const mcpCount = (detectedSpec?.build_metadata?.selected_mcps ?? selectedMcps).length;
+  const mcpMultiplier =
+    BALANCE.score.mcp_multiplier_by_count[mcpCount] ?? BALANCE.score.mcp_multiplier_default;
+  // Sinergia ENTREGUE, não a prevista pelos sliders: `synergies_unlocked` é o que o daemon gravou
+  // depois de `canUnlockSynergies`, e é o que a engine vai aplicar.
+  const synergyName = (detectedSpec?.build_metadata?.synergies_unlocked ?? []).find(
+    (s): s is SynergyName => s in SYNERGY_EFFECTS
+  );
+
   return (
     <div className="flex-1 flex flex-col items-center justify-center p-6 select-none overflow-y-auto font-sans">
       <div className="w-full max-w-4xl flight-panel p-8 rounded-3xl border border-slate-700/60 shadow-2xl space-y-6 my-4">
@@ -240,10 +266,10 @@ export function HandoffTerminalScreen({
         <div className="flex justify-between items-center pb-4 border-b border-slate-700/60">
           <div>
             <div className="flex items-center gap-2 mb-1 font-mono">
-              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-md bg-[#38bdf8]/10 text-[#38bdf8] border border-[#38bdf8]/30 uppercase tracking-widest">
+              <span className="text-sm font-bold px-2.5 py-0.5 rounded-md bg-[#38bdf8]/10 text-[#38bdf8] border border-[#38bdf8]/30 uppercase tracking-widest">
                 Etapa 4 de 4 // Terminal AGY
               </span>
-              <span className="text-xs text-slate-400">Google Cloud Summit 2026</span>
+              <span className="text-sm text-slate-400">Google Cloud Summit 2026</span>
             </div>
             <h2 className="text-2xl font-black text-white tracking-wider uppercase">
               FORJA NO ANTIGRAVITY CLI
@@ -251,7 +277,7 @@ export function HandoffTerminalScreen({
           </div>
 
           <div className="text-right font-mono">
-            <div className="text-xs text-slate-400 uppercase">Piloto</div>
+            <div className="text-sm text-slate-400 uppercase">Piloto</div>
             <div className="text-sm font-bold text-[#ff9e0b]">
               {pilot.callsign} <span className="text-slate-400 font-normal">({pilot.company_canonical})</span>
             </div>
@@ -264,19 +290,19 @@ export function HandoffTerminalScreen({
             <div className="flex items-center justify-between pb-3 border-b border-slate-700/60">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-xl bg-[#10b981]/20 border border-[#10b981]/40 text-[#10b981]">
-                  <Rocket className="w-5 h-5 animate-bounce" />
+                  <Rocket className="w-7 h-7 animate-bounce" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-white uppercase tracking-wider font-mono">
-                    NAVE HOMOLOGADA COM SUCESSO!
+                  <h3 className="text-3xl font-black text-white uppercase tracking-wider font-mono">
+                    Nave homologada!
                   </h3>
-                  <p className="text-xs text-slate-400 font-mono">
+                  <p className="text-sm text-slate-400 font-mono">
                     Classe: <b className="text-[#38bdf8]">{shown(detectedSpec.visuals?.style_name)}</b>
                   </p>
                 </div>
               </div>
 
-              <span className="text-xs font-mono font-bold px-3 py-1 rounded-full bg-[#10b981]/20 text-[#10b981] border border-[#10b981]/40">
+              <span className="text-sm font-mono font-bold px-3 py-1 rounded-full bg-[#10b981]/20 text-[#10b981] border border-[#10b981]/40">
                 ✓ PRONTA PARA O COMBATE
               </span>
             </div>
@@ -292,7 +318,7 @@ export function HandoffTerminalScreen({
                     Esta nave veio de um preset de emergência
                     {fallback.preset ? `: ${fallback.preset}` : ''}.
                   </div>
-                  <div className="text-xs text-slate-400 font-mono">
+                  <div className="text-sm text-slate-400 font-mono">
                     {fallback.reason ?? 'A forja não concluiu a tempo — você voa com a nave padrão.'}
                   </div>
                 </div>
@@ -301,91 +327,83 @@ export function HandoffTerminalScreen({
 
             {/* Ship Visual & Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-center">
-              {/* SVG Fuselage Preview (4 cols) */}
-              <div className="md:col-span-4 flex flex-col items-center justify-center p-4 rounded-2xl bg-slate-950/80 border border-slate-800 h-48 relative overflow-hidden">
+              {/* O casco de verdade. Até aqui esta caixa desenhava um polígono fixo que ignorava
+                  `visuals.svg_path_data` — o visitante só via a nave que a IA desenhou depois que
+                  a partida já tinha começado. */}
+              <div className="md:col-span-4 flex flex-col items-center justify-center p-4 rounded-2xl bg-slate-950/80 border border-slate-800 relative overflow-hidden">
                 <div className="absolute inset-0 bg-radial from-[#38bdf8]/10 via-transparent to-transparent pointer-events-none" />
-                <svg viewBox="0 0 100 100" className="w-28 h-28 drop-shadow-[0_0_20px_rgba(56,189,248,0.6)]">
-                  {/* Outer Wings */}
-                  <polygon
-                    points="50,15 15,75 35,68 50,85 65,68 85,75"
-                    fill={detectedSpec.visuals?.primary_color || '#ff9e0b'}
-                    stroke="#ffffff"
-                    strokeWidth="1.5"
-                  />
-                  {/* Cockpit Canopy */}
-                  <polygon
-                    points="50,30 40,62 50,56 60,62"
-                    fill={detectedSpec.visuals?.secondary_color || '#38bdf8'}
-                    stroke="#ffffff"
-                    strokeWidth="1"
-                  />
-                  {/* Engine Thrusters */}
-                  <ellipse cx="50" cy="85" rx="6" ry="3" fill="#ff9e0b" className="animate-pulse" />
-                </svg>
-                <span className="text-[10px] font-mono text-slate-400 mt-2 uppercase">
-                  Fuselagem Vetorial SVG
+                <ShipPreviewCanvas
+                  mode="forged"
+                  size={176}
+                  attributes={detectedSpec.attributes}
+                  weapons={detectedSpec.weapons}
+                  visuals={detectedSpec.visuals}
+                />
+                <span className="text-sm font-mono text-slate-400 mt-2 uppercase">
+                  Casco forjado pela IA
                 </span>
               </div>
 
               {/* Stats & Weapons (8 cols) */}
-              <div className="md:col-span-8 grid grid-cols-2 gap-2.5 font-mono text-xs">
-                <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800">
-                  <span className="text-slate-400 flex items-center gap-1.5 mb-1">
-                    <Flame className="w-3.5 h-3.5 text-[#ff9e0b]" /> Arma Primária
-                  </span>
-                  <div className="font-bold text-white uppercase truncate">
-                    {shown(detectedSpec.weapons?.primary?.type)}
-                  </div>
-                  <div className="text-[10px] text-[#ff9e0b]">
-                    {shown(detectedSpec.weapons?.primary?.damage)} DMG / {shown(detectedSpec.weapons?.primary?.fire_rate)} RPS
-                  </div>
-                </div>
+              <div className="md:col-span-8 grid grid-cols-2 gap-2.5 font-mono">
+                <StatTile
+                  icon={<Flame className="w-4 h-4 text-[#ff9e0b]" />}
+                  label="Arma primária"
+                  value={primaryLabel}
+                  sub={`${STAT_LABELS.damage} ${shown(primary?.damage)} · ${STAT_LABELS.fire_rate} ${shown(primary?.fire_rate)}${STAT_UNITS.fire_rate}`}
+                  subColor="#ff9e0b"
+                />
 
-                <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800">
-                  <span className="text-slate-400 flex items-center gap-1.5 mb-1">
-                    <Rocket className="w-3.5 h-3.5 text-[#38bdf8]" /> Arma Secundária
-                  </span>
-                  <div className="font-bold text-white uppercase truncate">
-                    {shown(detectedSpec.weapons?.secondary?.type)}
-                  </div>
-                  <div className="text-[10px] text-[#38bdf8]">
-                    Dano: {shown(detectedSpec.weapons?.secondary?.damage)} | Recarga: {shown(detectedSpec.weapons?.secondary?.cooldown_seconds)}s
-                  </div>
-                </div>
+                <StatTile
+                  icon={<Rocket className="w-4 h-4 text-[#38bdf8]" />}
+                  label="Arma secundária"
+                  value={secondaryLabel}
+                  sub={`${STAT_LABELS.damage} ${shown(secondary?.damage)} · ${STAT_LABELS.cooldown_seconds} ${shown(secondary?.cooldown_seconds)}${STAT_UNITS.cooldown_seconds}`}
+                  subColor="#38bdf8"
+                />
 
-                <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800">
-                  <span className="text-slate-400 flex items-center gap-1.5 mb-1">
-                    <Gauge className="w-3.5 h-3.5 text-[#38bdf8]" /> Propulsão & Esquiva
-                  </span>
-                  <div className="font-bold text-white">
-                    {shown(detectedSpec.attributes?.speed_px_s)} px/s
-                  </div>
-                  <div className="text-[10px] text-slate-400">
-                    Velocidade Linear Calibrada
-                  </div>
-                </div>
+                <StatTile
+                  icon={<Gauge className="w-4 h-4 text-[#38bdf8]" />}
+                  label={STAT_LABELS.speed_px_s}
+                  value={`${shown(detectedSpec.attributes?.speed_px_s)} ${STAT_UNITS.speed_px_s}`}
+                  sub={`${STAT_LABELS.hitbox_radius}: ${shown(detectedSpec.attributes?.hitbox_radius)}${STAT_UNITS.hitbox_radius}`}
+                />
 
-                <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800">
-                  <span className="text-slate-400 flex items-center gap-1.5 mb-1">
-                    <Shield className="w-3.5 h-3.5 text-[#10b981]" /> Blindagem & Escudo
-                  </span>
-                  <div className="font-bold text-white">
-                    {shown(detectedSpec.attributes?.max_hp)} HP / {shown(detectedSpec.attributes?.shield_capacity)} Escudo(s)
-                  </div>
-                  <div className="text-[10px] text-[#10b981]">
-                    Hitbox: {shown(detectedSpec.attributes?.hitbox_radius)}px
-                  </div>
-                </div>
+                <StatTile
+                  icon={<Shield className="w-4 h-4 text-[#10b981]" />}
+                  label={`${STAT_LABELS.max_hp} & ${STAT_LABELS.shield_capacity}`}
+                  value={`${shown(detectedSpec.attributes?.max_hp)} / ${shown(detectedSpec.attributes?.shield_capacity)}`}
+                  sub={`${STAT_LABELS.max_hp} e escudos absorvidos antes de explodir`}
+                  subColor="#10b981"
+                />
+
+                {/* O efeito REAL de usar menos MCPs: multiplicador de placar, nunca nave mais
+                    forte. Valor lido de BALANCE, não digitado no JSX. */}
+                <StatTile
+                  icon={<Zap className="w-4 h-4 text-[#a78bfa]" />}
+                  label="Multiplicador de placar"
+                  value={`×${mcpMultiplier.toFixed(2)}`}
+                  sub={`${mcpCount} ${mcpCount === 1 ? 'servidor MCP usado' : 'servidores MCP usados'}`}
+                  subColor="#a78bfa"
+                />
+
+                <StatTile
+                  icon={<Sparkles className="w-4 h-4 text-[#ff9e0b]" />}
+                  label="Sinergia"
+                  value={synergyName ? synergyLabel(synergyName) : DASH}
+                  sub={synergyName ? SYNERGY_EFFECTS[synergyName].effect : 'Nenhuma sinergia desbloqueada'}
+                  subColor="#ff9e0b"
+                />
               </div>
             </div>
 
             {/* Big Launch Button */}
             <button
               onClick={() => onShipReady(detectedSpec)}
-              className="w-full p-4 rounded-2xl bg-gradient-to-r from-[#10b981] to-[#38bdf8] text-black font-black text-sm uppercase tracking-widest hover:scale-[1.02] transition-all shadow-[0_0_35px_rgba(16,185,129,0.6)] flex items-center justify-center gap-3 font-mono"
+              className="w-full p-5 rounded-2xl bg-gradient-to-r from-[#10b981] to-[#38bdf8] text-black font-black text-xl uppercase tracking-widest hover:scale-[1.02] transition-all shadow-[0_0_35px_rgba(16,185,129,0.6)] flex items-center justify-center gap-3 font-mono"
             >
-              <Play className="w-5 h-5 fill-black" />
-              <span>PRESSIONE [ ESPAÇO ] OU CLIQUE PARA DECOLAR AGORA!</span>
+              <Play className="w-6 h-6 fill-black" />
+              <span>Pressione [ espaço ] ou clique para decolar</span>
             </button>
           </div>
         ) : (
@@ -449,11 +467,11 @@ export function HandoffTerminalScreen({
               </div>
 
               {mcpActivities.length === 0 ? (
-                <div className="text-center py-6 text-xs text-slate-500 italic font-mono space-y-1">
+                <div className="text-center py-6 text-sm text-slate-500 italic font-mono space-y-1">
                   {/* Sub-agente não chama ferramenta: o protocolo do GEMINI.md proíbe, quem chama
                       é o agente principal. A copy anterior descrevia um fluxo que não existe. */}
                   <div>Aguardando o agente principal chamar as ferramentas MCP...</div>
-                  <div className="text-[10px] text-slate-600">As calibrações de canhões, propulsão e escudos aparecerão aqui em tempo real.</div>
+                  <div className="text-xs text-slate-600">As calibrações de canhões, propulsão e escudos aparecerão aqui em tempo real.</div>
                 </div>
               ) : (
                 <div className="space-y-2.5 font-mono max-h-48 overflow-y-auto pr-1">
@@ -505,6 +523,37 @@ export function HandoffTerminalScreen({
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Um número do pré-voo. O piso tipográfico desta tela é `text-sm`: antes desta reforma nada aqui
+ * passava de 16px — valores em `text-xs`, sublinhas em `text-[10px]` — e o visitante lia o
+ * resultado da própria forja apertando os olhos, de pé, a um metro do monitor.
+ */
+function StatTile({
+  icon,
+  label,
+  value,
+  sub,
+  subColor
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string | number;
+  sub: string;
+  subColor?: string;
+}) {
+  return (
+    <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800">
+      <span className="text-sm text-slate-400 flex items-center gap-1.5 mb-1">
+        {icon} {label}
+      </span>
+      <div className="text-2xl font-bold text-white truncate leading-tight">{value}</div>
+      <div className="text-sm" style={{ color: subColor ?? '#94a3b8' }}>
+        {sub}
       </div>
     </div>
   );

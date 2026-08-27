@@ -29,6 +29,7 @@ export function App() {
   const [lastMatch, setLastMatch] = useState<Partial<MatchRecord> & { victory?: boolean } | undefined>();
   const [pilotId, setPilotId] = useState<string>(() => crypto.randomUUID());
   const [sessionStartError, setSessionStartError] = useState<string | null>(null);
+  const [sessionDeadline, setSessionDeadline] = useState<string | null>(null);
 
   const gameContainerRef = useRef<HTMLDivElement>(null);
   const gameInstanceRef = useRef<Phaser.Game | null>(null);
@@ -102,8 +103,11 @@ export function App() {
       // placeholder até essa resposta chegar. Sem isto, company_confidence nunca sai de
       // undefined no estado do cliente, e o registro da partida nunca sabe se a empresa
       // precisa de revisão manual (Spec 11 §4.11).
-      const data: { pilot?: PilotInfo } = await res.json();
+      const data: { pilot?: PilotInfo; deadline_at?: string } = await res.json();
       if (data.pilot) setPilot(data.pilot);
+      // Prazo absoluto do teto rígido, calculado pelo daemon (que é quem conhece os timers e
+      // qualquer override por env). A barra de tempo da tela do AGY conta a partir dele.
+      setSessionDeadline(data.deadline_at ?? null);
       setSessionStartError(null);
       setStage('HANDOFF');
     } catch (err) {
@@ -227,6 +231,7 @@ export function App() {
           energySliders={energySliders}
           selectedMcps={selectedMcps}
           selectedSubagents={selectedSubagents}
+          deadlineAt={sessionDeadline}
           onShipReady={handleShipReady}
         />
       )}
