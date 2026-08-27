@@ -1,7 +1,11 @@
 /**
- * Senha do painel de admin (Tarefa C10), em cima do Identity-Aware Proxy do Cloud Run.
+ * Senha do painel de admin (Tarefa C10) — a ÚNICA camada de autenticação do painel. Não há IAP
+ * nesta topologia; ver o comentário de `requireAdminAuth` em index.ts para o porquê (verificado
+ * ao vivo no Gate M3, 2026-08-24).
+ *
  * HTTP Basic: o navegador mostra o prompt nativo de login sozinho, sem sessão, sem cookie.
- * Comparação de tempo constante, mesmo padrão de auth.ts.
+ * O nome de usuário é IGNORADO de propósito — só a senha é comparada, e em tempo constante,
+ * mesmo padrão de auth.ts. Um segredo só, sem par usuário/senha para o staff decorar.
  */
 import { timingSafeEqual } from 'node:crypto';
 

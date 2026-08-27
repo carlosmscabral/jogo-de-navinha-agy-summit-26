@@ -1,10 +1,11 @@
 /**
  * Cliente HTTP fino para `/v1/admin/*` (Tarefa C7, `packages/cloud-api/src/admin.ts`).
- * Sem token no código: em produção o Cloud Run serve estas rotas atrás do Identity-Aware
- * Proxy, que já autentica a conta Google de quem opera antes de a requisição chegar aqui.
- * Desde a Tarefa C10, uma segunda camada em código — senha HTTP Basic, `isAdminAuthorized`
- * em `packages/cloud-api/src/admin-auth.ts` — também protege estas rotas e o painel servido
- * sob `/admin`. Isso não exige nenhum código aqui: o navegador guarda a credencial depois do
+ * Sem token no código, e isso é de propósito: quem protege estas rotas e o painel servido sob
+ * `/admin` é uma senha HTTP Basic (`isAdminAuthorized`, em `packages/cloud-api/src/admin-auth.ts`),
+ * a única camada de autenticação da topologia — não há IAP, e o Gate M3 provou ao vivo que não
+ * pode haver num serviço Cloud Run compartilhado com a ingestão do estande (ver o comentário de
+ * `requireAdminAuth` em `packages/cloud-api/src/index.ts`).
+ * Nada disso exige código aqui: o navegador guarda a credencial depois do
  * prompt nativo de login e a reenvia sozinho em toda requisição de mesma origem, inclusive
  * as que este cliente faz via `fetch`. Se o painel pedir login antes de qualquer chamada
  * deste arquivo aparecer, é essa senha, não um bug de autenticação aqui. Ver README do

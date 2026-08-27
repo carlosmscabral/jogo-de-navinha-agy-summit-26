@@ -105,12 +105,18 @@ app.get('/v1/health', (_req: Request, res: Response) => {
   res.status(200).json({ status: 'ok' });
 });
 
-// Tarefa C10 — senha do painel, em cima do Identity-Aware Proxy (que continua sendo a
-// configuração de deploy documentada no README). Um serviço só: o IAP protege por identidade
-// Google, mas não convive com o token de escopo único do estande no mesmo serviço Cloud Run;
-// esta senha HTTP Basic (ver admin-auth.ts) fecha a lacuna em código, tanto para as rotas
-// abaixo quanto para o bloco estático de /admin mais adiante neste arquivo. 401 com
-// WWW-Authenticate para o navegador mostrar o prompt nativo de login.
+// Tarefa C10 — senha do painel. Esta senha HTTP Basic (ver admin-auth.ts) é a ÚNICA camada de
+// autenticação do painel, tanto para as rotas abaixo quanto para o bloco estático de /admin mais
+// adiante neste arquivo. 401 com WWW-Authenticate para o navegador mostrar o prompt nativo.
+//
+// NÃO há IAP nesta topologia, e não é por preferência: o IAP do Cloud Run protege o SERVIÇO
+// inteiro, não um caminho. Não existe configuração que exija identidade Google em /v1/admin/*
+// e ainda deixe /v1/matches acessível ao estande, que só tem um token Bearer, no mesmo serviço.
+// Verificado ao vivo no Gate M3 (2026-08-24): com `--no-allow-unauthenticated`, o IAM da própria
+// plataforma devolvia 403 antes de qualquer código nosso rodar, inclusive para requisições com a
+// senha correta. Uma segunda camada de identidade Google exigiria um serviço Cloud Run separado
+// só para o painel — questão de arquitetura em aberto, não flag de deploy. `deploy.sh --with-iap`
+// recusa com essa explicação. Ver packages/cloud-api/README.md, "Autenticação do painel de admin".
 function requireAdminAuth(req: Request, res: Response, next: NextFunction): void {
   if (!isAdminAuthorized(req.header('authorization'), ADMIN_PANEL_PASSWORD)) {
     res.status(401).set('WWW-Authenticate', 'Basic realm="admin"').json({ error: 'unauthorized' });
