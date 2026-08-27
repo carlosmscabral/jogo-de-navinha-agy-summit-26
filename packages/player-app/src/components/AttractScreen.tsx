@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Rocket, Trophy, Sparkles, Zap, Shield, Play, Terminal, ChevronRight } from 'lucide-react';
+import { GAME_NAME, GAME_TAGLINE, EVENT_BANNER } from '@jogo/shared';
 import { audioManager } from '../game/audio/AudioManager.js';
 import { ENDPOINTS } from '../config.js';
 
@@ -111,15 +112,15 @@ export function AttractScreen({ onStart }: AttractScreenProps) {
       {/* Flight Deck Header Tag */}
       <div className="text-center space-y-4 z-10 max-w-2xl">
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#38bdf8]/10 border border-[#38bdf8]/30 text-[#38bdf8] text-xs font-bold tracking-widest uppercase mb-2 font-mono">
-          <Terminal className="w-4 h-4 text-[#ff9e0b]" /> Google Cloud Summit 2026 // Avionics Forge
+          <Terminal className="w-4 h-4 text-[#ff9e0b]" /> Google Cloud Summit 2026 // {EVENT_BANNER}
         </div>
 
         <h1 className="text-5xl md:text-6xl font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-b from-[#ffffff] via-[#f1f5f9] to-[#94a3b8] drop-shadow-[0_0_30px_rgba(56,189,248,0.3)]">
-          STARFIGHTER
+          {GAME_NAME}
         </h1>
 
         <p className="text-base text-[#ff9e0b] font-black tracking-widest uppercase text-glow-amber">
-          FORJA AEROESPACIAL COM AGENTES DE IA & MCP
+          {GAME_TAGLINE}
         </p>
 
         <p className="text-xs text-slate-400 max-w-lg mx-auto leading-relaxed">

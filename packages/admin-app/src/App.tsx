@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { GAME_NAME } from '@jogo/shared';
 import { MatchesScreen } from './components/MatchesScreen.js';
 import { CompaniesScreen } from './components/CompaniesScreen.js';
 import { HealthScreen } from './components/HealthScreen.js';
@@ -21,7 +22,7 @@ export function App() {
   return (
     <div style={{ padding: 16, maxWidth: 1100, margin: '0 auto' }}>
       <header style={{ marginBottom: 16, borderBottom: '1px solid #d4d4d8', paddingBottom: 8 }}>
-        <h1 style={{ margin: 0, fontSize: 20 }}>Painel de Administração — Jogo de Navinha</h1>
+        <h1 style={{ margin: 0, fontSize: 20 }}>{GAME_NAME} — Operação</h1>
         <nav style={{ display: 'flex', gap: 8, marginTop: 8 }}>
           {TABS.map((t) => (
             <button

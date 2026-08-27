@@ -2,7 +2,7 @@
   "name": "jogo-de-navinha-agy-summit-26",
   "version": "1.0.0",
   "private": true,
-  "description": "Jogo de Navinha com Antigravity CLI para o Google Cloud Summit 2026",
+  "description": "GRAVIDADE ZERO — jogo de navinha forjado no Antigravity CLI para o Google Cloud Summit 2026",
   "workspaces": [
     "packages/*"
   ],

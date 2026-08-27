@@ -1,4 +1,4 @@
-# Especificações: Jogo de Navinha AGY (Google Cloud Summit 2026)
+# Especificações: GRAVIDADE ZERO (Google Cloud Summit 2026)
 
 ## 1. Visão geral
 

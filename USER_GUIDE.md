@@ -1,4 +1,4 @@
-# 🚀 JOGO DE NAVINHA AGY // GOOGLE CLOUD SUMMIT 2026
+# 🚀 GRAVIDADE ZERO // GOOGLE CLOUD SUMMIT 2026
 ## Guia Operacional e Manual do Usuário (Estande & Desenvolvimento)
 
 Este documento contém o guia completo de arquitetura, instalação, execução física no estande, automações operacionais, procedimentos de emergência e o roadmap para as próximas etapas (Cloud Run, Firestore e Painel de Admin).
@@ -198,6 +198,6 @@ placar se já tiverem partidas registradas; o arquivo só afeta o pré-cadastro,
 ---
 
 ## 👥 Contato e Suporte
-- **Projeto:** Jogo de Navinha AGY // Google Cloud Summit 2026
+- **Projeto:** GRAVIDADE ZERO // Google Cloud Summit 2026
 - **Responsável:** Carlos Cabral (`carloscabral@google.com`)
 - **Repositório:** `https://github.com/carlosmscabral/jogo-de-navinha-agy-summit-26`

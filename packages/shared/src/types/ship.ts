@@ -1,5 +1,5 @@
 /**
- * Shared Type Definitions for Space Shooter AGY Summit 2026
+ * Shared Type Definitions for GRAVIDADE ZERO — AGY Summit 2026
  */
 
 export type PrimaryWeaponType = 'plasma' | 'laser' | 'vulcan_spread';
