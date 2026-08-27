@@ -151,7 +151,7 @@ export function MatchesScreen() {
       <h2>Partidas</h2>
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
         <input
-          placeholder="Buscar por callsign ou empresa"
+          placeholder="Buscar por callsign, empresa ou match_id"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           style={{ flex: 1 }}

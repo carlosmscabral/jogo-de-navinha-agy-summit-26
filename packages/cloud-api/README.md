@@ -34,10 +34,12 @@ Servem o painel `packages/admin-app`. Ao contrário de todo o resto de `/v1/*`, 
 passam pelo middleware do token de ingestão (`isAuthorized`) — ver "Autenticação do painel" abaixo
 para o porquê.
 
-- `GET /v1/admin/matches?q=&company=&limit=` — busca por callsign ou empresa (substring,
-  case-insensitive) e/ou empresa exata; varre uma janela das partidas mais recentes em memória
-  (Firestore não faz OR de texto entre dois campos numa consulta indexada). Resposta:
-  `{ matches: MatchDocument[] }`.
+- `GET /v1/admin/matches?q=&company=&limit=` — busca por callsign, empresa ou `match_id`
+  (substring, case-insensitive) e/ou empresa exata; varre uma janela das partidas mais recentes
+  em memória (Firestore não faz OR de texto entre campos numa consulta indexada). Um `q` que seja
+  um `match_id` inteiro é resolvido também por leitura direta, porque `match_id` é o ID do
+  documento — isso acha a partida mesmo quando ela já saiu da janela de varredura, que é
+  justamente o caso de um ID colado de um log. Resposta: `{ matches: MatchDocument[] }`.
 - `PATCH /v1/admin/matches/{match_id}` — corpo `{ callsign?, company_canonical?, final_score?,
   voided? }`. Corrige a partida numa transação e recalcula do zero (`total_score`, `pilots_count`,
   `top_individual_score`) os agregados de toda empresa afetada — a antiga e a nova, quando a

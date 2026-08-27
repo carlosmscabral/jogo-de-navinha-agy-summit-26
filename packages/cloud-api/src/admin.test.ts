@@ -9,6 +9,7 @@
  */
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { FieldValue } from 'firebase-admin/firestore';
 import { ingestBatch } from './ingest.js';
 import {
   patchMatch,
@@ -225,6 +226,60 @@ describe('listMatches', () => {
     ]);
     const found = await listMatches(testDb, { company: 'Nubank' });
     assert.deepEqual(found.map((m: MatchDocument) => m.match_id), ['m2']);
+  });
+
+  // Spec 11 §4.12: o `match_id` é o identificador que o staff tem na mão (log do daemon, JSON do
+  // debriefing) e era o único que a busca não enxergava.
+  it('busca por match_id, inteiro ou em pedaço', async () => {
+    await ingestBatch(testDb, [
+      matchFixture({ match_id: 'match_1756000000001', callsign: 'UM', company_canonical: 'Google' }),
+      matchFixture({ match_id: 'match_1756000000002', callsign: 'DOIS', company_canonical: 'Nubank' })
+    ]);
+    const inteiro = await listMatches(testDb, { q: 'match_1756000000002' });
+    assert.deepEqual(inteiro.map((m: MatchDocument) => m.match_id), ['match_1756000000002']);
+
+    const pedaco = await listMatches(testDb, { q: '0000002' });
+    assert.deepEqual(pedaco.map((m: MatchDocument) => m.match_id), ['match_1756000000002']);
+  });
+
+  // O ponto do fallback por leitura direta: a varredura em memória só vê as 500 partidas mais
+  // recentes, e um `match_id` vindo de um log pode ser de horas antes. Sem forjar 500 partidas,
+  // o caso é exercido pelo caminho equivalente — um documento que a varredura não devolve.
+  it('acha por match_id exato mesmo quando a varredura por created_at não traz o documento', async () => {
+    await ingestBatch(testDb, [matchFixture({ match_id: 'antiga', callsign: 'VELHA' })]);
+    // APAGAR o campo (não gravar `null`): um `orderBy` do Firestore só omite documentos em que o
+    // campo está AUSENTE — `null` é um valor ordenável e continua vindo na varredura. Com o campo
+    // fora, temos a mesma invisibilidade de estar além da janela de 500, sem forjar 500 partidas.
+    await testDb.collection('matches').doc('antiga').update({ created_at: FieldValue.delete() });
+
+    const varredura = await listMatches(testDb, {});
+    assert.equal(varredura.length, 0, 'pré-condição: a varredura não enxerga este documento');
+
+    const found = await listMatches(testDb, { q: 'antiga' });
+    assert.deepEqual(found.map((m: MatchDocument) => m.match_id), ['antiga']);
+  });
+
+  it('não duplica quando o match_id exato também aparece na varredura', async () => {
+    await ingestBatch(testDb, [matchFixture({ match_id: 'm1', callsign: 'UM' })]);
+    const found = await listMatches(testDb, { q: 'm1' });
+    assert.equal(found.length, 1);
+  });
+
+  it('respeita o filtro de empresa mesmo num match_id exato de outra empresa', async () => {
+    await ingestBatch(testDb, [
+      matchFixture({ match_id: 'm1', company_canonical: 'Google' }),
+      matchFixture({ match_id: 'm2', company_canonical: 'Nubank' })
+    ]);
+    const found = await listMatches(testDb, { q: 'm1', company: 'Nubank' });
+    assert.deepEqual(found.map((m: MatchDocument) => m.match_id), []);
+  });
+
+  // `q` é texto livre digitado por gente, e `.doc()` lança para caminho com `/`. Sem o guarda,
+  // este caso derruba o endpoint com 500 em vez de devolver uma lista vazia.
+  it('não quebra quando q tem caracteres inválidos para um ID de documento', async () => {
+    await ingestBatch(testDb, [matchFixture({ match_id: 'm1', callsign: 'UM' })]);
+    const found = await listMatches(testDb, { q: 'a/b' });
+    assert.deepEqual(found, []);
   });
 
   // Revisão final Fase C — Crítico 2: `ingestOne` grava `created_at` via

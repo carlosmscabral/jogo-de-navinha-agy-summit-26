@@ -366,14 +366,29 @@ export interface ListMatchesParams {
 
 const LIST_MATCHES_DEFAULT_LIMIT = 50;
 const LIST_MATCHES_MAX_LIMIT = 200;
-// Firestore não faz busca de texto OR entre dois campos (callsign, company_canonical)
+// Firestore não faz busca de texto OR entre campos (callsign, company_canonical, match_id)
 // numa única consulta indexada. Este endpoint é administrativo e frio (Spec 05 §4.3 não
 // se aplica aqui, mesmo raciocínio de patchMatch acima) — busca a janela mais recente e
 // filtra em memória. Uma janela de 500 cobre um evento inteiro com folga; se o volume
 // crescer muito além disso, este é o primeiro lugar a revisar.
 const LIST_MATCHES_SCAN_WINDOW = 500;
 
-/** `GET /v1/admin/matches?q=&company=&limit=` — busca por callsign ou empresa (Spec 05 §4.3 não se aplica). */
+/**
+ * Um `q` que seja um `match_id` inteiro pode ser resolvido por leitura direta, porque
+ * `match_id` É o ID do documento (`ingest.ts`). Isso importa: a busca em memória acima só
+ * enxerga as 500 partidas mais recentes, e o caso em que o staff digita um `match_id`
+ * completo é justamente o caso em que ele veio de um log ou do JSON de debriefing e pode
+ * ser de horas antes. Sem esta leitura, o operador tem o identificador exato na mão e a
+ * busca não acha nada.
+ *
+ * O guarda não é decorativo: `.doc()` lança para caminho vazio, com `/`, ou `.`/`..`, e
+ * `q` é texto livre digitado por gente. Sem ele, buscar "a/b" derruba o endpoint com 500.
+ */
+function couldBeDocumentId(q: string): boolean {
+  return q.length > 0 && q.length <= 1500 && !q.includes('/') && q !== '.' && q !== '..';
+}
+
+/** `GET /v1/admin/matches?q=&company=&limit=` — busca por callsign, empresa ou match_id (Spec 05 §4.3 não se aplica). */
 export async function listMatches(db: Firestore, params: ListMatchesParams): Promise<MatchDocument[]> {
   const limit = Math.min(Math.max(params.limit ?? LIST_MATCHES_DEFAULT_LIMIT, 1), LIST_MATCHES_MAX_LIMIT);
 
@@ -390,8 +405,25 @@ export async function listMatches(db: Firestore, params: ListMatchesParams): Pro
   if (params.q) {
     const q = params.q.toLowerCase();
     docs = docs.filter(
-      (m) => m.callsign.toLowerCase().includes(q) || m.company_canonical.toLowerCase().includes(q)
+      (m) =>
+        m.callsign.toLowerCase().includes(q) ||
+        m.company_canonical.toLowerCase().includes(q) ||
+        m.match_id.toLowerCase().includes(q)
     );
+
+    // Fora da janela de varredura: leitura direta pelo ID, unida ao resultado. Vai na
+    // frente porque quem colou um `match_id` inteiro quer aquela partida, não uma lista.
+    if (couldBeDocumentId(params.q) && !docs.some((m) => m.match_id === params.q)) {
+      const exact = await db.collection('matches').doc(params.q).get();
+      if (exact.exists) {
+        const doc = normalizeMatchDocForRead(exact.data() as MatchDocument);
+        // O filtro de empresa continua valendo: um ID exato de outra empresa apareceria
+        // como resultado de uma busca que o operador restringiu de propósito.
+        if (!params.company || doc.company_canonical === params.company) {
+          docs = [doc, ...docs];
+        }
+      }
+    }
   }
   return docs.slice(0, limit);
 }
