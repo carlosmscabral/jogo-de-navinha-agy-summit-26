@@ -1,0 +1,52 @@
+/**
+ * GRAVIDADE ZERO — paleta e tipografia canônicas.
+ *
+ * Até aqui o repositório não tinha uma única custom property CSS: a paleta existia três vezes
+ * (dois `tailwind.config.js` byte-idênticos e literais hexadecimais espalhados pelo Phaser), e o
+ * preto de fundo tinha três valores diferentes em uso — `#03020a` nos `<body>`, `#07080c` nos
+ * shells React, `#050512` no canvas do Phaser. Este arquivo é a fonte para quem NÃO usa Tailwind
+ * (hoje, o painel de admin); quem usa consome os mesmos valores por `@jogo/shared/tailwind-preset`,
+ * que é gerado a partir da mesma tabela.
+ *
+ * Uso: `@import '@jogo/shared/styles/theme.css';` no topo da folha de estilo do app.
+ */
+
+:root {
+  /* Obsidiana — o fundo e todas as superfícies elevadas. `--gz-obsidian-950` é O preto. */
+  --gz-obsidian-950: #050608;
+  --gz-obsidian-900: #090b10;
+  --gz-obsidian-850: #0e1117;
+  --gz-obsidian-800: #141822;
+  --gz-obsidian-700: #1e2433;
+  --gz-obsidian-600: #2b3345;
+
+  /* Âmbar solar — ação primária, energia, o piloto. */
+  --gz-amber-solar: #ff9e0b;
+  --gz-amber-glow: #f59e0b;
+  --gz-amber-bright: #ffd166;
+  --gz-amber-dark: #b45309;
+
+  /* Cobalto — informação, navegação, o que o sistema sabe. */
+  --gz-cobalt: #3b82f6;
+  --gz-cobalt-azure: #38bdf8;
+  --gz-cobalt-deep: #1d4ed8;
+  --gz-cobalt-light: #93c5fd;
+
+  /* Verde radar — sucesso, nave homologada, sincronizado. */
+  --gz-radar-green: #10b981;
+  --gz-radar-bright: #34d399;
+  --gz-radar-dark: #047857;
+
+  /* Vermelho de alerta — recusa, anulação, erro. */
+  --gz-alert-red: #ef4444;
+  --gz-alert-crimson: #dc2626;
+
+  /* Texto sobre obsidiana. */
+  --gz-text: #f1f5f9;
+  --gz-text-muted: #94a3b8;
+  --gz-text-dim: #64748b;
+
+  --gz-font-sans: 'Google Sans Flex', 'Google Sans Text', -apple-system, BlinkMacSystemFont,
+    sans-serif;
+  --gz-font-mono: 'Google Sans Code', 'Courier New', monospace;
+}

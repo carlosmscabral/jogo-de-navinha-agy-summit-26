@@ -79,7 +79,7 @@ export function createGameInstance(container: HTMLElement | string, options: Gam
     parent: container,
     width: 600,
     height: 800,
-    backgroundColor: '#050512',
+    backgroundColor: '#050608',
     scale: {
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH

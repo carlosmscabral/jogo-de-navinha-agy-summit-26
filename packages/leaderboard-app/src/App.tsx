@@ -54,7 +54,7 @@ export function App() {
   }, []);
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#07080c] text-white overflow-hidden select-none font-sans relative">
+    <div className="flex flex-col h-screen w-screen bg-obsidian-950 text-white overflow-hidden select-none font-sans relative">
       {/* Background Solar Amber & Cobalt Gradients */}
       <div className="absolute top-0 left-1/4 w-96 h-96 bg-[#38bdf8]/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-[#ff9e0b]/10 rounded-full blur-3xl pointer-events-none" />
@@ -65,7 +65,7 @@ export function App() {
         {/* Left: Event Branding */}
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#38bdf8] to-[#ff9e0b] p-0.5 flex items-center justify-center shadow-[0_0_20px_rgba(56,189,248,0.4)]">
-            <div className="w-full h-full bg-[#07080c] rounded-2xl flex items-center justify-center font-black text-xs text-[#38bdf8] font-mono">
+            <div className="w-full h-full bg-obsidian-950 rounded-2xl flex items-center justify-center font-black text-xs text-[#38bdf8] font-mono">
               AGY
             </div>
           </div>

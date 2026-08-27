@@ -1,48 +1,118 @@
-/* Ferramenta de operador: sem tema neon, sem animação — legibilidade sob pressa vale mais
-   que estética (Tarefa C7, brief). CSS simples de propósito, sem framework. */
+/* Ferramenta de operador: sem neon, sem animação — legibilidade sob pressa vale mais que
+   estética (Tarefa C7, brief). O que mudou é só a pele: mesma paleta obsidiana e mesma
+   tipografia do jogo, para que o painel não destoe quando estiver projetado no estande.
+   Layout, fluxo e componentes seguem exatamente como estavam. CSS simples de propósito,
+   sem framework. */
+
+@import '@jogo/shared/styles/theme.css';
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-  background: #f4f4f5;
-  color: #18181b;
+  font-family: var(--gz-font-sans);
+  background: var(--gz-obsidian-950);
+  color: var(--gz-text);
+  font-size: 15px;
+}
+
+h1, h2, h3 {
+  font-family: var(--gz-font-sans);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+a {
+  color: var(--gz-cobalt-azure);
 }
 
 table {
   border-collapse: collapse;
   width: 100%;
+  background: var(--gz-obsidian-900);
 }
 
 th, td {
-  border: 1px solid #d4d4d8;
-  padding: 6px 10px;
+  border: 1px solid var(--gz-obsidian-700);
+  padding: 8px 10px;
   text-align: left;
-  font-size: 14px;
+  font-size: 15px;
 }
 
 th {
-  background: #e4e4e7;
+  background: var(--gz-obsidian-800);
+  color: var(--gz-text);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 13px;
+}
+
+/* Zebrado: numa tabela de partidas com dezenas de linhas, é o que impede o operador de
+   ler o callsign de uma linha com o score de outra. */
+tbody tr:nth-child(even) {
+  background: var(--gz-obsidian-850);
+}
+
+tbody tr:hover {
+  background: var(--gz-obsidian-800);
+}
+
+/* Números de partida em monoespaçado: match_id, score e timestamps se comparam por coluna. */
+td code, code {
+  font-family: var(--gz-font-mono);
+  font-size: 14px;
+  color: var(--gz-cobalt-azure);
 }
 
 button {
   font: inherit;
+  font-weight: 600;
   cursor: pointer;
+  background: var(--gz-amber-solar);
+  color: var(--gz-obsidian-950);
+  border: 1px solid var(--gz-amber-dark);
+  border-radius: 8px;
+  padding: 6px 14px;
 }
 
-input, select {
+button:hover:not(:disabled) {
+  background: var(--gz-amber-bright);
+}
+
+button:disabled {
+  background: var(--gz-obsidian-700);
+  color: var(--gz-text-dim);
+  border-color: var(--gz-obsidian-600);
+  cursor: not-allowed;
+}
+
+input, select, textarea {
   font: inherit;
+  background: var(--gz-obsidian-900);
+  color: var(--gz-text);
+  border: 1px solid var(--gz-obsidian-600);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: 2px solid var(--gz-cobalt-azure);
+  outline-offset: 1px;
+}
+
+input[type='checkbox'] {
+  accent-color: var(--gz-amber-solar);
 }
 
 .tag-voided {
-  color: #991b1b;
+  color: var(--gz-alert-red);
   font-weight: bold;
 }
 
 .note {
-  color: #52525b;
-  font-size: 12px;
+  color: var(--gz-text-muted);
+  font-size: 13px;
 }
 
 .error {
-  color: #b91c1c;
+  color: var(--gz-alert-red);
 }

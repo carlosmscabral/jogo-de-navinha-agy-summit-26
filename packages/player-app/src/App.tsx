@@ -164,7 +164,7 @@ export function App() {
   };
 
   return (
-    <div className="flex h-screen w-screen bg-[#07080c] text-white overflow-hidden select-none font-sans">
+    <div className="flex h-screen w-screen bg-obsidian-950 text-white overflow-hidden select-none font-sans">
       {/* Session-Start Error Banner */}
       {sessionStartError && (
         <div className="absolute top-4 left-4 z-50 max-w-md p-3 rounded-xl bg-red-950/90 border border-red-500/60 text-red-200 text-xs font-mono shadow-lg backdrop-blur-md flex items-start gap-3">
