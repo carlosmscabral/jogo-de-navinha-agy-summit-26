@@ -489,24 +489,45 @@ evento fica permanentemente sem `score_breakdown`**, um campo não-opcional de `
 ### 4.12 Resíduos do Gate M3, 2026-08-24
 
 Encontrados durante a execução do M3 e conscientemente adiados para não interromper o gate. Nenhum
-é bloqueador; os dois primeiros cabem num único deploy.
+é bloqueador.
 
-- **A busca do painel não procura por `match_id`.** O filtro `q` de `listMatches`
-  (`packages/cloud-api/src/admin.ts`) casa contra callsign e empresa, mas não contra o ID da
-  partida — justamente o que se tem em mãos ao investigar uma partida específica vinda de um log.
-- **Comentários obsoletos sobre IAP.** `packages/cloud-api/src/index.ts:108-113` e
-  `packages/admin-app/src/api.ts` ainda descrevem a topologia com IAP, que o M3 derrubou. Comentário
-  errado é pior que comentário nenhum: o próximo a ler vai acreditar.
+> **Estado em 2026-08-27.** Três dos quatro estão fechados. Resta **um**, e ele não é código: a
+> celebração de recorde na reconexão nunca foi vista rodar, e só dá para ver com o telão montado.
+> As correções de código dos itens 1 e 2 são do lado servidor — **só valem em produção depois de
+> `npm run deploy:gcp`**.
+
+- ~~**A busca do painel não procura por `match_id`.**~~ **FECHADO em 2026-08-27.** `listMatches`
+  (`packages/cloud-api/src/admin.ts`) agora casa `q` contra callsign, empresa **e** `match_id`. Como
+  `match_id` *é* o ID do documento Firestore (`ingest.ts`: `db.collection('matches').doc(m.match_id)`),
+  o filtro ganhou de brinde um segundo caminho: quando `q` parece um ID de documento válido e a
+  varredura por `created_at` não o trouxe, o endpoint faz uma leitura direta por ID e une o resultado
+  — então um `match_id` copiado de um log resolve mesmo estando fora da janela de 500 documentos.
+  A leitura direta é guardada por `couldBeDocumentId` (vazio, `/`, `.`, `..` são recusados) porque
+  `.doc()` lança em caminho inválido e derrubaria o endpoint com 500 a partir de texto livre; e ela
+  respeita o filtro de empresa, para não furar o recorte. Cinco testes novos em `admin.test.ts`.
+  **Precisa de redeploy do Cloud Run para valer em produção.**
+- ~~**Comentários obsoletos sobre IAP.**~~ **FECHADO em 2026-08-27.** Os três pontos foram reescritos
+  para a topologia real: `packages/cloud-api/src/index.ts` (acima de `requireAdminAuth`),
+  `packages/cloud-api/src/admin-auth.ts` (JSDoc do cabeçalho) e `packages/admin-app/src/api.ts`, que
+  a busca original por "IAP" não pegou porque escreve "Identity-Aware Proxy" por extenso. O texto novo
+  diz o que o M3 provou: o Basic HTTP é a **única** camada de autenticação, o IAP não pode coexistir
+  com a ingestão do estande no mesmo serviço, e o nome de usuário do prompt do navegador é ignorado
+  de propósito — `isAdminAuthorized` compara só a senha.
 - **A celebração de recorde na reconexão não foi observada.** O critério "o modal de recorde não
   reaparece quando a rede volta" depende de um recorde de Top 3 acontecer *durante* a queda, o que
   não ocorreu no ensaio. O código está correto por construção — `snap.docChanges()` sem argumentos
   exclui mudanças que são só de metadados, então o retorno do `fromCache` não gera mudança de
   documento — e há teste unitário cobrindo isso, mas ninguém viu na TV. Encenável em 2 minutos
   quando o telão estiver montado: derrubar a rede, gravar uma partida de Top 3 pelo painel, religar.
-- **O segredo `booth-ingest-token` está com valor inválido de propósito.** A versão 3 é
-  `lixo-invalido`, deixada assim pelo teste 13.10 (`auth_failed`). **Rotacionar antes do evento**,
-  redeployar e atualizar o `.env` do estande — senão nenhuma partida sincroniza. Lembrar da
-  precedência do `--env-file`: uma variável exportada no terminal vence o arquivo.
+- ~~**O segredo `booth-ingest-token` está com valor inválido de propósito.**~~ **FECHADO em
+  2026-08-27.** O `lixo-invalido` da versão 3 (deixado pelo teste 13.10, `auth_failed`) foi
+  rotacionado para um valor escolhido pelo usuário, com redeploy do Cloud Run e o `.env` do estande
+  atualizado; o POST sintético voltou 200. Duas lições que custaram tempo e ficam registradas:
+  (a) o Secret Manager só resolve `:latest` quando **uma nova revisão** do Cloud Run é criada —
+  adicionar uma versão ao segredo, sozinho, não muda nada no serviço em execução; e (b)
+  `booth-ingest-token` e `admin-panel-password` são segredos **separados** — rotacionar um não toca
+  no outro, e a senha do painel continua sendo a que o `deploy.sh` imprimiu uma única vez.
+  Continua valendo a precedência do `--env-file`: uma variável exportada no terminal vence o arquivo.
 
 ---
 
