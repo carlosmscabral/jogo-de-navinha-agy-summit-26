@@ -2,6 +2,18 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { logMcpToolExecution } from './utils/audit-logger.js';
+import { MCP_CATALOG, type McpServerName } from '@jogo/shared';
+
+/**
+ * Descrição da ferramenta, lida de `MCP_CATALOG` (`@jogo/shared`). A mesma string
+ * alimenta o card que o visitante vê no builder — antes havia duas cópias sem fonte
+ * comum, e elas derivaram. `mcp-catalog.test.ts` tranca a igualdade.
+ */
+function toolBlurb(server: McpServerName, toolId: string): string {
+  const found = MCP_CATALOG[server].tools.find((t) => t.id === toolId);
+  if (!found) throw new Error(`Ferramenta ${toolId} ausente de MCP_CATALOG['${server}']`);
+  return found.blurb;
+}
 
 export function createCyberneticsShieldsServer(): McpServer {
   const server = new McpServer({
@@ -11,7 +23,7 @@ export function createCyberneticsShieldsServer(): McpServer {
 
   server.tool(
     'calibrate_energy_barrier',
-    'Calibra o campo de força energético e a capacidade de escudos da nave.',
+    toolBlurb('cybernetics-shields', 'calibrate_energy_barrier'),
     {
       tech_level: z.any().optional().nullable().describe('Nível do slider de tecnologia/tech (10 a 50)'),
       shield_type: z.any().optional().nullable().describe('Tipo de escudo (plasma_bubble, hardlight_barrier, deflector_mesh)')
@@ -48,7 +60,7 @@ export function createCyberneticsShieldsServer(): McpServer {
 
   server.tool(
     'install_overclock_module',
-    'Configura módulos cibernéticos e computa sinergias ativadas entre componentes.',
+    toolBlurb('cybernetics-shields', 'install_overclock_module'),
     {
       synergy_candidate: z.any().optional().nullable().describe('Nome da sinergia candidata (ex: Glass Cannon, Titan Fortress, Ghost Interceptor, Balanced Ace)'),
       active_sliders: z.any().optional().nullable().describe('Sliders de energia atuais ou valor de overclock'),

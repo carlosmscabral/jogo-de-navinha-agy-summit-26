@@ -2,6 +2,18 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { logMcpToolExecution } from './utils/audit-logger.js';
+import { MCP_CATALOG, type McpServerName } from '@jogo/shared';
+
+/**
+ * Descrição da ferramenta, lida de `MCP_CATALOG` (`@jogo/shared`). A mesma string
+ * alimenta o card que o visitante vê no builder — antes havia duas cópias sem fonte
+ * comum, e elas derivaram. `mcp-catalog.test.ts` tranca a igualdade.
+ */
+function toolBlurb(server: McpServerName, toolId: string): string {
+  const found = MCP_CATALOG[server].tools.find((t) => t.id === toolId);
+  if (!found) throw new Error(`Ferramenta ${toolId} ausente de MCP_CATALOG['${server}']`);
+  return found.blurb;
+}
 
 export function createWeaponsArsenalServer(): McpServer {
   const server = new McpServer({
@@ -11,7 +23,7 @@ export function createWeaponsArsenalServer(): McpServer {
 
   server.tool(
     'configure_primary_cannon',
-    'Configura o canhão primário da nave calculando dano, cadência de tiro e velocidade dos projéteis.',
+    toolBlurb('weapons-arsenal', 'configure_primary_cannon'),
     {
       type: z.any().optional().nullable().describe('Tipo de armamento primário (plasma, laser, vulcan_spread)'),
       fire_rate: z.any().optional().nullable().describe('Cadência de tiro em disparos por segundo'),
@@ -65,7 +77,7 @@ export function createWeaponsArsenalServer(): McpServer {
 
   server.tool(
     'attach_secondary_ordnance',
-    'Instala e calibra o sistema de armas secundárias ativado pela tecla Shift.',
+    toolBlurb('weapons-arsenal', 'attach_secondary_ordnance'),
     {
       type: z.any().optional().nullable().describe('Tipo de arma secundária (homing_missiles, emp_burst, none)'),
       blast_radius: z.any().optional().nullable().describe('Raio de explosão em pixels'),

@@ -2,6 +2,18 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { logMcpToolExecution } from './utils/audit-logger.js';
+import { MCP_CATALOG, type McpServerName } from '@jogo/shared';
+
+/**
+ * Descrição da ferramenta, lida de `MCP_CATALOG` (`@jogo/shared`). A mesma string
+ * alimenta o card que o visitante vê no builder — antes havia duas cópias sem fonte
+ * comum, e elas derivaram. `mcp-catalog.test.ts` tranca a igualdade.
+ */
+function toolBlurb(server: McpServerName, toolId: string): string {
+  const found = MCP_CATALOG[server].tools.find((t) => t.id === toolId);
+  if (!found) throw new Error(`Ferramenta ${toolId} ausente de MCP_CATALOG['${server}']`);
+  return found.blurb;
+}
 
 export function createHullPropulsionServer(): McpServer {
   const server = new McpServer({
@@ -11,7 +23,7 @@ export function createHullPropulsionServer(): McpServer {
 
   server.tool(
     'tune_thrusters',
-    'Calibra os propulsores de voo da nave, velocidade máxima de deslocamento e raio da hitbox central.',
+    toolBlurb('hull-propulsion', 'tune_thrusters'),
     {
       speed_level: z.any().optional().nullable().describe('Nível do slider de velocidade (10 a 50)'),
       agility_factor: z.any().optional().nullable().describe('Fator de agilidade na esquiva lateral')
@@ -47,7 +59,7 @@ export function createHullPropulsionServer(): McpServer {
 
   server.tool(
     'reinforce_plating',
-    'Instala blindagem estrutural na fuselagem para absorção de dano físico.',
+    toolBlurb('hull-propulsion', 'reinforce_plating'),
     {
       defense_level: z.any().optional().nullable().describe('Nível do slider de defesa (10 a 50)'),
       armor_type: z.any().optional().nullable().describe('Tipo de blindagem (lightweight_alloy, titanium_mesh, nanite_composite)')
