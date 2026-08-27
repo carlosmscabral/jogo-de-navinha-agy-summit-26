@@ -112,11 +112,28 @@ export class FileWatcherService {
     return this.activityHistory;
   }
 
-  private auditSatisfied(): { ok: boolean; missing: string[] } {
+  /**
+   * O gate real, do jeito que o daemon o usa para liberar a nave: quais servidores a sessão
+   * exigiu, quais já reportaram no `mcp_audit.log` e quais ainda faltam.
+   *
+   * Público porque é o sinal mais útil que a tela do AGY podia mostrar e não mostrava — o
+   * visitante via uma lista de atividades soltas sem saber o que ainda estava pendente. Quem
+   * consome isto (`GET /api/session/activity` e o replay do WebSocket) mostra literalmente o
+   * mesmo critério que decide a liberação, não uma aproximação dele.
+   */
+  getAuditStatus(): { required: string[]; seen: string[]; missing: string[] } {
     const required = this.opts?.requiredMcps ?? [];
+    const seenSet = new Set(this.activityHistory.map((a) => a.server));
+    // `seen` é filtrado por `required`: um servidor que reportou sem ter sido exigido não é
+    // progresso do gate, e listá-lo daria ao visitante a impressão de que falta menos.
+    const seen = required.filter((m) => seenSet.has(m));
+    const missing = required.filter((m) => !seenSet.has(m));
+    return { required, seen, missing };
+  }
+
+  private auditSatisfied(): { ok: boolean; missing: string[] } {
+    const { required, missing } = this.getAuditStatus();
     if (required.length === 0) return { ok: true, missing: [] };
-    const seen = new Set(this.activityHistory.map((a) => a.server));
-    const missing = required.filter((m) => !seen.has(m));
     return { ok: missing.length === 0, missing };
   }
 

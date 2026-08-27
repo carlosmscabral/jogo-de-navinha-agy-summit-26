@@ -594,3 +594,93 @@ describe('FileWatcherService — normalizeSpec: literais de fallback (revisão f
     fs.rmSync(dir, { recursive: true, force: true });
   });
 });
+
+describe('FileWatcherService — getAuditStatus()', () => {
+  it('reporta exatamente o servidor que falta enquanto a auditoria está incompleta', async () => {
+    const dir = tempSession();
+    const auditPath = path.join(dir, 'mcp_audit.log');
+    fs.writeFileSync(auditPath, '', 'utf8');
+
+    const w = new FileWatcherService();
+    w.startWatching(dir, {
+      requiredMcps: ['weapons-arsenal', 'hull-propulsion'],
+      onShipReady: () => {}
+    });
+
+    assert.deepEqual(w.getAuditStatus(), {
+      required: ['weapons-arsenal', 'hull-propulsion'],
+      seen: [],
+      missing: ['weapons-arsenal', 'hull-propulsion']
+    });
+
+    fs.appendFileSync(auditPath, auditLine('weapons-arsenal', 'configure_primary_cannon'));
+    await wait(900);
+
+    assert.deepEqual(w.getAuditStatus(), {
+      required: ['weapons-arsenal', 'hull-propulsion'],
+      seen: ['weapons-arsenal'],
+      missing: ['hull-propulsion']
+    });
+
+    fs.appendFileSync(auditPath, auditLine('hull-propulsion', 'tune_thrusters'));
+    await wait(900);
+
+    assert.deepEqual(w.getAuditStatus().missing, [], 'nada pode faltar depois do último servidor');
+
+    w.stopWatching();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('não conta como progresso um servidor que reportou sem ter sido exigido', async () => {
+    // O gate só olha os servidores que o visitante selecionou. Se `seen` incluísse um servidor
+    // extra, a tela mostraria progresso que não existe para efeito de liberação da nave.
+    const dir = tempSession();
+    const auditPath = path.join(dir, 'mcp_audit.log');
+    fs.writeFileSync(auditPath, '', 'utf8');
+
+    const w = new FileWatcherService();
+    w.startWatching(dir, { requiredMcps: ['weapons-arsenal'], onShipReady: () => {} });
+
+    fs.appendFileSync(auditPath, auditLine('cybernetics-shields', 'deploy_shield_matrix'));
+    await wait(900);
+
+    const status = w.getAuditStatus();
+    assert.deepEqual(status.seen, []);
+    assert.deepEqual(status.missing, ['weapons-arsenal']);
+
+    w.stopWatching();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('zera `seen` ao começar uma nova sessão, mesmo com o watcher reaproveitado', async () => {
+    // `startWatching` limpa `activityHistory` (file-watcher.ts) — este teste tranca a garantia:
+    // sem ela, o visitante seguinte abriria a tela do AGY já com os MCPs do anterior marcados.
+    const dirA = tempSession();
+    fs.writeFileSync(path.join(dirA, 'mcp_audit.log'), '', 'utf8');
+
+    const w = new FileWatcherService();
+    w.startWatching(dirA, { requiredMcps: ['weapons-arsenal'], onShipReady: () => {} });
+    fs.appendFileSync(path.join(dirA, 'mcp_audit.log'), auditLine('weapons-arsenal', 'configure_primary_cannon'));
+    await wait(900);
+    assert.deepEqual(w.getAuditStatus().seen, ['weapons-arsenal']);
+
+    const dirB = tempSession();
+    fs.writeFileSync(path.join(dirB, 'mcp_audit.log'), '', 'utf8');
+    w.startWatching(dirB, { requiredMcps: ['weapons-arsenal'], onShipReady: () => {} });
+
+    assert.deepEqual(w.getAuditStatus(), {
+      required: ['weapons-arsenal'],
+      seen: [],
+      missing: ['weapons-arsenal']
+    });
+
+    w.stopWatching();
+    fs.rmSync(dirA, { recursive: true, force: true });
+    fs.rmSync(dirB, { recursive: true, force: true });
+  });
+
+  it('sem MCP exigido, o gate está vazio e nada fica pendente', () => {
+    const w = new FileWatcherService();
+    assert.deepEqual(w.getAuditStatus(), { required: [], seen: [], missing: [] });
+  });
+});

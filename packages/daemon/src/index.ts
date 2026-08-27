@@ -250,7 +250,9 @@ app.get('/api/session/spec', (req, res) => {
 
 app.get('/api/session/activity', (req, res) => {
   const activity = fileWatcher.getActivityHistory();
-  res.json({ activity });
+  // `required`/`seen`/`missing` são o gate de auditoria, o mesmo que decide quando a nave é
+  // liberada. A tela do AGY passa a mostrar o que falta em vez de só o que já aconteceu.
+  res.json({ activity, ...fileWatcher.getAuditStatus() });
 });
 
 app.post('/api/session/start', async (req, res) => {
@@ -354,6 +356,9 @@ app.post('/api/session/start', async (req, res) => {
         firstMcpActivitySeen = true;
         armSilenceTimer(energy_sliders, 'após atividade MCP');
         broadcast({ type: 'EVENT_MCP_ACTIVITY', data: activity });
+        // O gate mudou junto com a atividade; sem isto o checklist da tela do AGY só se
+        // atualizaria no polling seguinte.
+        broadcast({ type: 'EVENT_AUDIT_STATUS', data: fileWatcher.getAuditStatus() });
       },
       onSpecRejected: (rejection) => {
         armSilenceTimer(energy_sliders, 'após rejeição de spec');
@@ -423,7 +428,12 @@ app.post('/api/session/start', async (req, res) => {
     res.json({
       status: 'WORKSPACE_INITIALIZED',
       sessionDir,
-      pilot: fullPilot
+      pilot: fullPilot,
+      // Instante absoluto em que esta sessão deixa de esperar pelo agy de qualquer maneira: é o
+      // teto rígido armado logo acima, o único prazo que nenhum rearme de silêncio empurra para a
+      // frente. A tela do AGY desenha a barra de tempo a partir daqui — uma contagem regressiva
+      // calculada no cliente dessincronizaria em silêncio de qualquer override por env.
+      deadline_at: new Date(Date.now() + AGY_HARD_TIMEOUT_MS).toISOString()
     });
   } catch (err) {
     console.error('[Daemon API] Error starting session:', err);
@@ -559,6 +569,11 @@ wss.on('connection', (ws) => {
       ws.send(JSON.stringify({ type: 'EVENT_MCP_ACTIVITY', data: item }));
     }
   }
+
+  // O estado do gate vai junto no replay: um cliente que reconecta no meio da forja precisa saber
+  // o que ainda falta, e reconstruir isso a partir do histórico de atividades exigiria que ele
+  // conhecesse a lista de servidores exigidos, que é do daemon.
+  ws.send(JSON.stringify({ type: 'EVENT_AUDIT_STATUS', data: fileWatcher.getAuditStatus() }));
 
   ws.on('close', () => {
     activeClients.delete(ws);
