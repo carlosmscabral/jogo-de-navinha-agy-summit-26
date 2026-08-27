@@ -5,7 +5,7 @@ import { buildMatchRecord } from './match-record.js';
 import { audioManager } from './game/audio/AudioManager.js';
 import { AttractScreen } from './components/AttractScreen.js';
 import { RegistrationForm } from './components/RegistrationForm.js';
-import { InstructionsPromptScreen } from './components/InstructionsPromptScreen.js';
+import { BriefingScreen } from './components/BriefingScreen.js';
 import { EnergySlidersBuilder } from './components/EnergySlidersBuilder.js';
 import { HandoffTerminalScreen } from './components/HandoffTerminalScreen.js';
 import { DebriefScreen } from './components/DebriefScreen.js';
@@ -206,7 +206,7 @@ export function App() {
       )}
 
       {stage === 'INSTRUCTIONS' && (
-        <InstructionsPromptScreen
+        <BriefingScreen
           pilot={pilot}
           onProceed={handleProceedFromInstructions}
           onBack={() => setStage('REGISTER')}
