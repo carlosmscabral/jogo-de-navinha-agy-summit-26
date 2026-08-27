@@ -7,10 +7,29 @@ import * as fs from 'node:fs';
 
 let env: RulesTestEnvironment;
 
+/**
+ * Porta do emulador vinda de `FIRESTORE_EMULATOR_HOST` (o mesmo "host:porta" que o Admin SDK já
+ * lê sozinho nos outros testes deste pacote), com 8080 — o valor do `firebase.json` — como
+ * padrão. Antes isto era `8080` fixo, e era o único arquivo do pacote que não podia rodar numa
+ * máquina onde algo já ocupasse a 8080: os demais testes só precisavam da variável de ambiente.
+ * Nada muda no Mac, onde a 8080 está livre e a variável nem precisa existir.
+ */
+function emulatorAddress(): { host: string; port: number } {
+  const raw = process.env.FIRESTORE_EMULATOR_HOST;
+  if (!raw) return { host: '127.0.0.1', port: 8080 };
+  const sep = raw.lastIndexOf(':');
+  const port = Number(raw.slice(sep + 1));
+  if (sep < 1 || !Number.isInteger(port) || port <= 0) {
+    throw new Error(`FIRESTORE_EMULATOR_HOST inválido: "${raw}" — esperado "host:porta".`);
+  }
+  return { host: raw.slice(0, sep), port };
+}
+
 before(async () => {
+  const { host, port } = emulatorAddress();
   env = await initializeTestEnvironment({
     projectId: 'jogo-navinha-test',
-    firestore: { rules: fs.readFileSync('firestore.rules', 'utf8'), host: '127.0.0.1', port: 8080 }
+    firestore: { rules: fs.readFileSync('firestore.rules', 'utf8'), host, port }
   });
 });
 
