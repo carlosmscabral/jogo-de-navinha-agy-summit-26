@@ -26,19 +26,30 @@ export function pathExtent(d: string): { min: number; max: number } {
 }
 
 /**
+ * As duas recusas de `renderSvgShipTexture` (caracteres fora do contrato, path fora do viewBox)
+ * numa única pergunta, sem precisar de uma `Phaser.Scene`.
+ *
+ * Existe porque quem só quer SABER se o casco forjado é desenhável — o `ShipPreviewCanvas`, ao
+ * escolher entre canvas Phaser e SVG estático — não tem cena nenhuma em mãos, e a alternativa era
+ * copiar o viewBox e a folga para um segundo arquivo, que é como as duas cópias derivam.
+ */
+export function isDrawablePathData(d: string): boolean {
+  if (!isSafePathData(d)) return false;
+  const { min, max } = pathExtent(d);
+  return min >= -EXTENT_SLACK && max <= VIEWBOX_SIZE + EXTENT_SLACK;
+}
+
+/**
  * Rasteriza o casco desenhado pelo agente em uma textura Phaser.
  * Devolve false quando recusa — o chamador então usa ShipTextureFactory.
  */
 export function renderSvgShipTexture(scene: Phaser.Scene, key: string, visuals: ShipVisuals): boolean {
   const d = visuals.svg_path_data;
-  if (!isSafePathData(d)) {
-    console.warn('[SvgShipRenderer] svg_path_data recusado: caracteres fora do contrato.');
-    return false;
-  }
-
-  const { min, max } = pathExtent(d);
-  if (min < -EXTENT_SLACK || max > VIEWBOX_SIZE + EXTENT_SLACK) {
-    console.warn(`[SvgShipRenderer] svg_path_data fora do viewBox 0..${VIEWBOX_SIZE} (extensão ${min}..${max}).`);
+  if (!isDrawablePathData(d)) {
+    const { min, max } = pathExtent(typeof d === 'string' ? d : '');
+    console.warn(
+      `[SvgShipRenderer] svg_path_data recusado (caracteres fora do contrato ou extensão ${min}..${max} fora do viewBox 0..${VIEWBOX_SIZE}).`
+    );
     return false;
   }
 
