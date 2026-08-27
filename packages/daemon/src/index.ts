@@ -12,7 +12,7 @@ import { moderateRemotely } from './services/remote-moderation.js';
 import { startModeration, type PendingModeration } from './services/pending-moderation.js';
 import { CloudSyncService } from './services/cloud-sync.js';
 import { parseEnvFile, findShadowedKeys, buildShadowWarning } from './services/env-precedence.js';
-import { validateCallsign, placeholderCallsign, selectFallbackPreset, EnergySliders } from '@jogo/shared';
+import { validateCallsign, placeholderCallsign, selectFallbackPreset, EnergySliders, ShipSpecification } from '@jogo/shared';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -131,6 +131,12 @@ function killAgyProcessGroup(): void {
   try { fs.unlinkSync(pidFile); } catch {}
 }
 
+/**
+ * A nave de preset já entregue nesta sessão, se houve fallback. Existe só para que o polling
+ * enxergue o mesmo que o WebSocket; é limpa no início de cada sessão.
+ */
+let deliveredFallback: { spec: ShipSpecification; preset: string; reason: string } | null = null;
+
 function triggerFallback(sliders: EnergySliders, reason: string): void {
   // Última checagem antes de desistir: uma spec válida pode ter sido escrita
   // bem perto do estouro do temporizador, mas ainda não processada pelo
@@ -155,6 +161,10 @@ function triggerFallback(sliders: EnergySliders, reason: string): void {
   // dispararia um SEGUNDO EVENT_SHIP_READY com uma nave diferente da que o
   // fallback já entregou. Encerrar o watcher aqui fecha essa corrida.
   fileWatcher.stopWatching();
+  // O canal de polling (`GET /api/session/spec`) é a rede de proteção para quando o WebSocket cai,
+  // e o fallback passava ao largo dele: com o watcher parado e a spec só no broadcast, um socket
+  // morto significava nave nenhuma. Guardar aqui é o que torna os dois canais equivalentes.
+  deliveredFallback = { spec, preset: name, reason };
   broadcast({ type: 'EVENT_SHIP_READY', spec, fallback: true, fallback_preset: name, fallback_reason: reason });
 }
 
@@ -244,6 +254,17 @@ app.get('/api/session/spec', (req, res) => {
   const spec = fileWatcher.getCurrentSpec();
   if (spec) {
     return res.json({ ready: true, spec });
+  }
+  // Preset de emergência: não veio do disco nem do agente, é uma das naves embutidas e já
+  // validadas de `FALLBACK_PRESETS`, então não reabre o buraco que o comentário acima descreve.
+  if (deliveredFallback) {
+    return res.json({
+      ready: true,
+      spec: deliveredFallback.spec,
+      fallback: true,
+      fallback_preset: deliveredFallback.preset,
+      fallback_reason: deliveredFallback.reason
+    });
   }
   res.json({ ready: false });
 });
@@ -383,6 +404,7 @@ app.post('/api/session/start', async (req, res) => {
     });
 
     shipDelivered = false;
+    deliveredFallback = null;
     auditGateSatisfied = false;
     firstMcpActivitySeen = false;
     lastKnownAgyPid = null;
@@ -493,6 +515,7 @@ app.post('/api/session/reset', (req, res) => {
   try {
     clearAgyTimers();
     shipDelivered = false;
+    deliveredFallback = null;
     auditGateSatisfied = false;
     firstMcpActivitySeen = false;
     lastKnownAgyPid = null;
