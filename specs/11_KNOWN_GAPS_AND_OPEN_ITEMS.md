@@ -529,6 +529,28 @@ Encontrados durante a execução do M3 e conscientemente adiados para não inter
   no outro, e a senha do painel continua sendo a que o `deploy.sh` imprimiu uma única vez.
   Continua valendo a precedência do `--env-file`: uma variável exportada no terminal vence o arquivo.
 
+### 4.13 O debrief esconde 5 dos 8 campos do `ScoreBreakdown`, 2026-08-27
+
+Encontrado durante a reforma visual da jornada (branch `feat/gravidade-zero-ux`) e deixado de fora
+de propósito: é o issue #2 do repositório (dicas dos sub-agentes) e merece plano próprio, não um
+remendo no fim de uma tarefa de CSS.
+
+`DebriefScreen.tsx` mostra `combatScore`, `timeBonus` e `mcpMultiplier`. Os outros cinco campos de
+`ScoreBreakdown` (`packages/shared/src/types/ship.ts`) são calculados pelo `ScoreCalculator`,
+persistidos em cada `MatchRecord` e sincronizados para a nuvem — e nunca aparecem para o visitante:
+
+- `bossBonus` e `survivalBonus`;
+- `bossDamageBonus` e `bossPhaseBonus`, que existem justamente para pagar o progresso parcial
+  contra o boss (`57ed7ac`) — quem chegou perto de matá-lo não fica sabendo que isso valeu pontos;
+- `synergyBonus`, o retorno concreto da sinergia que a tela de pré-voo acabou de anunciar.
+
+Junto com eles, `build_metadata.fallback_used` também não aparece no debrief: uma partida jogada
+com preset de emergência é indistinguível de uma partida com nave forjada, mesmo depois de a tela
+do AGY ter avisado. A partir de agora só a tela do AGY conta essa verdade — o debrief a esquece.
+
+O dado todo já está em memória no `matchRecord` que o `DebriefScreen` recebe; a lacuna é
+exclusivamente de apresentação.
+
 ---
 
 ## 5. O que **não** é lacuna (verificado, apesar da aparência)

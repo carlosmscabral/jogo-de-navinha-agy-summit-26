@@ -58,7 +58,7 @@ export function App() {
       {/* Background Solar Amber & Cobalt Gradients */}
       <div className="absolute top-0 left-1/4 w-96 h-96 bg-[#38bdf8]/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-[#ff9e0b]/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-10 left-1/3 w-96 h-96 bg-[#10b981]/05 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-10 left-1/3 w-96 h-96 bg-[#10b981]/5 rounded-full blur-3xl pointer-events-none" />
 
       {/* Top Header Bar */}
       <header className="px-8 py-4 bg-slate-950/80 border-b border-slate-800 backdrop-blur-md flex items-center justify-between z-20 flex-shrink-0">

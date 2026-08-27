@@ -1,0 +1,8 @@
+<!-- Marca de GRAVIDADE ZERO: a nave em queda livre dentro do zero. Ver GAME_NAME em
+     packages/shared/src/constants/branding.ts. Único asset gráfico do produto. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <rect width="64" height="64" rx="14" fill="#050608"/>
+  <ellipse cx="32" cy="32" rx="17" ry="23" fill="none" stroke="#38bdf8" stroke-width="4"/>
+  <path d="M 32 20 L 24 42 L 32 37 L 40 42 Z" fill="#ff9e0b"/>
+  <circle cx="32" cy="46" r="3" fill="#ff9e0b" opacity="0.55"/>
+</svg>

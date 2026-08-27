@@ -59,4 +59,42 @@
     height: 1px;
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
   }
+
+  /* Três classes que o markup de produção usava e que não existiam em lugar nenhum: o Tailwind
+     deste app tem `plugins: []` e nunca as gerou. O efeito era intencional em cada um dos casos
+     (o aviso de callsign inválido devia tremer, a nave homologada devia aparecer, o palco da
+     partida devia ter vinheta radial) e simplesmente nunca aconteceu. */
+  .bg-radial {
+    background-image: radial-gradient(var(--tw-gradient-stops));
+  }
+
+  .animate-fadeIn {
+    animation: gz-fade-in 240ms ease-out both;
+  }
+
+  .animate-shake {
+    animation: gz-shake 320ms ease-in-out;
+  }
+}
+
+@keyframes gz-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes gz-shake {
+  0%, 100% { transform: translateX(0); }
+  20%      { transform: translateX(-6px); }
+  40%      { transform: translateX(6px); }
+  60%      { transform: translateX(-4px); }
+  80%      { transform: translateX(4px); }
+}
+
+/* O estande pode receber quem tenha sensibilidade a movimento, e nenhuma destas animações
+   carrega informação — todas são enfeite de transição. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fadeIn,
+  .animate-shake {
+    animation: none;
+  }
 }
