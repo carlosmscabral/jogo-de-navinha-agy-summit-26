@@ -11,6 +11,21 @@ interface HandoffTerminalScreenProps {
   onShipReady: (spec: ShipSpecification) => void;
 }
 
+/**
+ * Um campo que não veio precisa PARECER que não veio.
+ *
+ * Esta tela costumava preencher toda ausência com um número plausível -- `|| 35` de dano,
+ * `|| 320` px/s, `?? 100` de dano secundário, `|| '+20%'` de modificador de sinergia. O visitante
+ * lia telemetria inventada como se fosse a calibração da IA, e um bug de payload ficava
+ * indistinguível de uma forja bem-sucedida. Travessão em vez de invenção.
+ */
+const DASH = '—';
+function shown(value: unknown): string | number {
+  if (value === undefined || value === null || value === '') return DASH;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : DASH;
+  return String(value);
+}
+
 export interface McpActivityItem {
   timestamp: string;
   server?: string;
@@ -147,22 +162,22 @@ export function HandoffTerminalScreen({
     const args = act.args;
 
     if (tool === 'configure_primary_cannon') {
-      return `Tipo: ${result?.type || args?.type || 'Canhão'} • Dano: ${result?.damage || 35} • Cadência: ${result?.fire_rate || 8}/s • DPS: ${result?.dps_estimate || 280}`;
+      return `Tipo: ${shown(result?.type ?? args?.type)} • Dano: ${shown(result?.damage)} • Cadência: ${shown(result?.fire_rate)}/s • DPS: ${shown(result?.dps_estimate)}`;
     }
     if (tool === 'attach_secondary_ordnance') {
-      return `Secundária: ${result?.type || args?.type || 'Mísseis'} • Dano: ${result?.damage ?? 100} • Recarga: ${result?.cooldown_seconds ?? 2}s`;
+      return `Secundária: ${shown(result?.type ?? args?.type)} • Dano: ${shown(result?.damage)} • Recarga: ${shown(result?.cooldown_seconds)}s`;
     }
     if (tool === 'tune_thrusters') {
-      return `Velocidade: ${result?.speed_px_s || 320} px/s • Hitbox: ${result?.hitbox_radius || 12}px • Aceleração: ${result?.acceleration || 800}`;
+      return `Velocidade: ${shown(result?.speed_px_s)} px/s • Hitbox: ${shown(result?.hitbox_radius)}px • Aceleração: ${shown(result?.acceleration)}`;
     }
     if (tool === 'reinforce_plating') {
-      return `Blindagem: ${result?.armor_type || 'Titânio'} • HP Máximo: ${result?.max_hp || 3} • Resistência: ${result?.collision_resistance || '45%'}`;
+      return `Blindagem: ${shown(result?.armor_type)} • HP Máximo: ${shown(result?.max_hp)} • Resistência: ${shown(result?.collision_resistance)}`;
     }
     if (tool === 'calibrate_energy_barrier') {
-      return `Escudo: ${result?.shield_type || 'Defletor'} • Capacidade: ${result?.shield_capacity ?? 1} Escudo(s) • Absorção: 100%`;
+      return `Escudo: ${shown(result?.shield_type)} • Capacidade: ${shown(result?.shield_capacity)} Escudo(s)`;
     }
     if (tool === 'install_overclock_module') {
-      return `Sinergia: ${result?.synergy_name || args?.synergy_candidate || 'Overclock'} (${result?.status || 'UNLOCKED'}) • Modificador: ${result?.modifier_applied || '+20%'} • Bônus: +${result?.bonus_score_pts || 1500} PTS`;
+      return `Sinergia: ${shown(result?.synergy_name ?? args?.synergy_candidate)} (${shown(result?.status)}) • Modificador: ${shown(result?.modifier_applied)} • Bônus: ${shown(result?.bonus_score_pts)} PTS`;
     }
 
     if (result && typeof result === 'object') {
@@ -209,7 +224,7 @@ export function HandoffTerminalScreen({
                     NAVE HOMOLOGADA COM SUCESSO!
                   </h3>
                   <p className="text-xs text-slate-400 font-mono">
-                    Classe: <b className="text-[#38bdf8]">{detectedSpec.visuals?.style_name || 'Personalizada'}</b>
+                    Classe: <b className="text-[#38bdf8]">{shown(detectedSpec.visuals?.style_name)}</b>
                   </p>
                 </div>
               </div>
@@ -254,10 +269,10 @@ export function HandoffTerminalScreen({
                     <Flame className="w-3.5 h-3.5 text-[#ff9e0b]" /> Arma Primária
                   </span>
                   <div className="font-bold text-white uppercase truncate">
-                    {detectedSpec.weapons?.primary?.type || 'Laser Contínuo'}
+                    {shown(detectedSpec.weapons?.primary?.type)}
                   </div>
                   <div className="text-[10px] text-[#ff9e0b]">
-                    {detectedSpec.weapons?.primary?.damage || 35} DMG / {detectedSpec.weapons?.primary?.fire_rate || 8} RPS
+                    {shown(detectedSpec.weapons?.primary?.damage)} DMG / {shown(detectedSpec.weapons?.primary?.fire_rate)} RPS
                   </div>
                 </div>
 
@@ -266,10 +281,10 @@ export function HandoffTerminalScreen({
                     <Rocket className="w-3.5 h-3.5 text-[#38bdf8]" /> Arma Secundária
                   </span>
                   <div className="font-bold text-white uppercase truncate">
-                    {detectedSpec.weapons?.secondary?.type || 'Mísseis Teleguiados'}
+                    {shown(detectedSpec.weapons?.secondary?.type)}
                   </div>
                   <div className="text-[10px] text-[#38bdf8]">
-                    Dano: {detectedSpec.weapons?.secondary?.damage ?? 100} | Recarga: {detectedSpec.weapons?.secondary?.cooldown_seconds ?? 2}s
+                    Dano: {shown(detectedSpec.weapons?.secondary?.damage)} | Recarga: {shown(detectedSpec.weapons?.secondary?.cooldown_seconds)}s
                   </div>
                 </div>
 
@@ -278,7 +293,7 @@ export function HandoffTerminalScreen({
                     <Gauge className="w-3.5 h-3.5 text-[#38bdf8]" /> Propulsão & Esquiva
                   </span>
                   <div className="font-bold text-white">
-                    {detectedSpec.attributes?.speed_px_s || 320} px/s
+                    {shown(detectedSpec.attributes?.speed_px_s)} px/s
                   </div>
                   <div className="text-[10px] text-slate-400">
                     Velocidade Linear Calibrada
@@ -290,10 +305,10 @@ export function HandoffTerminalScreen({
                     <Shield className="w-3.5 h-3.5 text-[#10b981]" /> Blindagem & Escudo
                   </span>
                   <div className="font-bold text-white">
-                    {detectedSpec.attributes?.max_hp || 3} HP / {detectedSpec.attributes?.shield_capacity ?? 1} Escudo(s)
+                    {shown(detectedSpec.attributes?.max_hp)} HP / {shown(detectedSpec.attributes?.shield_capacity)} Escudo(s)
                   </div>
                   <div className="text-[10px] text-[#10b981]">
-                    Hitbox: {detectedSpec.attributes?.hitbox_radius || 12}px
+                    Hitbox: {shown(detectedSpec.attributes?.hitbox_radius)}px
                   </div>
                 </div>
               </div>

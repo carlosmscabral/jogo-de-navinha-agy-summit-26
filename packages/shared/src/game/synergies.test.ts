@@ -94,16 +94,27 @@ describe('applySynergies', () => {
   });
 
   it('reconhece as strings decoradas exibidas pelo builder (emoji + nome + parêntese) para as quatro sinergias', () => {
-    // Mirrors EnergySlidersBuilder.tsx's actual detectedSynergy strings verbatim.
-    const decorated: Record<string, string> = {
-      'Glass Cannon': '⚡ Glass Cannon (+30% DPS)',
-      'Titan Fortress': '🛡️ Titan Fortress (+25% Blindagem)',
-      'Ghost Interceptor': '💨 Ghost Interceptor (+20% Esquiva)',
-      'Balanced Ace': '🎯 Balanced Ace (+15% Geral)'
+    // Duas gerações de crachá: as de cima são as que `synergy-preview.ts` produz hoje (derivadas
+    // de BALANCE), as de baixo são as literais que ele produzia até 2026-08-27 e que ainda podem
+    // chegar num `ship_spec.json` de sessão antiga. As duas precisam casar -- o matcher é
+    // deliberadamente por substring do nome canônico, justamente para não depender da decoração.
+    const decorated: Record<string, string[]> = {
+      'Glass Cannon': ['⚡ Glass Cannon (+30% dano · casco 2)', '⚡ Glass Cannon (+30% DPS)'],
+      'Titan Fortress': [
+        '🛡️ Titan Fortress (casco 5 · escudo ≥2 · regen 20s)',
+        '🛡️ Titan Fortress (+25% Blindagem)'
+      ],
+      'Ghost Interceptor': [
+        '💨 Ghost Interceptor (380 px/s · hitbox 8px)',
+        '💨 Ghost Interceptor (+20% Esquiva)'
+      ],
+      'Balanced Ace': ['🎯 Balanced Ace (+15% em tudo)', '🎯 Balanced Ace (+15% Geral)']
     };
-    for (const [canonical, display] of Object.entries(decorated)) {
-      const r = applySynergies(specWith([display]));
-      assert.deepEqual(r.applied, [canonical], `esperava reconhecer "${display}" como ${canonical}`);
+    for (const [canonical, displays] of Object.entries(decorated)) {
+      for (const display of displays) {
+        const r = applySynergies(specWith([display]));
+        assert.deepEqual(r.applied, [canonical], `esperava reconhecer "${display}" como ${canonical}`);
+      }
     }
   });
 });

@@ -133,6 +133,8 @@ export const MCP_CATALOG: Record<McpServerName, McpServerEntry> = {
 export interface SubagentEntry {
   label: string;
   blurb: string;
+  /** Cor da paleta usada por este sub-agente na UI, no mesmo esquema dos servidores. */
+  color: string;
   /**
    * `false` para o `aesthetic-designer`: ele é sempre gerado no workspace
    * (`WorkspaceGenerator.generateSubagents`) e sempre enviado no payload, então o
@@ -146,16 +148,19 @@ export const SUBAGENT_CATALOG: Record<SubagentName, SubagentEntry> = {
   'aesthetic-designer': {
     label: 'Projetista Visual',
     blurb: 'Desenha a fuselagem em SVG e escolhe a paleta. Sempre incluído.',
+    color: '#a78bfa',
     selectable: false
   },
   'combat-strategist': {
     label: 'Estrategista Tático',
     blurb: 'Especialista em canhões, cadência e mísseis',
+    color: '#ff9e0b',
     selectable: true
   },
   'systems-engineer': {
     label: 'Engenheiro de Sistemas',
     blurb: 'Especialista em blindagem, velocidade e escudos',
+    color: '#10b981',
     selectable: true
   }
 };

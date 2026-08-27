@@ -17,10 +17,16 @@ entre os outros três (`EnergySlidersBuilder.tsx:64-78`).
 
 | Slider | Governa |
 | :--- | :--- |
-| `offense` | Dano base do canhão, cadência e poder da arma secundária |
-| `speed` | Velocidade de deslocamento e raio da hitbox circular |
-| `defense` | Pontos de vida e camadas de escudo |
-| `tech` | Cooldown do módulo secundário e multiplicadores de sinergia |
+| `offense` | Dano, cadência, velocidade e abertura do canhão primário; dano **e recarga** da secundária |
+| `speed` | Velocidade de deslocamento e raio da hitbox circular (invertido) |
+| `defense` | Pontos de vida (`max_hp`) |
+| `tech` | Camadas de escudo (`shield_capacity`) |
+
+A tabela acima espelha `computeBaselineAttributes` e `computeBaselineWeapons`
+(`packages/shared/src/constants/baseline-ship-stats.ts:63-69`, `:114-121`). Até 2026-08-27 ela dizia
+que `tech` governava o *cooldown do módulo secundário* e que `defense` governava escudos — as duas
+estavam erradas: a recarga da secundária sai de `offense` (invertida, `:121`) e o escudo sai de
+`tech`.
 
 As faixas numéricas resultantes (velocidade, HP, hitbox etc.) são definidas em
 [Spec 09](./09_GAME_BALANCE_AND_DEV_MODE.md) §2.3, que é a fonte única de contrato numérico. Esta
@@ -46,19 +52,24 @@ e pontuação base:
 
 | MCPs selecionados | Multiplicador de score | Efeito nos atributos |
 | :--- | :--- | :--- |
-| 1 | **1,25×** | Overclock no eixo correspondente |
-| 2 | **1,10×** | Overclock reduzido |
-| 3 | 1,00× | Nave equilibrada, sem bônus |
+| 1 | **1,25×** | Especialização máxima — dois domínios voam na linha de base |
+| 2 | **1,10×** | Um domínio voa na linha de base |
+| 3 | 1,00× | Nave inteiramente calibrada pela IA, sem bônus |
 
-O multiplicador de score é aplicado de fato (`ScoreCalculator.ts:55-57`).
+O multiplicador de score é aplicado de fato (`ScoreCalculator.ts:55-57`), e é o **único** efeito da
+contagem de MCPs. Não existe nenhum multiplicador de atributo por contagem de MCP em lugar nenhum da
+engine.
 
-> **Pendência conhecida.** O *overclock* de atributos que o builder exibe
-> (`EnergySlidersBuilder.tsx:32-42`: DPS projetado, velocidade projetada, escudo extra) é **apenas
-> visual**. O payload enviado ao daemon contém somente `energy_sliders`, `selected_mcps` e
-> `selected_subagents` — nenhum valor projetado atravessa a fronteira. Quem decide os atributos finais
-> é o AGY, a partir dos sliders. Os números da tela são, portanto, uma **promessa não verificada**: se
-> o AGY produzir algo diferente, o visitante recebe uma nave que não corresponde ao que viu.
-> Reconciliar a projeção com o resultado é item da Spec 09.
+> **Resolvido em 2026-08-27.** Esta seção registrava que o builder exibia um *overclock* de
+> atributos (`+20% DPS`, `+20% Velocidade`, `+1 Escudo`) que nunca chegava à nave — o payload leva
+> apenas `energy_sliders`, `selected_mcps` e `selected_subagents`. A promessa foi removida:
+> `EnergySlidersBuilder.tsx` não tem mais `overclockMultiplier`, a telemetria mostra a linha de base
+> pura (rotulada como tal) e o multiplicador de placar vem de `BALANCE.score.mcp_multiplier_by_count`
+> em vez de literais no JSX.
+>
+> Continua verdadeiro que a telemetria é uma **projeção**: nos domínios que o visitante selecionar,
+> quem decide os números finais é o AGY, e ele pode calibrar acima ou abaixo da linha de base. A tela
+> agora diz isso.
 
 ---
 

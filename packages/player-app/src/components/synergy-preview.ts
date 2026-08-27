@@ -1,4 +1,11 @@
-import { EnergySliders, McpServerName, canUnlockSynergies, SYNERGY_OWNER_MCP } from '@jogo/shared';
+import {
+  BALANCE,
+  EnergySliders,
+  McpServerName,
+  SynergyName,
+  canUnlockSynergies,
+  SYNERGY_OWNER_MCP
+} from '@jogo/shared';
 
 /**
  * Crachá de sinergia da tela de forja (`EnergySlidersBuilder`).
@@ -24,13 +31,57 @@ export interface SynergyPreview {
   none: boolean;
 }
 
-const MATRIX: { name: string; bonus: string; matches: (s: EnergySliders) => boolean }[] = [
-  { name: '⚡ Glass Cannon', bonus: '+30% DPS', matches: (s) => s.offense >= 40 },
-  { name: '💨 Ghost Interceptor', bonus: '+20% Esquiva', matches: (s) => s.speed >= 40 },
-  { name: '🛡️ Titan Fortress', bonus: '+25% Blindagem', matches: (s) => s.defense >= 40 },
+/** `1.30` → `+30%`. Nenhum percentual desta tela é digitado à mão. */
+function pct(factor: number): string {
+  return `+${Math.round((factor - 1) * 100)}%`;
+}
+
+/**
+ * O que cada sinergia faz, derivado de `BALANCE.synergies` e de `BALANCE.ranges` — as mesmas
+ * constantes que `applySynergies` consome.
+ *
+ * Antes daqui as descrições eram literais no crachá e duas das quatro estavam simplesmente
+ * erradas: prometiam "+20% Esquiva" para a Ghost Interceptor (que na verdade trava velocidade no
+ * máximo e hitbox no mínimo) e "+25% Blindagem" para a Titan Fortress (que trava o casco em 5,
+ * garante um piso de escudo e liga a regeneração). Derivar do balance é o que impede a promessa
+ * de tornar a divergir do que a engine entrega quando alguém ajustar um número.
+ */
+export const SYNERGY_EFFECTS: Record<SynergyName, { icon: string; effect: string }> = {
+  'Glass Cannon': {
+    icon: '⚡',
+    effect: `${pct(BALANCE.synergies.glass_cannon.primary_damage_factor)} dano · casco ${
+      BALANCE.synergies.glass_cannon.forced_max_hp
+    }`
+  },
+  'Titan Fortress': {
+    icon: '🛡️',
+    effect: `casco ${BALANCE.synergies.titan_fortress.forced_max_hp} · escudo ≥${
+      BALANCE.synergies.titan_fortress.min_shield_capacity
+    } · regen ${BALANCE.synergies.titan_fortress.regen_interval_s}s`
+  },
+  'Ghost Interceptor': {
+    icon: '💨',
+    effect: `${BALANCE.ranges['attributes.speed_px_s'].max} px/s · hitbox ${
+      BALANCE.ranges['attributes.hitbox_radius'].min
+    }px`
+  },
+  'Balanced Ace': {
+    icon: '🎯',
+    effect: `${pct(BALANCE.synergies.balanced_ace.all_attributes_factor)} em tudo`
+  }
+};
+
+/** Nome decorado da sinergia, sem o efeito. Usado onde só cabe o nome (pré-voo). */
+export function synergyLabel(name: SynergyName): string {
+  return `${SYNERGY_EFFECTS[name].icon} ${name}`;
+}
+
+const MATRIX: { name: SynergyName; matches: (s: EnergySliders) => boolean }[] = [
+  { name: 'Glass Cannon', matches: (s) => s.offense >= 40 },
+  { name: 'Ghost Interceptor', matches: (s) => s.speed >= 40 },
+  { name: 'Titan Fortress', matches: (s) => s.defense >= 40 },
   {
-    name: '🎯 Balanced Ace',
-    bonus: '+15% Geral',
+    name: 'Balanced Ace',
     matches: (s) =>
       s.offense >= 20 && s.offense <= 30 &&
       s.speed >= 20 && s.speed <= 30 &&
@@ -49,8 +100,16 @@ export function detectSynergyPreview(
   }
 
   if (!canUnlockSynergies(selectedMcps)) {
-    return { label: `🔒 ${hit.name} — requer ${SYNERGY_OWNER_MCP}`, unlocked: false, none: false };
+    return {
+      label: `🔒 ${synergyLabel(hit.name)} — requer ${SYNERGY_OWNER_MCP}`,
+      unlocked: false,
+      none: false
+    };
   }
 
-  return { label: `${hit.name} (${hit.bonus})`, unlocked: true, none: false };
+  return {
+    label: `${synergyLabel(hit.name)} (${SYNERGY_EFFECTS[hit.name].effect})`,
+    unlocked: true,
+    none: false
+  };
 }

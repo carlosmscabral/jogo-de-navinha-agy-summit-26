@@ -1,11 +1,33 @@
 import React, { useState } from 'react';
-import { EnergySliders, McpServerName, SubagentName, PilotInfo, computeBaselineAttributes, computeBaselineWeapons } from '@jogo/shared';
+import {
+  BALANCE,
+  EnergySliders,
+  MCP_CATALOG,
+  McpServerName,
+  SUBAGENT_CATALOG,
+  SubagentName,
+  PilotInfo,
+  computeBaselineAttributes,
+  computeBaselineWeapons
+} from '@jogo/shared';
 import { Zap, Shield, Sparkles, Crosshair, ChevronRight, CheckCircle2, Cpu, Flame, Gauge, Layers, Award, ArrowLeft } from 'lucide-react';
 import { detectSynergyPreview } from './synergy-preview';
 
 const SLIDER_MIN = 10;
 const SLIDER_MAX = 50;
 const ENERGY_BUDGET = 100;
+
+/** Os dois sub-agentes que o visitante escolhe entre si. */
+type TacticalAgent = 'combat-strategist' | 'systems-engineer';
+
+/**
+ * Derivado do catálogo em vez de digitado: o `aesthetic-designer` é `selectable: false` porque
+ * vai em toda forja, então ele nunca entra nesta lista. O `filter` com a asserção mantém o tipo
+ * estreito de `TacticalAgent`, que o resto do componente já usava.
+ */
+const TACTICAL_AGENTS = (Object.keys(SUBAGENT_CATALOG) as SubagentName[]).filter(
+  (name): name is TacticalAgent => SUBAGENT_CATALOG[name].selectable
+);
 
 /**
  * Redistribui `delta` (positivo ou negativo) entre `keys`, sem estourar `[SLIDER_MIN,
@@ -104,7 +126,7 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
     'cybernetics-shields'
   ]);
 
-  const [selectedTacticalAgent, setSelectedTacticalAgent] = useState<'combat-strategist' | 'systems-engineer'>('combat-strategist');
+  const [selectedTacticalAgent, setSelectedTacticalAgent] = useState<TacticalAgent>('combat-strategist');
 
   // Antes era o texto fixo "100 / 100 PU", que não lia `sliders` -- mascarava exatamente o
   // defeito de `rebalanceEnergySliders` que permitiu a soma derivar pra 107 num playtest real
@@ -113,8 +135,18 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
   const slidersSum = Object.values(sliders).reduce((a, b) => a + b, 0);
 
   const mcpCount = selectedMcps.length;
-  const overclockMultiplier = mcpCount === 1 ? 1.2 : mcpCount === 2 ? 1.1 : 1.0;
-  const scoreMultiplier = mcpCount === 1 ? 1.25 : mcpCount === 2 ? 1.1 : 1.0;
+  /**
+   * O ÚNICO efeito de escolher menos servidores MCP. Lido de `BALANCE.score`, que é o mesmo
+   * objeto que `score-calculator.ts` consome ao fechar a partida.
+   *
+   * Antes daqui existia também um `overclockMultiplier` (1.2 / 1.1 / 1.0) que inflava o DPS, a
+   * velocidade e o escudo mostrados nesta tela, mais três crachás de "⚡ Overclock ativo". Nada
+   * disso jamais chegou à nave: não há multiplicador de atributo em lugar nenhum da engine por
+   * contagem de MCP -- só este de placar. Era a maior mentira da jornada, e o defeito estava
+   * anotado na Spec 02 §55-62.
+   */
+  const scoreMultiplier =
+    BALANCE.score.mcp_multiplier_by_count[mcpCount] ?? BALANCE.score.mcp_multiplier_default;
 
   // Live Projected Stats -- calculado com a MESMA fórmula-base que o daemon usa
   // para preencher os domínios de MCPs não selecionados
@@ -127,15 +159,13 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
   // então qualquer valor válido serve aqui só para preview.
   const baselineWeapons = computeBaselineWeapons(sliders, 'laser_piercing');
 
-  const rawDps = Math.round(baselineWeapons.primary.damage * baselineWeapons.primary.fire_rate);
-  const projectedDps = selectedMcps.includes('weapons-arsenal') ? Math.round(rawDps * overclockMultiplier) : rawDps;
-
-  const rawSpeed = Math.round(baselineAttributes.speed_px_s);
-  const projectedSpeed = selectedMcps.includes('hull-propulsion') ? Math.round(rawSpeed * (mcpCount === 1 ? 1.15 : 1.0)) : rawSpeed;
-
+  // Os quatro números da telemetria são a linha de base pura, sem bônus nenhum: é exatamente o
+  // que a nave recebe nos domínios que o visitante NÃO selecionar, e o ponto de partida do que a
+  // IA calibra nos que ele selecionar. Nenhum deles é multiplicado por contagem de MCP.
+  const projectedDps = Math.round(baselineWeapons.primary.damage * baselineWeapons.primary.fire_rate);
+  const projectedSpeed = Math.round(baselineAttributes.speed_px_s);
   const projectedHp = baselineAttributes.max_hp;
-  // A camada extra de overclock nunca pode ultrapassar o máximo real do schema (3).
-  const projectedShields = Math.min(3, baselineAttributes.shield_capacity + (mcpCount === 1 && selectedMcps.includes('cybernetics-shields') ? 1 : 0));
+  const projectedShields = baselineAttributes.shield_capacity;
 
   // Sinergia detectada -- e, crucialmente, se ela pode mesmo ser desbloqueada com os MCPs
   // selecionados. Ver synergy-preview.ts: só `cybernetics-shields` desbloqueia sinergias, e sem
@@ -175,7 +205,7 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
     }
   };
 
-  const selectTacticalAgent = (agent: 'combat-strategist' | 'systems-engineer') => {
+  const selectTacticalAgent = (agent: TacticalAgent) => {
     setSelectedTacticalAgent(agent);
 
     // Ao trocar de sub-agente tático, garanta que ele tenha pelo menos um MCP dos que narra —
@@ -381,11 +411,9 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
               <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
                 Telemetria Projetada
               </span>
-              {mcpCount === 1 && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#ff9e0b]/20 text-[#ff9e0b] border border-[#ff9e0b]/40 animate-pulse">
-                  ⚡ +20% OVERCLOCK
-                </span>
-              )}
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800/60 text-slate-400 border border-slate-700">
+                LINHA DE BASE
+              </span>
             </div>
 
             <div className="space-y-2.5 font-mono text-xs">
@@ -427,7 +455,9 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
               </span>
             </div>
             <p className="mt-2 text-[10px] text-slate-400 font-mono leading-snug">
-              Menos servidores MCP = maior multiplicador de pontuação, mas os sistemas não selecionados usam uma configuração padrão sólida em vez de calibração personalizada.
+              Menos servidores MCP = maior multiplicador de <strong>pontuação</strong> — a nave não fica
+              mais forte por isso. Os sistemas não selecionados voam com a configuração padrão acima,
+              em vez de calibrados pela IA.
             </p>
           </div>
         </div>
@@ -439,92 +469,60 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
               <Cpu className="w-4 h-4" />
               Servidores MCP & Bônus de Especialização:
             </span>
-            <span className="text-[10px] text-slate-400">
-              {mcpCount === 1 ? '🔥 Ultra-Especialista (+20% Overclock & 1.25x Placar)' : mcpCount === 2 ? '⚡ Foco Tático (+10% Overclock & 1.10x Placar)' : '🌐 Generalista (Versatilidade Total)'}
+            <span className="text-[10px] text-slate-400 font-mono">
+              {mcpCount === 1 ? '🔥 Ultra-Especialista' : mcpCount === 2 ? '⚡ Foco Tático' : '🌐 Generalista'}
+              {' — placar '}
+              <span className="text-[#ff9e0b] font-bold">×{scoreMultiplier.toFixed(2)}</span>
             </span>
           </div>
 
+          {/*
+            Um card por servidor, direto do `MCP_CATALOG` -- rótulo, cor, descrição e a lista de
+            ferramentas que ele expõe. Antes eram três blocos de JSX quase idênticos com as
+            descrições digitadas à mão, que já tinham derivado das que o MCP declara ao modelo.
+          */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {/* weapons-arsenal */}
-            <button
-              type="button"
-              onClick={() => toggleMcp('weapons-arsenal')}
-              className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between gap-2 ${
-                selectedMcps.includes('weapons-arsenal')
-                  ? 'border-[#ff9e0b] bg-[#ff9e0b]/10 text-white shadow-lg'
-                  : 'border-slate-800 bg-slate-900/40 text-slate-400 hover:border-slate-700'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-mono font-bold text-xs text-[#ff9e0b]">weapons-arsenal</span>
-                {selectedMcps.includes('weapons-arsenal') && <CheckCircle2 className="w-4 h-4 text-[#ff9e0b]" />}
-              </div>
-              <p className="text-[11px] text-slate-300 leading-snug">
-                Canhões primários (Laser, Vulcan, Plasma) e mísseis secundários.
-              </p>
-              <p className="text-[10px] text-slate-500 font-mono leading-snug">
-                {selectedMcps.includes('weapons-arsenal')
-                  ? 'Selecionado: dano e cadência calibrados de verdade pela IA.'
-                  : 'Sem seleção: dano e cadência usam uma configuração padrão baseada no seu Ataque.'}
-              </p>
-              {mcpCount === 1 && selectedMcps.includes('weapons-arsenal') && (
-                <span className="text-[10px] font-bold text-[#ff9e0b] font-mono">⚡ Overclock: +20% DPS Ativo!</span>
-              )}
-            </button>
+            {(Object.keys(MCP_CATALOG) as McpServerName[]).map((id) => {
+              const entry = MCP_CATALOG[id];
+              const selected = selectedMcps.includes(id);
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => toggleMcp(id)}
+                  aria-pressed={selected}
+                  style={selected ? { borderColor: entry.color, backgroundColor: `${entry.color}1a` } : undefined}
+                  className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between gap-2 ${
+                    selected
+                      ? 'text-white shadow-lg'
+                      : 'border-slate-800 bg-slate-900/40 text-slate-400 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-sm" style={{ color: entry.color }}>
+                      {entry.label}
+                    </span>
+                    {selected && <CheckCircle2 className="w-4 h-4 shrink-0" style={{ color: entry.color }} />}
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-mono -mt-1">{id}</span>
 
-            {/* hull-propulsion */}
-            <button
-              type="button"
-              onClick={() => toggleMcp('hull-propulsion')}
-              className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between gap-2 ${
-                selectedMcps.includes('hull-propulsion')
-                  ? 'border-[#38bdf8] bg-[#38bdf8]/10 text-white shadow-lg'
-                  : 'border-slate-800 bg-slate-900/40 text-slate-400 hover:border-slate-700'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-mono font-bold text-xs text-[#38bdf8]">hull-propulsion</span>
-                {selectedMcps.includes('hull-propulsion') && <CheckCircle2 className="w-4 h-4 text-[#38bdf8]" />}
-              </div>
-              <p className="text-[11px] text-slate-300 leading-snug">
-                Propulsores de esquiva rápida, aceleração turbo e peso do casco.
-              </p>
-              <p className="text-[10px] text-slate-500 font-mono leading-snug">
-                {selectedMcps.includes('hull-propulsion')
-                  ? 'Selecionado: velocidade e casco calibrados de verdade pela IA.'
-                  : 'Sem seleção: velocidade e resistência do casco (HP) usam uma configuração padrão baseada em Velocidade/Defesa.'}
-              </p>
-              {mcpCount === 1 && selectedMcps.includes('hull-propulsion') && (
-                <span className="text-[10px] font-bold text-[#38bdf8] font-mono">⚡ Overclock: +20% Velocidade Ativo!</span>
-              )}
-            </button>
+                  <p className="text-[11px] text-slate-300 leading-snug">{entry.blurb}</p>
 
-            {/* cybernetics-shields */}
-            <button
-              type="button"
-              onClick={() => toggleMcp('cybernetics-shields')}
-              className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between gap-2 ${
-                selectedMcps.includes('cybernetics-shields')
-                  ? 'border-[#10b981] bg-[#10b981]/10 text-white shadow-lg'
-                  : 'border-slate-800 bg-slate-900/40 text-slate-400 hover:border-slate-700'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-mono font-bold text-xs text-[#10b981]">cybernetics-shields</span>
-                {selectedMcps.includes('cybernetics-shields') && <CheckCircle2 className="w-4 h-4 text-[#10b981]" />}
-              </div>
-              <p className="text-[11px] text-slate-300 leading-snug">
-                Camadas de escudos energéticos e módulos de sinergia matricial.
-              </p>
-              <p className="text-[10px] text-slate-500 font-mono leading-snug">
-                {selectedMcps.includes('cybernetics-shields')
-                  ? 'Selecionado: escudo calibrado pela IA — e o ÚNICO servidor que desbloqueia sinergias.'
-                  : 'Sem seleção: escudo padrão baseado na sua Tecnologia, e NENHUMA sinergia é desbloqueada.'}
-              </p>
-              {mcpCount === 1 && selectedMcps.includes('cybernetics-shields') && (
-                <span className="text-[10px] font-bold text-[#10b981] font-mono">⚡ Overclock: +1 Escudo Extra Ativo!</span>
-              )}
-            </button>
+                  {/* O que ele de fato calibra, com o nome das ferramentas que o agente chama. */}
+                  <ul className="space-y-0.5">
+                    {entry.tools.map((tool) => (
+                      <li key={tool.id} className="text-[10px] text-slate-400 font-mono leading-snug">
+                        <span style={{ color: entry.color }}>▸</span> {tool.label}
+                      </li>
+                    ))}
+                  </ul>
+
+                  <p className="text-[10px] text-slate-500 font-mono leading-snug">
+                    {selected ? `Selecionado: ${entry.whenSelected}` : `Sem seleção: ${entry.whenUnselected}`}
+                  </p>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -534,38 +532,40 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
             Sub-Agente Tático para o Terminal AGY
           </span>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => selectTacticalAgent('combat-strategist')}
-              className={`p-3 rounded-xl border text-left text-xs flex justify-between items-center transition-all ${
-                selectedTacticalAgent === 'combat-strategist'
-                  ? 'border-[#ff9e0b] bg-[#ff9e0b]/10 text-white font-bold'
-                  : 'border-slate-800 text-slate-400 hover:border-slate-700'
-              }`}
-            >
-              <div>
-                <div className="text-xs font-bold text-white font-mono">combat-strategist</div>
-                <div className="text-[10px] text-slate-400">Especialista em canhões, cadência e mísseis</div>
-              </div>
-              {selectedTacticalAgent === 'combat-strategist' && <CheckCircle2 className="w-4 h-4 text-[#ff9e0b]" />}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => selectTacticalAgent('systems-engineer')}
-              className={`p-3 rounded-xl border text-left text-xs flex justify-between items-center transition-all ${
-                selectedTacticalAgent === 'systems-engineer'
-                  ? 'border-[#10b981] bg-[#10b981]/10 text-white font-bold'
-                  : 'border-slate-800 text-slate-400 hover:border-slate-700'
-              }`}
-            >
-              <div>
-                <div className="text-xs font-bold text-white font-mono">systems-engineer</div>
-                <div className="text-[10px] text-slate-400">Especialista em blindagem, velocidade e escudos</div>
-              </div>
-              {selectedTacticalAgent === 'systems-engineer' && <CheckCircle2 className="w-4 h-4 text-[#10b981]" />}
-            </button>
+            {TACTICAL_AGENTS.map((id) => {
+              const entry = SUBAGENT_CATALOG[id];
+              const selected = selectedTacticalAgent === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => selectTacticalAgent(id)}
+                  aria-pressed={selected}
+                  style={selected ? { borderColor: entry.color, backgroundColor: `${entry.color}1a` } : undefined}
+                  className={`p-3 rounded-xl border text-left text-xs flex justify-between items-center transition-all ${
+                    selected ? 'text-white font-bold' : 'border-slate-800 text-slate-400 hover:border-slate-700'
+                  }`}
+                >
+                  <div>
+                    <div className="text-xs font-bold text-white">{entry.label}</div>
+                    <div className="text-[10px] text-slate-500 font-mono">{id}</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">{entry.blurb}</div>
+                  </div>
+                  {selected && <CheckCircle2 className="w-4 h-4 shrink-0" style={{ color: entry.color }} />}
+                </button>
+              );
+            })}
           </div>
+
+          {/*
+            O `aesthetic-designer` vai no payload de toda forja (`handleStartForge`) e o visitante
+            nunca o viu -- mas é ele quem desenha o casco que aparece no pré-voo e na partida.
+          */}
+          <p className="text-[10px] text-slate-500 font-mono leading-snug pt-1">
+            <span style={{ color: SUBAGENT_CATALOG['aesthetic-designer'].color }}>▸</span>{' '}
+            <strong>{SUBAGENT_CATALOG['aesthetic-designer'].label}</strong> (aesthetic-designer):{' '}
+            {SUBAGENT_CATALOG['aesthetic-designer'].blurb}
+          </p>
         </div>
 
         {/* Action Buttons */}

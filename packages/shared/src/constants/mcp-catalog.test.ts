@@ -112,6 +112,14 @@ describe('SUBAGENT_CATALOG', () => {
     assert.equal(SUBAGENT_CATALOG['combat-strategist'].selectable, true);
     assert.equal(SUBAGENT_CATALOG['systems-engineer'].selectable, true);
   });
+
+  it('dá a cada sub-agente rótulo, descrição e cor', () => {
+    for (const [name, entry] of Object.entries(SUBAGENT_CATALOG)) {
+      assert.ok(entry.label.trim().length > 0, `${name}.label vazio`);
+      assert.ok(entry.blurb.trim().length > 0, `${name}.blurb vazio`);
+      assert.match(entry.color, /^#[0-9a-f]{6}$/i, `${name}.color não é hex`);
+    }
+  });
 });
 
 describe('rótulos de armas', () => {
