@@ -1676,11 +1676,24 @@ Esperado: `normalizeSpec` omite o campo, a nave é aceita, o painel some. **Não
 
 - [ ] **23.6 — Preset de emergência traz dica própria**
 
-Force o timeout: inicie uma sessão e **não** digite nada no `agy` até o daemon desistir
-(`AGY_HARD_TIMEOUT_MS`, ≈165s).
+Force o timeout: inicie uma sessão e **não** digite nada no `agy`.
+
+O relógio que dispara aqui é o de **pré-conversa**, `AGY_PRE_MCP_SILENCE_TIMEOUT_MS` = **75s**
+(`daemon/src/index.ts:58`), não o teto rígido de 165s: sem digitar nada nenhum MCP roda, e o daemon
+nunca sai do primeiro nível da escada de silêncio. Se quiser encurtar a espera, suba o daemon com o
+valor reduzido — o mecanismo exercitado é o mesmo:
+
+```bash
+AGY_PRE_MCP_SILENCE_TIMEOUT_MS=15000 npm run start:daemon
+```
 
 Esperado: a tela mostra o aviso de nave de preset de emergência **e** o painel de dicas com a dica
 fixa daquele preset. O caminho que salva a demonstração não pode ser o único sem a feature.
+
+Qual preset aparece depende dos sliders (`fallback-selector.ts:14-18`): `striker` = `offense`,
+`interceptor` = `speed + tech/2`, `vanguard` = `defense + tech/2`, maior afinidade vence com
+desempate fixo nessa ordem. Com os sliders padrão (35/35/15/15) sai o **interceptor**, cuja primeira
+dica é *"Casco fino: fique em movimento e use os corredores laterais..."*.
 
 ---
 
