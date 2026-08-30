@@ -11,7 +11,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "node --test dist/**/*.test.js"
+    "test": "tsc && node --test dist/**/*.test.js"
   },
   "dependencies": {
     "@jogo/shared": "*",

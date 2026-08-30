@@ -8,7 +8,7 @@
     "build": "tsc",
     "start": "node --env-file-if-exists=.env dist/index.js",
     "dev": "tsc -w & node --env-file-if-exists=.env --watch dist/index.js",
-    "test": "node --test 'dist/**/*.test.js'"
+    "test": "tsc && node --test 'dist/**/*.test.js'"
   },
   "dependencies": {
     "@jogo/shared": "*",
