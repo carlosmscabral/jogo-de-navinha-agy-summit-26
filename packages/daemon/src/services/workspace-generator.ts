@@ -236,8 +236,13 @@ validador do jogo rejeitar a nave inteira.
 ## O nome de batismo
 
 \`style_name\` é o único texto livre seu que o piloto lê: aparece como **Classe** na tela de pré-voo.
-Escreva um nome próprio de 2 a 4 palavras, em Maiúsculas De Título, com no máximo 40 caracteres,
-combinando o tema com a build — \`${FALLBACK_PRESETS.interceptor.visuals.style_name}\`,
+Escreva um nome próprio de 2 a 4 palavras, em Maiúsculas De Título, com no máximo 40 caracteres.
+Pelo menos uma palavra tem que vir da **build** — a arma escolhida, o casco, a velocidade, o escudo —
+e não só do tema: dois pilotos que escolherem o mesmo tema com naves diferentes precisam sair daqui
+com nomes diferentes.
+
+Estes três são nomes de OUTRAS naves, aqui só para você ver a forma. NÃO copie nenhum deles, nem
+mesmo o que combinar com o tema do piloto: \`${FALLBACK_PRESETS.interceptor.visuals.style_name}\`,
 \`${FALLBACK_PRESETS.vanguard.visuals.style_name}\`, \`${FALLBACK_PRESETS.striker.visuals.style_name}\`.
 
 NUNCA devolva o slug do tema (${VISUAL_THEME_ORDER.map((k) => `\`${k}\``).join(', ')}) neste campo: o

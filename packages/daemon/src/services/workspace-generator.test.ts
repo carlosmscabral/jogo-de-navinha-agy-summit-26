@@ -378,6 +378,13 @@ describe('WorkspaceGeneratorService — sub-agentes táticos produzem dicas, nã
     // O exemplo vem dos presets de emergência, que são nomes já validados contra o maxLength do
     // schema — nada de exemplo inventado no prompt.
     assert.ok(persona.includes(FALLBACK_PRESETS.interceptor.visuals.style_name));
+    // Numa sessão real de 2026-08-30 o agente devolveu `Cyberpunk Gold Dreadnought` — o preset cujo
+    // nome começa pelo rótulo do tema que o piloto escolheu. Há um exemplo por tema, então o modelo
+    // casa o tema com o exemplo e copia em vez de batizar. A persona precisa proibir a cópia
+    // explicitamente e exigir que o nome fale da build, senão todo visitante de um mesmo tema sai do
+    // estande com a mesma nave.
+    assert.match(persona, /NÃO copie nenhum deles/);
+    assert.match(persona, /build/);
     // A proibição precisa nomear os slugs de verdade, senão ela não cobre um tema novo.
     for (const theme of VISUAL_THEME_ORDER) {
       assert.ok(persona.includes(`\`${theme}\``), `persona não proíbe o slug ${theme} em style_name`);
