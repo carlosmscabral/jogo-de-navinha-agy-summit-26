@@ -142,7 +142,11 @@ while true; do
     # --prompt-interactive ...` morreria na hora e deixaria o visitante diante de um terminal
     # morto — pior que a situação anterior. Sem a flag, caímos no `agy` puro e a tela 1 continua
     # oferecendo a mesma frase para colar à mão.
-    if agy --help 2>/dev/null | grep -q -- '--prompt-interactive'; then
+    #
+    # `2>&1` não é higiene: o agy 1.1.22 imprime a ajuda INTEIRA no stderr e deixa o stdout vazio,
+    # então uma sonda que descarte o stderr casa contra zero byte e conclui que a flag não existe.
+    # `</dev/null` impede que o `--help` de alguma versão futura tente ler o terminal.
+    if agy --help </dev/null 2>&1 | grep -q -- '--prompt-interactive'; then
       bash -c '
         echo "$$" > "$1"
         echo "[booth-terminal] agy em execução no process group $$" >&2

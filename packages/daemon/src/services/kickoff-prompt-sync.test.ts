@@ -35,4 +35,15 @@ describe('BOOTH_KICKOFF_PROMPT x scripts/booth-terminal.sh', () => {
     // morta em vez de cair no `agy` puro.
     assert.match(script, /agy --help .*grep -q -- '--prompt-interactive'/);
   });
+
+  it('a sonda lê o stderr, que é onde o agy escreve o --help', () => {
+    const script = fs.readFileSync(scriptPath, 'utf8');
+    const probe = script.split('\n').find((line) => line.includes('agy --help'));
+    assert.ok(probe, 'nenhuma linha com `agy --help` no script');
+    // O `agy` 1.1.22 imprime o texto de ajuda inteiro no STDERR e deixa o stdout vazio. Uma sonda
+    // que descarte o stderr (`2>/dev/null`) casa contra zero byte, conclui que a flag não existe e
+    // manda o estande para o fallback de digitação — foi exatamente o que aconteceu em 2026-08-30.
+    assert.match(probe, /2>&1/, 'a sonda precisa juntar stderr ao stdout antes do grep');
+    assert.doesNotMatch(probe, /2>\/dev\/null/, 'a sonda não pode descartar o stderr');
+  });
 });
