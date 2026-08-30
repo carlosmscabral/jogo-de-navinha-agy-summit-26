@@ -96,6 +96,19 @@ describe('WorkspaceGeneratorService — GEMINI.md', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  // Contraparte do aviso condicional dentro das personas: elas só conseguem decidir se a dica do
+  // EMP cabe se o Orquestrador entregar o tipo escolhido. Como `primary_weapon`/`secondary_weapon`
+  // vêm da resposta do piloto no PASSO 1, e não de ferramenta, o repasse independe dos MCPs
+  // selecionados — `generate()` aqui monta a sessão com apenas um MCP, de propósito.
+  it('manda o Orquestrador repassar os tipos de arma aos sub-agentes táticos', () => {
+    const dir = generate();
+    const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
+    const passo3 = md.slice(md.indexOf('PASSO 3'), md.indexOf('PASSO 4'));
+    assert.match(passo3, /`primary_weapon` e `secondary_weapon`/);
+    assert.match(passo3, /weapons-arsenal/);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   it('não declara MCPs ou sub-agentes que o visitante não escolheu como ativos, nem lhes atribui contrato de retorno', () => {
     const dir = generate();
     const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
@@ -398,6 +411,23 @@ describe('WorkspaceGeneratorService — sub-agentes táticos produzem dicas, nã
 
       // O destino mudou: nada mais é escrito "para exibição no terminal".
       assert.doesNotMatch(md, /para\s+exibição no terminal/);
+
+      fs.rmSync(dir, { recursive: true, force: true });
+    });
+  }
+
+  // Gate M6, achado do bloco 22.3: o aviso vivia só no `combat-strategist`, então quem escolhia
+  // EMP e `systems-engineer` — 1 visitante em 4 — decolava sem saber que a secundária não fere o
+  // boss. A persona é escrita antes do Fast-Grill-Me, então o gerador não pode condicionar o texto
+  // à escolha; a regra é condicional dentro da persona e o Orquestrador entrega o tipo escolhido.
+  for (const agent of ['combat-strategist', 'systems-engineer']) {
+    it(`${agent}.md avisa que o emp_burst não fere o boss`, () => {
+      const dir = generateBoth();
+      const md = fs.readFileSync(path.join(dir, '.agents', 'agents', `${agent}.md`), 'utf8');
+
+      assert.match(md, /`emp_burst`/);
+      assert.match(md, /\*\*não\*\*\s+fere\s+o\s+boss/);
+      assert.match(md, /`secondary_weapon`/);
 
       fs.rmSync(dir, { recursive: true, force: true });
     });
