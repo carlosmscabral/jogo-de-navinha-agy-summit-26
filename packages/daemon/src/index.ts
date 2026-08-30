@@ -359,11 +359,17 @@ app.post('/api/session/start', async (req, res) => {
     fileWatcher.startWatching(sessionDir, {
       requiredMcps,
       onShipReady: (shipSpec) => {
-        // [Fase A / revisão final — Importante 4] Espelha o guard de
-        // triggerFallback(): se o fallback já entregou uma nave (ex.: agy
-        // morreu ou estourou o teto/silêncio), uma liberação tardia do
-        // watcher não pode mais substituir a nave que o visitante já viu.
-        if (shipDelivered) return;
+        // [Fase A / revisão final — Importante 4] Se o fallback já entregou uma nave (ex.: agy
+        // morreu ou estourou o teto/silêncio), uma liberação tardia do watcher não pode mais
+        // substituir a nave que o visitante já viu.
+        //
+        // O guard testa `deliveredFallback`, não `shipDelivered`: o segundo também fica true numa
+        // liberação normal, e aí congelava o WebSocket enquanto `getCurrentSpec()` continuava
+        // atualizando — o polling de `/api/session/spec` entregava toda reescrita e o socket
+        // nenhuma, exatamente a divergência que o comentário do `triggerFallback` diz não existir.
+        // Reescrita válida é rara (o PASSO 4 pede escrita única), mas quando acontece os dois
+        // canais têm que convergir para a mesma nave, e a mais nova é a certa.
+        if (deliveredFallback) return;
         shipDelivered = true;
         clearAgyTimers();
         console.log(`[Daemon] Broadcasting EVENT_SHIP_READY to ${activeClients.size} connected client(s)...`);
