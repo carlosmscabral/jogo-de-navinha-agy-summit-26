@@ -1610,9 +1610,21 @@ Nova sessão, responda `1 2 2 1`. Esperado: `laser` + `emp_burst` gravados. Não
 Nova sessão; nos sliders **desmarque** `weapons-arsenal`, deixando só `hull-propulsion`; escolha
 `systems-engineer`. Responda `3 1 2 3` (Vulcan + Mísseis).
 
-Esperado: a nave é aceita e `weapons.primary.type == "vulcan_spread"`,
-`weapons.secondary.type == "homing_missiles"` — vindos de `computeBaselineWeapons` com os tipos
-escolhidos, não de um mapeamento fixo.
+**Não procure `weapons` no arquivo.** Com `weapons-arsenal` desmarcado o contrato autoriza o agente
+a omitir o bloco inteiro, e o daemon **não reescreve** o `ship_spec.json`: `applyBaselineForUnselectedMcps`
+roda em memória (`file-watcher.ts:217`) e só o objeto já preenchido é validado e transmitido.
+`jq '.weapons'` no disco devolvendo `null` é o esperado, não uma falha.
+
+```bash
+jq '.build_metadata.fast_grill_me_choices' /tmp/booth_session/ship_spec.json
+```
+
+Esperado: `"primary_weapon": "vulcan_spread"` e `"secondary_weapon": "homing_missiles"`, e a nave
+**aceita** (sem `spec_errors.txt`, pré-voo alcançado). As duas coisas juntas provam o caminho:
+`weapons.primary.type` é `required` no schema, a validação roda depois do backfill, e o backfill só
+monta o bloco a partir desses dois campos (`file-watcher.ts:291-293`) — se a nave decolou, ele usou
+os tipos escolhidos. Confirme na tela: a linha **Armamento** do pré-voo lê do spec liberado
+(`HandoffTerminalScreen.tsx:251-253`) e deve dizer "Vulcan em Leque" e "Mísseis Teleguiados".
 
 ---
 
