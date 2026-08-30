@@ -90,7 +90,12 @@ export function matchFixture(overrides: Partial<MatchDocument> = {}): MatchDocum
         selected_mcps: ['weapons-arsenal'],
         selected_subagents: ['combat-strategist'],
         energy_sliders: { offense: 40, speed: 20, defense: 20, tech: 20 },
-        fast_grill_me_choices: { weapon_focus: 'laser_piercing', visual_theme: 'dark_void_stealth' },
+        fast_grill_me_choices: {
+          primary_weapon: 'laser',
+          secondary_weapon: 'none',
+          visual_theme: 'dark_void_stealth',
+          accent_color: 'ciano_eletrico'
+        },
         synergies_unlocked: []
       },
       attributes: { max_hp: 3, shield_capacity: 1, speed_px_s: 260, hitbox_radius: 12 },

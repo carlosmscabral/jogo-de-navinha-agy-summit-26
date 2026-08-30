@@ -7,6 +7,7 @@ export * from './game/dev-archetypes.js';
 export * from './constants/branding.js';
 export * from './constants/balance.js';
 export * from './constants/mcp-catalog.js';
+export * from './constants/visual-catalog.js';
 export * from './constants/fallback-presets.js';
 export * from './constants/baseline-ship-stats.js';
 export * from './utils/fallback-selector.js';

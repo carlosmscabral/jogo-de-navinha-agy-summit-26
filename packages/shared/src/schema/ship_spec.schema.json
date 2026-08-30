@@ -108,16 +108,26 @@
           "type": "object",
           "additionalProperties": false,
           "required": [
-            "weapon_focus",
-            "visual_theme"
+            "primary_weapon",
+            "secondary_weapon",
+            "visual_theme",
+            "accent_color"
           ],
           "properties": {
-            "weapon_focus": {
+            "primary_weapon": {
               "type": "string",
               "enum": [
-                "laser_piercing",
-                "missile_barrage",
+                "plasma",
+                "laser",
                 "vulcan_spread"
+              ]
+            },
+            "secondary_weapon": {
+              "type": "string",
+              "enum": [
+                "homing_missiles",
+                "emp_burst",
+                "none"
               ]
             },
             "visual_theme": {
@@ -126,6 +136,17 @@
                 "synthwave_80s",
                 "dark_void_stealth",
                 "cyberpunk_gold"
+              ]
+            },
+            "accent_color": {
+              "type": "string",
+              "enum": [
+                "rosa_choque",
+                "ciano_eletrico",
+                "verde_acido",
+                "vermelho_sangue",
+                "dourado_royal",
+                "branco_gelido"
               ]
             }
           }
@@ -138,6 +159,15 @@
         },
         "fallback_used": {
           "type": "boolean"
+        },
+        "pilot_tips": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 140
+          }
         }
       }
     },

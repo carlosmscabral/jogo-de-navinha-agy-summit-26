@@ -13,7 +13,8 @@
  * (see `packages/mcps/src/*.ts`, which keep their own independent formulas).
  */
 
-import { EnergySliders, FastGrillMeWeaponFocus, PrimaryWeaponType, SecondaryWeaponType, ShipAttributes, ShipWeapons } from '../types/ship.js';
+import { EnergySliders, PrimaryWeaponType, SecondaryWeaponType, ShipAttributes, ShipWeapons } from '../types/ship.js';
+import { BALANCE } from './balance.js';
 
 /** Expected range of every `EnergySliders` field (builder-enforced upstream; not validated here). */
 const SLIDER_MIN = 10;
@@ -70,28 +71,18 @@ export function computeBaselineAttributes(sliders: EnergySliders): ShipAttribute
   return { max_hp, shield_capacity, speed_px_s, hitbox_radius };
 }
 
+const SECONDARY_DAMAGE_RANGE = BALANCE.ranges['weapons.secondary.damage'];
+const SECONDARY_COOLDOWN_RANGE = BALANCE.ranges['weapons.secondary.cooldown_seconds'];
+
 /**
- * First-cut mapping from the Fast-Grill-Me `weapon_focus` choice to the
- * baseline `weapons.primary.type` / `weapons.secondary.type`. There is no 1:1
- * correspondence between `FastGrillMeWeaponFocus` and `PrimaryWeaponType`, so
- * this mapping was chosen during planning:
- *
- *   'laser_piercing'  -> primary: 'laser',         secondary: 'homing_missiles'
- *   'vulcan_spread'   -> primary: 'vulcan_spread',  secondary: 'homing_missiles'
- *   'missile_barrage' -> primary: 'plasma',         secondary: 'homing_missiles'
- *
- * Secondary type is always `'homing_missiles'` for the baseline -- the visitor
- * never explicitly chooses a secondary weapon type in the Fast-Grill-Me flow.
+ * Fator do EMP sobre o dano nominal de um míssil, espelhando o que o MCP real já devolve
+ * (`packages/mcps/src/weapons-arsenal.ts`: homing 100, emp 60).
  */
-const WEAPON_FOCUS_TO_TYPES: Record<FastGrillMeWeaponFocus, { primary: PrimaryWeaponType; secondary: SecondaryWeaponType }> = {
-  laser_piercing: { primary: 'laser', secondary: 'homing_missiles' },
-  vulcan_spread: { primary: 'vulcan_spread', secondary: 'homing_missiles' },
-  missile_barrage: { primary: 'plasma', secondary: 'homing_missiles' }
-};
+const EMP_DAMAGE_FACTOR = 0.6;
 
 /**
  * Computes the deterministic baseline `weapons` block from the energy sliders
- * and the visitor's Fast-Grill-Me weapon focus choice, all driven by `offense`:
+ * and the two weapon types the visitor picked in the Fast-Grill-Me, all driven by `offense`:
  *  - primary.damage:            number, [15, 45]  (full schema range, see BALANCE.ranges -- D14)
  *  - primary.fire_rate:         number, [5, 12]   (full schema range, see BALANCE.ranges -- D14)
  *    Since Task B2 regenerated `ship_spec.schema.json` from `BALANCE.ranges`, the schema's own
@@ -101,37 +92,68 @@ const WEAPON_FOCUS_TO_TYPES: Record<FastGrillMeWeaponFocus, { primary: PrimaryWe
  *    from `offense` the same way it always did; only the framing in this comment changes.
  *  - primary.bullet_speed:      number, [400, 800] (full schema range -- doesn't affect DPS balance)
  *  - primary.spread_angle:      number, [0, 30]    (full schema range)
- *  - secondary.damage:          number, [60, 150]  (full schema range)
+ *  - secondary.damage:          number, [60, 150]  (full schema range), ESCALADO PELO TIPO
  *  - secondary.cooldown_seconds: number, [12, 3], INVERTED
  *    (higher offense -> shorter cooldown, fires more often, within the schema's [3,12] range)
  *
  * None of these fields require `"type": "integer"` in the schema, so they are
  * left as the raw interpolated float (no rounding forced).
+ *
+ * O dano da secundária depende do tipo escolhido. Até 2026-08-30 ele interpolava [60,150]
+ * independentemente do tipo — o que era inofensivo enquanto a secundária era sempre
+ * `homing_missiles`, e vira mentira agora que o piloto pode escolher EMP: um pulso EMP teria o
+ * mesmo dano nominal de um míssil teleguiado. O fator segue o MCP real
+ * (`packages/mcps/src/weapons-arsenal.ts`: homing 100, emp 60).
+ *
+ * `none` recebe o PISO do schema, não zero. O que desliga a arma é o `type`, não o número — e
+ * `weapons.secondary.damage` tem `minimum: 60` no schema, então gravar 0 produziria uma spec que
+ * o Ajv rejeita inteira. O menu do Fast-Grill-Me não oferece `none`; o caso existe só para specs
+ * que já o tenham.
  */
-export function computeBaselineWeapons(sliders: EnergySliders, weaponFocus: FastGrillMeWeaponFocus): ShipWeapons {
-  const types = WEAPON_FOCUS_TO_TYPES[weaponFocus];
-
+export function computeBaselineWeapons(
+  sliders: EnergySliders,
+  primaryType: PrimaryWeaponType,
+  secondaryType: SecondaryWeaponType
+): ShipWeapons {
   const damage = lerpClamp(sliders.offense, SLIDER_MIN, SLIDER_MAX, 15, 45);
   const fire_rate = lerpClamp(sliders.offense, SLIDER_MIN, SLIDER_MAX, 5, 12);
   const bullet_speed = lerpClamp(sliders.offense, SLIDER_MIN, SLIDER_MAX, 400, 800);
   const spread_angle = lerpClamp(sliders.offense, SLIDER_MIN, SLIDER_MAX, 0, 30);
 
-  const secondaryDamage = lerpClamp(sliders.offense, SLIDER_MIN, SLIDER_MAX, 60, 150);
+  const secondaryDamage = computeSecondaryDamage(sliders.offense, secondaryType);
   // Inverted: outMin (12) > outMax (3) -- higher offense yields a shorter cooldown, within the new [3,12] schema range.
-  const cooldownSeconds = lerpClamp(sliders.offense, SLIDER_MIN, SLIDER_MAX, 12, 3);
+  const cooldownSeconds =
+    secondaryType === 'none'
+      ? SECONDARY_COOLDOWN_RANGE.min
+      : lerpClamp(sliders.offense, SLIDER_MIN, SLIDER_MAX, SECONDARY_COOLDOWN_RANGE.max, SECONDARY_COOLDOWN_RANGE.min);
 
   return {
     primary: {
-      type: types.primary,
+      type: primaryType,
       damage,
       fire_rate,
       bullet_speed,
       spread_angle
     },
     secondary: {
-      type: types.secondary,
+      type: secondaryType,
       damage: secondaryDamage,
       cooldown_seconds: cooldownSeconds
     }
   };
+}
+
+/**
+ * Dano da secundária, por tipo. Os dois extremos saem de `BALANCE.ranges` — nunca de literal —
+ * pela mesma disciplina que `gen-schema.ts` aplica: o piso é o que o schema aceita, e um valor
+ * abaixo dele não é "mais fraco", é inválido.
+ */
+function computeSecondaryDamage(offense: number, type: SecondaryWeaponType): number {
+  const { min, max } = SECONDARY_DAMAGE_RANGE;
+  if (type === 'none') return min;
+  if (type === 'emp_burst') {
+    // Teto reduzido, piso preservado: no ataque máximo o EMP causa 60% do que um míssil causaria.
+    return lerpClamp(offense, SLIDER_MIN, SLIDER_MAX, min, max * EMP_DAMAGE_FACTOR);
+  }
+  return lerpClamp(offense, SLIDER_MIN, SLIDER_MAX, min, max);
 }

@@ -29,7 +29,7 @@ interface BriefingScreenProps {
 /** Nave de exemplo do painel 2: linha de base de uma build equilibrada, não a nave de ninguém. */
 const DEMO_SLIDERS = { offense: 25, speed: 25, defense: 25, tech: 25 };
 const DEMO_ATTRIBUTES = computeBaselineAttributes(DEMO_SLIDERS);
-const DEMO_WEAPONS = computeBaselineWeapons(DEMO_SLIDERS, 'vulcan_spread');
+const DEMO_WEAPONS = computeBaselineWeapons(DEMO_SLIDERS, 'vulcan_spread', 'homing_missiles');
 
 const ENERGY_BARS = [
   { label: 'Ataque', color: '#ff9e0b', height: '78%', delay: '0s' },

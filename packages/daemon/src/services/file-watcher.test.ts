@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { FALLBACK_PRESETS, computeBaselineAttributes, computeBaselineWeapons, applySynergies, BALANCE } from '@jogo/shared';
+import { FALLBACK_PRESETS, computeBaselineAttributes, computeBaselineWeapons, applySynergies, BALANCE, VISUAL_THEMES } from '@jogo/shared';
 import { FileWatcherService } from './file-watcher.js';
 
 function tempSession(): string {
@@ -208,7 +208,12 @@ describe('FileWatcherService — backfill de baseline para MCPs não selecionado
         selected_mcps: ['weapons-arsenal'],
         selected_subagents: ['aesthetic-designer', 'combat-strategist'],
         energy_sliders: sliders,
-        fast_grill_me_choices: { weapon_focus: 'laser_piercing', visual_theme: 'synthwave_80s' },
+        fast_grill_me_choices: {
+          primary_weapon: 'laser',
+          secondary_weapon: 'homing_missiles',
+          visual_theme: 'synthwave_80s',
+          accent_color: 'ciano_eletrico'
+        },
         synergies_unlocked: []
       },
       // attributes ausente de propósito -- simula o que agy escreve quando
@@ -251,7 +256,12 @@ describe('FileWatcherService — backfill de baseline para MCPs não selecionado
         selected_mcps: ['hull-propulsion'],
         selected_subagents: ['aesthetic-designer', 'systems-engineer'],
         energy_sliders: sliders,
-        fast_grill_me_choices: { weapon_focus: 'vulcan_spread', visual_theme: 'dark_void_stealth' },
+        fast_grill_me_choices: {
+          primary_weapon: 'vulcan_spread',
+          secondary_weapon: 'emp_burst',
+          visual_theme: 'dark_void_stealth',
+          accent_color: 'verde_acido'
+        },
         synergies_unlocked: []
       },
       attributes: {
@@ -271,7 +281,7 @@ describe('FileWatcherService — backfill de baseline para MCPs não selecionado
 
     assert.equal(rejections.length, 0, JSON.stringify(rejections));
     assert.equal(readySpecs.length, 1);
-    const expectedWeapons = computeBaselineWeapons(sliders, 'vulcan_spread');
+    const expectedWeapons = computeBaselineWeapons(sliders, 'vulcan_spread', 'emp_burst');
     assert.deepEqual(readySpecs[0].weapons, expectedWeapons);
     // attributes de hull-propulsion (MCP selecionado) passam intactos
     assert.equal(readySpecs[0].attributes.max_hp, 4);
@@ -381,7 +391,12 @@ describe('FileWatcherService — backfill de baseline para MCPs não selecionado
         selected_mcps: ['cybernetics-shields'],
         selected_subagents: ['aesthetic-designer', 'systems-engineer'],
         energy_sliders: sliders,
-        fast_grill_me_choices: { weapon_focus: 'laser_piercing', visual_theme: 'synthwave_80s' },
+        fast_grill_me_choices: {
+          primary_weapon: 'laser',
+          secondary_weapon: 'homing_missiles',
+          visual_theme: 'synthwave_80s',
+          accent_color: 'ciano_eletrico'
+        },
         synergies_unlocked: []
       },
       attributes: {
@@ -432,7 +447,12 @@ describe('FileWatcherService — backfill de baseline para MCPs não selecionado
         selected_mcps: ['hull-propulsion'],
         selected_subagents: ['aesthetic-designer', 'systems-engineer'],
         energy_sliders: sliders,
-        fast_grill_me_choices: { weapon_focus: 'laser_piercing', visual_theme: 'synthwave_80s' }
+        fast_grill_me_choices: {
+          primary_weapon: 'laser',
+          secondary_weapon: 'homing_missiles',
+          visual_theme: 'synthwave_80s',
+          accent_color: 'ciano_eletrico'
+        }
         // synergies_unlocked ausente de propósito -- cybernetics-shields nunca foi chamado
       },
       attributes: {
@@ -682,5 +702,108 @@ describe('FileWatcherService — getAuditStatus()', () => {
   it('sem MCP exigido, o gate está vazio e nada fica pendente', () => {
     const w = new FileWatcherService();
     assert.deepEqual(w.getAuditStatus(), { required: [], seen: [], missing: [] });
+  });
+});
+
+// `normalizeSpec` reconstrói `build_metadata` do zero e descarta toda chave que não copia
+// explicitamente — e `additionalProperties: false` faz o Ajv rejeitar tudo que sobra. Estes testes
+// cobrem os dois campos novos de 2026-08-30 nas duas direções: o que precisa sobreviver, e o que
+// precisa ser descartado sem derrubar a nave.
+describe('FileWatcherService — pilot_tips e accent_color na normalização', () => {
+  async function runNormalize(patchBuildMetadata: (bm: any) => void) {
+    const dir = tempSession();
+    const auditPath = path.join(dir, 'mcp_audit.log');
+    fs.writeFileSync(auditPath, '', 'utf8');
+
+    const readySpecs: any[] = [];
+    const rejections: any[] = [];
+    const w = new FileWatcherService();
+    w.startWatching(dir, {
+      requiredMcps: ['cybernetics-shields'],
+      onShipReady: (s) => readySpecs.push(s),
+      onSpecRejected: (r) => rejections.push(r)
+    });
+
+    const rawSpec: any = JSON.parse(JSON.stringify(FALLBACK_PRESETS.interceptor));
+    rawSpec.build_metadata.selected_mcps = ['cybernetics-shields'];
+    patchBuildMetadata(rawSpec.build_metadata);
+
+    fs.appendFileSync(auditPath, auditLine('cybernetics-shields', 'calibrate_energy_barrier'));
+    fs.writeFileSync(path.join(dir, 'ship_spec.json'), JSON.stringify(rawSpec), 'utf8');
+    await wait(900);
+
+    w.stopWatching();
+    fs.rmSync(dir, { recursive: true, force: true });
+    return { readySpecs, rejections };
+  }
+
+  it('preserva as dicas quando o agente as grava direito', async () => {
+    const tips = [
+      'Fique em movimento: seu casco não aguenta troca de tiro de frente.',
+      'Guarde o míssil para o boss — é a única arma sua que o fere.',
+      'Use os corredores laterais para atravessar as ondas de drones.'
+    ];
+    const { readySpecs, rejections } = await runNormalize((bm) => {
+      bm.pilot_tips = tips;
+    });
+
+    assert.equal(rejections.length, 0, JSON.stringify(rejections));
+    assert.equal(readySpecs.length, 1);
+    assert.deepEqual(readySpecs[0].build_metadata.pilot_tips, tips);
+  });
+
+  // Dica malformada não pode custar um ciclo de correção dentro do SLA: o campo some e a nave passa.
+  it('descarta pilot_tips malformado em vez de reprovar a nave', async () => {
+    const { readySpecs, rejections } = await runNormalize((bm) => {
+      bm.pilot_tips = 'uma string só, não um array';
+    });
+
+    assert.equal(rejections.length, 0, JSON.stringify(rejections));
+    assert.equal(readySpecs.length, 1);
+    assert.equal(readySpecs[0].build_metadata.pilot_tips, undefined);
+  });
+
+  // Ausência de dica e dica vazia precisam continuar distinguíveis na UI, então o campo é omitido —
+  // nunca normalizado para [].
+  it('omite o campo quando não há dica nenhuma, em vez de gravar um array vazio', async () => {
+    const { readySpecs, rejections } = await runNormalize((bm) => {
+      delete bm.pilot_tips;
+    });
+
+    assert.equal(rejections.length, 0, JSON.stringify(rejections));
+    assert.equal(readySpecs.length, 1);
+    assert.ok(
+      !('pilot_tips' in readySpecs[0].build_metadata),
+      'pilot_tips não deve existir como chave quando não há dica'
+    );
+  });
+
+  // Sem este backfill, um agente ligeiramente fora de conformidade leva SCHEMA_INVALID num campo
+  // puramente cosmético — e o visitante paga com um ciclo de correção dentro do SLA.
+  it('preenche accent_color ausente com o accent assinatura do tema escolhido', async () => {
+    const { readySpecs, rejections } = await runNormalize((bm) => {
+      delete bm.fast_grill_me_choices.accent_color;
+      bm.fast_grill_me_choices.visual_theme = 'cyberpunk_gold';
+    });
+
+    assert.equal(rejections.length, 0, JSON.stringify(rejections));
+    assert.equal(readySpecs.length, 1);
+    assert.equal(
+      readySpecs[0].build_metadata.fast_grill_me_choices.accent_color,
+      VISUAL_THEMES.cyberpunk_gold.signature_accent
+    );
+  });
+
+  it('cai para synthwave_80s quando o tema gravado não existe', async () => {
+    const { readySpecs, rejections } = await runNormalize((bm) => {
+      bm.fast_grill_me_choices.visual_theme = 'neon_jungle';
+      delete bm.fast_grill_me_choices.accent_color;
+    });
+
+    assert.equal(rejections.length, 0, JSON.stringify(rejections));
+    assert.equal(readySpecs.length, 1);
+    const choices = readySpecs[0].build_metadata.fast_grill_me_choices;
+    assert.equal(choices.visual_theme, 'synthwave_80s');
+    assert.equal(choices.accent_color, VISUAL_THEMES.synthwave_80s.signature_accent);
   });
 });

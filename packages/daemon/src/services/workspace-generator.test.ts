@@ -3,6 +3,17 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import {
+  ACCENT_COLOR_ORDER,
+  ACCENT_COLORS,
+  BOOTH_KICKOFF_PROMPT,
+  GRILL_ME_SECONDARY_ORDER,
+  PRIMARY_WEAPON_LABELS,
+  PRIMARY_WEAPON_ORDER,
+  SECONDARY_WEAPON_LABELS,
+  VISUAL_THEME_ORDER,
+  VISUAL_THEMES
+} from '@jogo/shared';
 import { WorkspaceGeneratorService } from './workspace-generator.js';
 
 function generate(): string {
@@ -49,16 +60,62 @@ describe('WorkspaceGeneratorService — GEMINI.md', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it('Fast-Grill-Me (PASSO 1) menciona a lista curada de cores de destaque como opcional', () => {
+  it('Fast-Grill-Me (PASSO 1) faz as quatro perguntas num único turno', () => {
     const dir = generate();
     const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
-    assert.match(md, /Rosa Choque/);
-    assert.match(md, /Ciano Elétrico/);
-    assert.match(md, /Verde Ácido/);
-    assert.match(md, /Vermelho Sangue/);
-    assert.match(md, /Dourado Royal/);
-    assert.match(md, /Branco Gélido/);
-    assert.match(md, /Opcional/i);
+    assert.match(md, /QUATRO perguntas abaixo de uma vez só, em UM único\s+turno/);
+    assert.match(md, /\[1\] Canhão primário:/);
+    assert.match(md, /\[2\] Arma secundária:/);
+    assert.match(md, /\[3\] Estilo do casco:/);
+    assert.match(md, /\[4\] Cor de destaque:/);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  // O menu é gerado dos catálogos justamente para não poder anunciar uma opção que o schema
+  // rejeita — nem esconder uma que ele aceita, como acontecia com emp_burst.
+  it('Fast-Grill-Me expõe todas as armas e todas as cores curadas', () => {
+    const dir = generate();
+    const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
+    for (const label of Object.values(PRIMARY_WEAPON_LABELS)) {
+      assert.match(md, new RegExp(label), `primária '${label}' ausente do menu`);
+    }
+    for (const key of GRILL_ME_SECONDARY_ORDER) {
+      assert.match(md, new RegExp(SECONDARY_WEAPON_LABELS[key]), `secundária '${key}' ausente`);
+    }
+    for (const key of VISUAL_THEME_ORDER) {
+      assert.match(md, new RegExp(VISUAL_THEMES[key].label), `tema '${key}' ausente`);
+    }
+    for (const key of ACCENT_COLOR_ORDER) {
+      assert.match(md, new RegExp(ACCENT_COLORS[key].label), `cor '${key}' ausente`);
+    }
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  // "Sem armamento secundário" continua no enum do schema, mas oferecê-lo numa partida de 90
+  // segundos é uma armadilha para quem escolhe sem saber.
+  it('não oferece "sem secundária" no menu, e avisa que o EMP não fere o boss', () => {
+    const dir = generate();
+    const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
+    assert.doesNotMatch(md, new RegExp(SECONDARY_WEAPON_LABELS.none));
+    assert.match(md, /NÃO fere o boss/);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('diz ao agente que a sessão abre com a frase do estande e que ele deve ir direto ao PASSO 1', () => {
+    const dir = generate();
+    const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
+    assert.ok(md.includes(BOOTH_KICKOFF_PROMPT), 'a frase de abertura do estande não aparece');
+    assert.match(md, /sem saudação/);
+    assert.match(md, /sem chamar nenhuma ferramenta MCP antes do menu/);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('AGENTS.md e GEMINI.md continuam byte-idênticos', () => {
+    const dir = generate();
+    assert.equal(
+      fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf8'),
+      fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8')
+    );
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
@@ -74,11 +131,12 @@ describe('WorkspaceGeneratorService — GEMINI.md', () => {
   it('PASSO 3 instrui a usar invoke_subagent com workspace inherit, após os valores já terem sido obtidos, apenas para narrativa', () => {
     const dir = generate();
     const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
-    assert.match(md, /PASSO 3 - NARRATIVA DOS ESPECIALISTAS/);
+    assert.match(md, /PASSO 3 - BRIEFING DOS ESPECIALISTAS/);
     assert.match(md, /invoke_subagent/);
     assert.match(md, /inherit/);
     assert.match(md, /valores já obtidos no Passo 2/);
-    assert.match(md, /NÃO\s+devem invocar nenhuma ferramenta MCP por conta própria/);
+    assert.match(md, /NÃO devem invocar\s+nenhuma ferramenta MCP por conta própria/);
+    assert.match(md, /lista de dicas de pilotagem/);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
@@ -108,29 +166,53 @@ describe('WorkspaceGeneratorService — GEMINI.md', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it('mapeia weapon_focus e visual_theme para os slugs exatos em inglês exigidos pelo schema', () => {
+  it('dá a tabela nº → slug exato para as quatro escolhas', () => {
     const dir = generate();
     const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
-    assert.match(md, /weapon_focus/);
-    assert.match(md, /"laser_piercing"/);
-    assert.match(md, /"missile_barrage"/);
-    assert.match(md, /"vulcan_spread"/);
-    assert.match(md, /visual_theme/);
-    assert.match(md, /"synthwave_80s"/);
-    assert.match(md, /"dark_void_stealth"/);
-    assert.match(md, /"cyberpunk_gold"/);
+    for (const key of [
+      ...PRIMARY_WEAPON_ORDER,
+      ...GRILL_ME_SECONDARY_ORDER,
+      ...VISUAL_THEME_ORDER,
+      ...ACCENT_COLOR_ORDER
+    ]) {
+      assert.match(md, new RegExp(`"${key}"`), `slug "${key}" ausente da tabela de conversão`);
+    }
+    assert.match(md, /`primary_weapon`/);
+    assert.match(md, /`secondary_weapon`/);
+    assert.match(md, /`visual_theme`/);
+    assert.match(md, /`accent_color`/);
     // aesthetic_style só pode aparecer como nome explicitamente proibido (NUNCA aesthetic_style),
     // nunca como o nome real do campo a preencher.
     assert.match(md, /NUNCA `?aesthetic_style`?/);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it('proíbe explicitamente accent_color dentro de fast_grill_me_choices', () => {
+  // A instrução antiga PROIBIA accent_color em fast_grill_me_choices. Agora ele é obrigatório, e
+  // quem virou campo morto é weapon_focus — que o Ajv rejeita por additionalProperties: false.
+  it('exige as quatro chaves em fast_grill_me_choices e trata weapon_focus como campo morto', () => {
     const dir = generate();
     const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
-    assert.match(md, /accent_color/);
-    assert.match(md, /N[ÃA]O.*entra em `?(?:build_metadata\.)?fast_grill_me_choices`?/i);
-    assert.match(md, /aceita\s+apenas `?weapon_focus`? e `?visual_theme`?/i);
+    assert.match(md, /As quatro chaves são \*\*obrigatórias\*\*/);
+    assert.match(md, /`weapon_focus` \*\*não existe mais\*\*/);
+    assert.doesNotMatch(md, /N[ÃA]O.*entra em `?(?:build_metadata\.)?fast_grill_me_choices`?/i);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('amarra weapons.*.type à escolha do PASSO 1, em vez de deixá-lo livre para o modelo', () => {
+    const dir = generate();
+    const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
+    assert.match(md, /`weapons\.primary\.type` \| O canhão escolhido no PASSO 1/);
+    assert.match(md, /`weapons\.secondary\.type` \| A secundária escolhida no PASSO 1/);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('manda gravar pilot_tips na mesma escrita, e omitir o campo em vez de inventar dica', () => {
+    const dir = generate();
+    const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
+    assert.match(md, /`build_metadata\.pilot_tips`/);
+    assert.match(md, /mesma escrita/);
+    assert.match(md, /máx\. 3 itens, até 140 caracteres cada/);
+    assert.match(md, /\*\*omita o campo\*\* em vez de inventar uma/);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
@@ -164,27 +246,28 @@ describe('WorkspaceGeneratorService — GEMINI.md', () => {
 });
 
 describe('WorkspaceGeneratorService — aesthetic-designer.md', () => {
-  it('permite recolorir o tema escolhido para uma cor de destaque sem perder a identidade estrutural', () => {
+  // Antes de 2026-08-30 este arquivo só NOMEAVA os temas e as cores; a paleta era inventada a cada
+  // sessão e a cor era "refinação opcional". Agora os hexes vêm do catálogo e o destaque é
+  // obrigatório — a estrutura continua governada pelo tema.
+  it('entrega a paleta de cada tema e a cor de destaque em hex, e não como prosa opcional', () => {
     const dir = generate();
     const md = fs.readFileSync(path.join(dir, '.agents', 'agents', 'aesthetic-designer.md'), 'utf8');
 
-    // The 3 structural themes must still be present and drive the SVG's identity.
-    assert.match(md, /Synthwave/);
-    assert.match(md, /Dark Void/);
-    assert.match(md, /Cyberpunk Gold/);
+    for (const key of VISUAL_THEME_ORDER) {
+      const theme = VISUAL_THEMES[key];
+      assert.match(md, new RegExp(theme.label), `tema '${key}' ausente`);
+      for (const hex of Object.values(theme.palette)) {
+        assert.ok(md.includes(hex), `hex ${hex} do tema '${key}' ausente`);
+      }
+    }
+    for (const key of ACCENT_COLOR_ORDER) {
+      assert.match(md, new RegExp(ACCENT_COLORS[key].label), `cor '${key}' ausente`);
+      assert.ok(md.includes(ACCENT_COLORS[key].hex), `hex de '${key}' ausente`);
+    }
 
-    // The curated accent-color list must be present for the subagent to honor.
-    assert.match(md, /Rosa Choque/);
-    assert.match(md, /Ciano Elétrico/);
-    assert.match(md, /Verde Ácido/);
-    assert.match(md, /Vermelho Sangue/);
-    assert.match(md, /Dourado Royal/);
-    assert.match(md, /Branco Gélido/);
-
-    // Key concept: recolor toward the requested accent while keeping structure intact,
-    // and fall back to the theme's default palette when no (recognized) color is given.
-    assert.match(md, /identidade estrutural/i);
-    assert.match(md, /opcional/i);
+    assert.match(md, /governa a GEOMETRIA/);
+    assert.match(md, /deve\*\* aparecer em\s+`primary_color` \*\*ou\*\* em `engine_trail_color`/);
+    assert.doesNotMatch(md, /refinação\s+opcional/i);
 
     fs.rmSync(dir, { recursive: true, force: true });
   });
@@ -233,7 +316,7 @@ describe('WorkspaceGeneratorService — frontmatter dos sub-agentes', () => {
   });
 });
 
-describe('WorkspaceGeneratorService — sub-agentes táticos são narrativos, não invocam MCP tools', () => {
+describe('WorkspaceGeneratorService — sub-agentes táticos produzem dicas, não invocam MCP tools', () => {
   function generateBoth(): string {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'booth-ws-'));
     WorkspaceGeneratorService.generateWorkspace({
@@ -247,23 +330,34 @@ describe('WorkspaceGeneratorService — sub-agentes táticos são narrativos, n�
     return dir;
   }
 
-  it('combat-strategist.md não instrui mais a invocar ferramentas MCP por conta própria', () => {
-    const dir = generateBoth();
-    const md = fs.readFileSync(path.join(dir, '.agents', 'agents', 'combat-strategist.md'), 'utf8');
-    assert.doesNotMatch(md, /Você DEVE invocar as ferramentas/);
-    assert.match(md, /já invocou/);
-    assert.match(md, /JÁ OBTIDOS/);
-    assert.match(md, /NÃO deve invocar nenhuma\s+ferramenta MCP por conta própria/);
-    fs.rmSync(dir, { recursive: true, force: true });
-  });
+  // O texto antigo pedia "uma avaliação tática breve para exibição no terminal" — prosa que morria
+  // ali, nunca chegava no ship_spec.json e o visitante nunca lia. É o issue #2 do repositório.
+  for (const agent of ['combat-strategist', 'systems-engineer']) {
+    it(`${agent}.md pede duas dicas de pilotagem, sem invocar ferramentas MCP`, () => {
+      const dir = generateBoth();
+      const md = fs.readFileSync(path.join(dir, '.agents', 'agents', `${agent}.md`), 'utf8');
 
-  it('systems-engineer.md não instrui mais a invocar ferramentas MCP por conta própria', () => {
+      assert.doesNotMatch(md, /Você DEVE invocar as ferramentas/);
+      assert.match(md, /já invocou/);
+      assert.match(md, /NÃO deve\s+invocar nenhuma\s+ferramenta MCP por conta\s+própria/);
+
+      assert.match(md, /\*\*exatamente 2 dicas de pilotagem\*\*/);
+      assert.match(md, /no máximo 140 caracteres/);
+      assert.match(md, /`build_metadata\.pilot_tips`/);
+      assert.match(md, /uma por linha, sem numeração/);
+
+      // O destino mudou: nada mais é escrito "para exibição no terminal".
+      assert.doesNotMatch(md, /para\s+exibição no terminal/);
+
+      fs.rmSync(dir, { recursive: true, force: true });
+    });
+  }
+
+  it('aesthetic-designer.md não produz dica de pilotagem', () => {
     const dir = generateBoth();
-    const md = fs.readFileSync(path.join(dir, '.agents', 'agents', 'systems-engineer.md'), 'utf8');
-    assert.doesNotMatch(md, /Você DEVE invocar as ferramentas/);
-    assert.match(md, /já invocou/);
-    assert.match(md, /JÁ OBTIDOS/);
-    assert.match(md, /NÃO deve invocar nenhuma\s+ferramenta MCP por conta própria/);
+    const md = fs.readFileSync(path.join(dir, '.agents', 'agents', 'aesthetic-designer.md'), 'utf8');
+    assert.doesNotMatch(md, /pilot_tips/);
+    assert.doesNotMatch(md, /dicas de pilotagem/);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 });

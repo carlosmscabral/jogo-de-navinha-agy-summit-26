@@ -1,4 +1,5 @@
 import { ShipSpecification } from '../types/ship.js';
+import { VISUAL_THEMES } from './visual-catalog.js';
 
 export const FALLBACK_SVG_PATHS = {
   interceptor: `
@@ -35,10 +36,16 @@ export const FALLBACK_PRESETS: Record<'interceptor' | 'vanguard' | 'striker', Sh
         tech: 10
       },
       fast_grill_me_choices: {
-        weapon_focus: 'laser_piercing',
-        visual_theme: 'synthwave_80s'
+        primary_weapon: 'laser',
+        secondary_weapon: 'homing_missiles',
+        visual_theme: 'synthwave_80s',
+        accent_color: 'ciano_eletrico'
       },
-      synergies_unlocked: ['Ghost Interceptor']
+      synergies_unlocked: ['Ghost Interceptor'],
+      pilot_tips: [
+        'Casco fino: fique em movimento e use os corredores laterais em vez de trocar tiro de frente.',
+        'Guarde o míssil para o boss — é a única arma sua que o fere de verdade.'
+      ]
     },
     attributes: {
       max_hp: 3,
@@ -62,9 +69,7 @@ export const FALLBACK_PRESETS: Record<'interceptor' | 'vanguard' | 'striker', Sh
     },
     visuals: {
       style_name: 'Synthwave 80s Interceptor',
-      primary_color: '#00f3ff',
-      secondary_color: '#ff0055',
-      engine_trail_color: '#00f3ff',
+      ...VISUAL_THEMES.synthwave_80s.palette,
       svg_path_data: FALLBACK_SVG_PATHS.interceptor
     }
   },
@@ -85,10 +90,16 @@ export const FALLBACK_PRESETS: Record<'interceptor' | 'vanguard' | 'striker', Sh
         tech: 20
       },
       fast_grill_me_choices: {
-        weapon_focus: 'missile_barrage',
-        visual_theme: 'cyberpunk_gold'
+        primary_weapon: 'plasma',
+        secondary_weapon: 'emp_burst',
+        visual_theme: 'cyberpunk_gold',
+        accent_color: 'dourado_royal'
       },
-      synergies_unlocked: ['Titan Fortress']
+      synergies_unlocked: ['Titan Fortress'],
+      pilot_tips: [
+        'Você aguenta pancada: avance pelo meio da tela e sustente o plasma em cima dos drones.',
+        'O EMP não fere o boss — dispare-o antes, para limpar enxame e apagar projéteis.'
+      ]
     },
     attributes: {
       max_hp: 5,
@@ -112,9 +123,7 @@ export const FALLBACK_PRESETS: Record<'interceptor' | 'vanguard' | 'striker', Sh
     },
     visuals: {
       style_name: 'Cyberpunk Gold Dreadnought',
-      primary_color: '#ffd700',
-      secondary_color: '#ff6600',
-      engine_trail_color: '#ff6600',
+      ...VISUAL_THEMES.cyberpunk_gold.palette,
       svg_path_data: FALLBACK_SVG_PATHS.vanguard
     }
   },
@@ -135,10 +144,16 @@ export const FALLBACK_PRESETS: Record<'interceptor' | 'vanguard' | 'striker', Sh
         tech: 15
       },
       fast_grill_me_choices: {
-        weapon_focus: 'vulcan_spread',
-        visual_theme: 'dark_void_stealth'
+        primary_weapon: 'vulcan_spread',
+        secondary_weapon: 'emp_burst',
+        visual_theme: 'dark_void_stealth',
+        accent_color: 'ciano_eletrico'
       },
-      synergies_unlocked: ['Glass Cannon']
+      synergies_unlocked: ['Glass Cannon'],
+      pilot_tips: [
+        'Canhão de vidro: um erro custa caro, então mantenha distância e deixe o leque fazer o trabalho.',
+        'Solte o EMP quando estiver cercado — ele apaga os projéteis inimigos no raio.'
+      ]
     },
     attributes: {
       max_hp: 3,
@@ -162,9 +177,7 @@ export const FALLBACK_PRESETS: Record<'interceptor' | 'vanguard' | 'striker', Sh
     },
     visuals: {
       style_name: 'Dark Void Striker',
-      primary_color: '#8b00ff',
-      secondary_color: '#00ffcc',
-      engine_trail_color: '#00ffcc',
+      ...VISUAL_THEMES.dark_void_stealth.palette,
       svg_path_data: FALLBACK_SVG_PATHS.striker
     }
   }

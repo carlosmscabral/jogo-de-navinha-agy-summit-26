@@ -2,8 +2,17 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BALANCE } from '../constants/balance.js';
+import { ACCENT_COLORS, VISUAL_THEMES } from '../constants/visual-catalog.js';
 
 type NumericNode = { type: 'integer' | 'number'; minimum: number; maximum: number };
+
+/**
+ * Enums de arma, declarados uma vez. `weapons.*.type` e `fast_grill_me_choices.*_weapon` são o
+ * mesmo conjunto por construção — a escolha do PASSO 1 é o tipo que a nave recebe — e duas listas
+ * separadas poderiam divergir sem que nada reclamasse.
+ */
+const PRIMARY_WEAPON_ENUM = ['plasma', 'laser', 'vulcan_spread'] as const;
+const SECONDARY_WEAPON_ENUM = ['homing_missiles', 'emp_burst', 'none'] as const;
 
 function numeric(key: keyof typeof BALANCE.ranges): NumericNode {
   const r = BALANCE.ranges[key];
@@ -64,14 +73,23 @@ export function buildShipSpecSchema(): Record<string, unknown> {
           fast_grill_me_choices: {
             type: 'object',
             additionalProperties: false,
-            required: ['weapon_focus', 'visual_theme'],
+            required: ['primary_weapon', 'secondary_weapon', 'visual_theme', 'accent_color'],
             properties: {
-              weapon_focus: { type: 'string', enum: ['laser_piercing', 'missile_barrage', 'vulcan_spread'] },
-              visual_theme: { type: 'string', enum: ['synthwave_80s', 'dark_void_stealth', 'cyberpunk_gold'] }
+              primary_weapon: { type: 'string', enum: [...PRIMARY_WEAPON_ENUM] },
+              // `none` continua no enum ainda que o menu não o ofereça: o schema aceita quem já
+              // tem, e os presets e helpers de teste usam o valor.
+              secondary_weapon: { type: 'string', enum: [...SECONDARY_WEAPON_ENUM] },
+              visual_theme: { type: 'string', enum: Object.keys(VISUAL_THEMES) },
+              accent_color: { type: 'string', enum: Object.keys(ACCENT_COLORS) }
             }
           },
           synergies_unlocked: { type: 'array', items: { type: 'string' } },
-          fallback_used: { type: 'boolean' }
+          fallback_used: { type: 'boolean' },
+          pilot_tips: {
+            type: 'array',
+            maxItems: 3,
+            items: { type: 'string', minLength: 8, maxLength: 140 }
+          }
         }
       },
       attributes: {
@@ -95,7 +113,7 @@ export function buildShipSpecSchema(): Record<string, unknown> {
             additionalProperties: false,
             required: ['type', 'damage', 'fire_rate', 'bullet_speed', 'spread_angle'],
             properties: {
-              type: { type: 'string', enum: ['plasma', 'laser', 'vulcan_spread'] },
+              type: { type: 'string', enum: [...PRIMARY_WEAPON_ENUM] },
               damage: numeric('weapons.primary.damage'),
               fire_rate: numeric('weapons.primary.fire_rate'),
               bullet_speed: numeric('weapons.primary.bullet_speed'),
@@ -107,7 +125,7 @@ export function buildShipSpecSchema(): Record<string, unknown> {
             additionalProperties: false,
             required: ['type', 'damage', 'cooldown_seconds'],
             properties: {
-              type: { type: 'string', enum: ['homing_missiles', 'emp_burst', 'none'] },
+              type: { type: 'string', enum: [...SECONDARY_WEAPON_ENUM] },
               damage: numeric('weapons.secondary.damage'),
               cooldown_seconds: numeric('weapons.secondary.cooldown_seconds')
             }

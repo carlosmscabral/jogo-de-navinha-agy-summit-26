@@ -69,10 +69,27 @@ terminal e oferece prompts de inspiração copiáveis.
 
 - A Tela 1 exibe a `HandoffTerminalScreen`: o que está acontecendo na Tela 2, progresso dos
   sub-agentes e das tools MCP, recebidos por WebSocket.
-- **Fast Grill-Me:** o AGY faz duas perguntas táticas respondidas com um único toque (`1`, `2` ou `3`)
-  no teclado da Tela 2:
-  1. *Foco de armamento:* Laser Perfurante / Mísseis Teleguiados / Vulcan Spread.
-  2. *Tema estético:* Synthwave 80s / Dark Void Stealth / Cyberpunk Gold.
+- **Abertura sem digitação.** `scripts/booth-terminal.sh` injeta a frase única
+  `BOOTH_KICKOFF_PROMPT` (`packages/shared/src/constants/branding.ts`) via
+  `agy --prompt-interactive`, de modo que o visitante encontra o Fast Grill-Me já na tela. A Tela 1
+  mantém a mesma frase num bloco de contingência com botão **Copiar**, para o caso de um `agy` sem
+  a flag — o script sonda `agy --help` antes de usá-la.
+- **Fast Grill-Me:** quatro perguntas feitas **de uma vez, em um único turno**, respondidas com
+  quatro dígitos (`2 1 3 5`) no teclado da Tela 2:
+  1. *Canhão primário:* Laser Contínuo / Canhão de Plasma / Vulcan em Leque.
+  2. *Arma secundária:* Mísseis Teleguiados / Pulso EMP — o menu diz que o EMP **não fere o boss**.
+  3. *Estilo do casco:* Synthwave 80s / Dark Void Stealth / Cyberpunk Gold.
+  4. *Cor de destaque:* as seis cores curadas de `ACCENT_COLORS`, cada uma com hex definido.
+
+  As opções do menu são **geradas** a partir dos catálogos de `@jogo/shared`, nunca digitadas no
+  template: o prompt não pode anunciar uma opção que o schema rejeita. As respostas viram
+  `build_metadata.fast_grill_me_choices` com quatro chaves — `primary_weapon`, `secondary_weapon`,
+  `visual_theme`, `accent_color` — e os dois tipos de arma são exatamente os que entram em
+  `weapons.primary.type` e `weapons.secondary.type`, sem tradução no meio.
+- **Dicas de pilotagem.** Os sub-agentes táticos (`combat-strategist`, `systems-engineer`) devolvem
+  duas frases no imperativo derivadas do build; o Orquestrador as grava em
+  `build_metadata.pilot_tips` na **mesma escrita** do `ship_spec.json`, e a Tela 1 as mostra no
+  pré-voo. Campo opcional: nave sem dica é nave válida e não renderiza painel algum.
 - O AGY grava `ship_spec.json` em menos de 8 segundos.
 
 **Requisitos de qualidade ainda em aberto nesta etapa** — permanecem obrigatórios:

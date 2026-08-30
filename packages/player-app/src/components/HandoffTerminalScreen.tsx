@@ -1,7 +1,8 @@
 import React, { useState, useEffect, type ReactNode } from 'react';
-import { Terminal, Rocket, AlertCircle, RefreshCw, Flame, Shield, Gauge, Play, CheckCircle2, Activity, Circle, LifeBuoy, Zap, Sparkles } from 'lucide-react';
+import { Terminal, Rocket, AlertCircle, RefreshCw, Flame, Shield, Gauge, Play, CheckCircle2, Activity, Circle, LifeBuoy, Zap, Sparkles, Copy, Check } from 'lucide-react';
 import {
   BALANCE,
+  BOOTH_KICKOFF_PROMPT,
   PilotInfo,
   EnergySliders,
   McpServerName,
@@ -17,6 +18,7 @@ import {
   lookupMcpTool
 } from '@jogo/shared';
 import { SYNERGY_EFFECTS, synergyLabel } from './synergy-preview.js';
+import { derivePilotBriefing, PilotBriefingPanel } from './PilotBriefingPanel.js';
 import { ShipPreviewCanvas } from './ShipPreviewCanvas.js';
 import { ENDPOINTS } from '../config.js';
 
@@ -99,6 +101,9 @@ export function HandoffTerminalScreen({
   const [rejection, setRejection] = useState<SpecRejection | null>(null);
   const [fallback, setFallback] = useState<FallbackInfo | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  // Feedback do botão Copiar do bloco de contingência. Vive aqui, local e sem abstração, porque é
+  // o único clipboard da aplicação.
+  const [copied, setCopied] = useState(false);
 
   // Dual-channel detection: WebSocket + HTTP Polling
   useEffect(() => {
@@ -259,6 +264,21 @@ export function HandoffTerminalScreen({
     (s): s is SynergyName => s in SYNERGY_EFFECTS
   );
 
+  // Dicas de pilotagem escritas pelos sub-agentes táticos (issue #2), assinadas pelo tático que o
+  // visitante selecionou. `null` quando a nave não trouxe dica.
+  const pilotBriefing = derivePilotBriefing(detectedSpec, selectedSubagents);
+
+  const copyKickoffPrompt = async () => {
+    try {
+      await navigator.clipboard.writeText(BOOTH_KICKOFF_PROMPT);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Kiosk sem permissão de área de transferência: a frase continua legível na tela e o
+      // visitante a digita. Um alerta de erro aqui só atrapalharia.
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col items-center justify-center p-6 select-none overflow-y-auto font-sans">
       <div className="w-full max-w-4xl flight-panel p-8 rounded-3xl border border-slate-700/60 shadow-2xl space-y-6 my-4">
@@ -397,6 +417,10 @@ export function HandoffTerminalScreen({
               </div>
             </div>
 
+            {/* Dicas de pilotagem dos sub-agentes táticos, logo antes do botão de decolar. Nave
+                sem dica não monta painel nenhum. */}
+            <PilotBriefingPanel briefing={pilotBriefing} />
+
             {/* Big Launch Button */}
             <button
               onClick={() => onShipReady(detectedSpec)}
@@ -420,6 +444,34 @@ export function HandoffTerminalScreen({
                   A sessão já abriu com o seu piloto e a sua distribuição de energia carregados.
                 </div>
               </div>
+            </div>
+
+            {/* Contingência, não instrução principal: `booth-terminal.sh` injeta esta mesma frase
+                via `agy --prompt-interactive`, então o normal é o terminal já ter começado
+                sozinho. Ela sobrevive aqui, discreta, para o caso de um `agy` sem a flag. */}
+            <div className="px-4 py-2.5 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center gap-3">
+              <span className="text-sm text-slate-400 shrink-0">
+                Se o terminal não começar sozinho, cole isto:
+              </span>
+              <code className="flex-1 text-sm font-mono text-slate-200 truncate">
+                {BOOTH_KICKOFF_PROMPT}
+              </code>
+              <button
+                onClick={copyKickoffPrompt}
+                className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sm font-mono text-slate-200 transition-colors"
+              >
+                {copied ? (
+                  <>
+                    <Check className="w-4 h-4 text-[#10b981]" />
+                    <span>Copiado</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4" />
+                    <span>Copiar</span>
+                  </>
+                )}
+              </button>
             </div>
 
             {/* Prazo real da sessão, vindo do daemon. */}

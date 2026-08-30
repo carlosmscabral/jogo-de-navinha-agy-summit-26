@@ -126,9 +126,14 @@ produz `/tmp/booth_session` do zero a cada visitante:
 2. **`.agents/mcp_config.json`** com exatamente os servidores MCP escolhidos, cada um apontando para
    `node <mcpsDistDir>/<nome>.js`. Um MCP não escolhido não aparece no arquivo e portanto não existe
    para o `agy`.
-3. **`.agents/agents/*.md`** com `aesthetic-designer` sempre presente
-   (`enable_mcp_tools: false`, só arte vetorial) mais o sub-agente tático escolhido —
-   `combat-strategist` e/ou `systems-engineer`, ambos com `enable_mcp_tools: true`.
+3. **`.agents/agents/*.md`** com `aesthetic-designer` sempre presente (só arte vetorial) mais o
+   sub-agente tático escolhido — `combat-strategist` e/ou `systems-engineer`. O front-matter que o
+   gerador escreve tem exatamente duas chaves, `name` e `description`; nenhum dos três sub-agentes
+   chama ferramenta MCP, e não é o front-matter que impede isso — é o protocolo, que manda o
+   Orquestrador passar os números já obtidos. As versões anteriores desta spec descreviam uma
+   chave `enable_mcp_tools: false/true` que **não existe**: o schema de sub-agente do Antigravity
+   aceita `name`, `description`, `tools`, `mcpServers`, `subagent`, `mainAgent`, `model` e
+   `commandExecutionPolicy`.
 4. **`GEMINI.md` e `AGENTS.md`**, conteúdo idêntico, com callsign, empresa canônica, os quatro
    sliders e o protocolo de 4 passos. Ver §4.
 5. **`run_agy.sh`** com `mode 0o755`. **Está órfão:** o supervisor executa `agy` diretamente e nunca
@@ -217,7 +222,7 @@ originalmente:
 ```
 pilot              callsign, company_raw, company_canonical
 build_metadata     selected_mcps, selected_subagents, energy_sliders,
-                   fast_grill_me_choices, synergies_unlocked
+                   fast_grill_me_choices, synergies_unlocked, pilot_tips?
 attributes         max_hp, shield_capacity, speed_px_s, hitbox_radius
 weapons.primary    type, damage, fire_rate, bullet_speed, spread_angle
 weapons.secondary  type, damage, cooldown_seconds
@@ -238,6 +243,22 @@ Duas correções sobre a versão anterior desta especificação:
 > `striker`, mas não existe implementação alguma no `WeaponSystem`. Uma nave `striker` hoje sobe sem
 > arma secundária e sem erro. O enum passa a ser `homing_missiles | emp_burst | none`; o preset
 > `striker` migra para `emp_burst`. Reintroduzir `drone_escort` exige implementá-lo primeiro.
+
+> **`fast_grill_me_choices` deixa de ter um vocabulário próprio.** O objeto tinha um campo
+> `weapon_focus` cujos três slugs **não** eram os três `PrimaryWeaponType`, e uma tradução fixa no
+> `shared` mapeava `missile_barrage` para uma primária de plasma e forçava `homing_missiles` como
+> secundária de toda nave — `emp_burst` e `none` eram inalcançáveis por qualquer visitante. O
+> objeto passa a ter exatamente quatro chaves obrigatórias, todas com o enum real do campo que
+> alimentam: `primary_weapon` (`PrimaryWeaponType`), `secondary_weapon` (`SecondaryWeaponType`),
+> `visual_theme` e `accent_color` (`AccentColorName`, o catálogo de `visual-catalog.ts`).
+> `weapon_focus` não existe mais, e o `additionalProperties: false` do objeto faz dele um erro de
+> validação se reaparecer.
+
+> **`build_metadata.pilot_tips` é o único texto livre agente→jogador.** Array opcional de até 3
+> strings de 8 a 140 caracteres, escrito pelos sub-agentes táticos. Opcional por construção: um
+> preset de emergência ou um agente que pulou o PASSO 3 continua produzindo nave válida. O daemon
+> descarta o campo em `normalizeSpec()` quando ele não for array de strings, em vez de reprovar a
+> nave por um campo cosmético.
 
 O campo `visuals.svg_path_data` continua obrigatório com `minLength: 10`, e a validação de
 `^#[0-9a-fA-F]{6}$` nas três cores permanece — é o que impede um valor de cor inválido de quebrar o

@@ -200,6 +200,18 @@ export const SECONDARY_WEAPON_LABELS: Record<SecondaryWeaponType, string> = {
   none: 'Sem armamento secundário'
 };
 
+/** Ordem estável das primárias no menu do Fast-Grill-Me. O índice + 1 é o número que o piloto digita. */
+export const PRIMARY_WEAPON_ORDER: PrimaryWeaponType[] = ['laser', 'plasma', 'vulcan_spread'];
+
+/**
+ * Ordem estável das secundárias no menu do Fast-Grill-Me.
+ *
+ * `none` fica de fora de propósito: numa partida de 90 segundos, "sem secundária" é uma armadilha
+ * para quem escolhe sem saber. O valor continua no enum do schema — specs que já o tenham
+ * permanecem válidas —, ele só não é oferecido.
+ */
+export const GRILL_ME_SECONDARY_ORDER: SecondaryWeaponType[] = ['homing_missiles', 'emp_burst'];
+
 /**
  * Traduz o `server` de uma linha do `mcp_audit.log`. Chave exata, sem heurística de
  * substring: um servidor desconhecido devolve `undefined` e a UI mostra o slug cru, que

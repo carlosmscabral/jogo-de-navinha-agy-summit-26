@@ -2,13 +2,14 @@
  * Shared Type Definitions for GRAVIDADE ZERO — AGY Summit 2026
  */
 
+import type { AccentColorName } from '../constants/visual-catalog.js';
+
 export type PrimaryWeaponType = 'plasma' | 'laser' | 'vulcan_spread';
 export type SecondaryWeaponType = 'homing_missiles' | 'emp_burst' | 'none';
 
 export type McpServerName = 'weapons-arsenal' | 'hull-propulsion' | 'cybernetics-shields';
 export type SubagentName = 'aesthetic-designer' | 'combat-strategist' | 'systems-engineer';
 
-export type FastGrillMeWeaponFocus = 'laser_piercing' | 'missile_barrage' | 'vulcan_spread';
 export type FastGrillMeVisualTheme = 'synthwave_80s' | 'dark_void_stealth' | 'cyberpunk_gold';
 
 export interface PilotInfo {
@@ -31,9 +32,18 @@ export interface EnergySliders {
   tech: number;
 }
 
+/**
+ * As quatro respostas do Fast-Grill-Me, uma por linha do menu. Até 2026-08-30 este objeto tinha
+ * um `weapon_focus` cujos três valores não eram os três `PrimaryWeaponType` — o menu oferecia
+ * "Chuva de Mísseis" e a nave recebia plasma, e a secundária era sempre `homing_missiles`,
+ * deixando `emp_burst` inalcançável por qualquer visitante. Agora cada campo é o tipo que a nave
+ * de fato recebe.
+ */
 export interface FastGrillMeChoices {
-  weapon_focus: FastGrillMeWeaponFocus;
+  primary_weapon: PrimaryWeaponType;
+  secondary_weapon: SecondaryWeaponType;
   visual_theme: FastGrillMeVisualTheme;
+  accent_color: AccentColorName;
 }
 
 export interface BuildMetadata {
@@ -44,6 +54,12 @@ export interface BuildMetadata {
   synergies_unlocked: string[];
   /** true quando a nave veio de preset de emergência (D2), não da forja. Lido pela engine no match-complete para preencher telemetry.fallback_used. */
   fallback_used?: boolean;
+  /**
+   * Dicas de pilotagem escritas pelos sub-agentes táticos no PASSO 3 do protocolo. Opcional por
+   * construção: uma nave sem dicas é uma nave válida (preset de emergência, sub-agente que pulou
+   * o passo) e nunca pode ser rejeitada por isso.
+   */
+  pilot_tips?: string[];
 }
 
 export interface ShipAttributes {

@@ -1,7 +1,15 @@
 import chokidar, { FSWatcher } from 'chokidar';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { validateShipSpecification, ShipSpecification, computeBaselineAttributes, computeBaselineWeapons, BALANCE } from '@jogo/shared';
+import {
+  validateShipSpecification,
+  ShipSpecification,
+  computeBaselineAttributes,
+  computeBaselineWeapons,
+  BALANCE,
+  VISUAL_THEMES,
+  FastGrillMeVisualTheme
+} from '@jogo/shared';
 
 export interface McpActivityEvent {
   timestamp: string;
@@ -275,12 +283,17 @@ export class FileWatcherService {
     }
 
     if (!requiredMcps.includes('weapons-arsenal')) {
-      const weaponFocus = spec.build_metadata?.fast_grill_me_choices?.weapon_focus as string | undefined;
-      if (weaponFocus === 'laser_piercing' || weaponFocus === 'missile_barrage' || weaponFocus === 'vulcan_spread') {
-        spec.weapons = computeBaselineWeapons(sliders, weaponFocus);
+      // `normalizeSpec` já rodou, então estes dois campos existem e são enums válidos: ela os
+      // preenche a partir da escolha do PASSO 1 ou, na falta dela, do tipo que inferiu do texto
+      // livre. São os tipos que o piloto de fato escolheu -- até 2026-08-30 havia aqui um
+      // `weapon_focus` que traduzia "Chuva de Mísseis" para plasma e forçava `homing_missiles`
+      // como secundária em todos os casos.
+      const choices = spec.build_metadata?.fast_grill_me_choices;
+      if (choices?.primary_weapon && choices?.secondary_weapon) {
+        spec.weapons = computeBaselineWeapons(sliders, choices.primary_weapon, choices.secondary_weapon);
       }
-      // weapon_focus ausente/inválido: deixa `weapons` como está (provavelmente
-      // incompleto) e a validação estrita abaixo rejeita pelo motivo real.
+      // Escolhas ausentes: deixa `weapons` como está (provavelmente incompleto) e a validação
+      // estrita abaixo rejeita pelo motivo real.
     }
 
     return spec;
@@ -323,6 +336,14 @@ export class FileWatcherService {
     else if (rawSType.includes('drone')) secondaryType = 'homing_missiles';
     else if (rawSType.includes('missile') || rawSType.includes('míssil')) secondaryType = 'homing_missiles';
 
+    // O tema precisa ser resolvido antes de `fast_grill_me_choices` porque o backfill de
+    // `accent_color` depende dele.
+    const rawTheme = raw.build_metadata?.fast_grill_me_choices?.visual_theme;
+    const visualTheme: FastGrillMeVisualTheme =
+      rawTheme && Object.prototype.hasOwnProperty.call(VISUAL_THEMES, rawTheme)
+        ? (rawTheme as FastGrillMeVisualTheme)
+        : 'synthwave_80s';
+
     // [Fase A / revisão final — Importante 3] O schema estrito (additionalProperties:
     // false na raiz) NÃO declara "$schema" como propriedade permitida. Agentes de IA
     // costumam emitir "$schema": "https://json-schema.org/draft-07/schema#" por
@@ -354,10 +375,28 @@ export class FileWatcherService {
           defense: Number(raw.build_metadata?.energy_sliders?.defense || raw.defense),
           tech: Number(raw.build_metadata?.energy_sliders?.tech || raw.tech)
         },
+        // As quatro escolhas do PASSO 1. Cada uma tem backfill a partir do que esta função já
+        // sabe, porque nenhuma delas vale um SCHEMA_INVALID: as duas de arma caem no tipo
+        // inferido logo acima (que é o mesmo que vai para `weapons.*.type`, então a spec nunca
+        // se contradiz), e `accent_color` cai no accent assinatura do tema. Rejeitar uma nave
+        // inteira por um campo cosmético custaria ao visitante um ciclo de correção dentro do
+        // SLA da jornada.
         fast_grill_me_choices: {
-          weapon_focus: raw.build_metadata?.fast_grill_me_choices?.weapon_focus || primaryType,
-          visual_theme: raw.build_metadata?.fast_grill_me_choices?.visual_theme || 'synthwave_80s'
+          primary_weapon: raw.build_metadata?.fast_grill_me_choices?.primary_weapon || primaryType,
+          secondary_weapon: raw.build_metadata?.fast_grill_me_choices?.secondary_weapon || secondaryType,
+          visual_theme: visualTheme,
+          accent_color:
+            raw.build_metadata?.fast_grill_me_choices?.accent_color ||
+            VISUAL_THEMES[visualTheme].signature_accent
         },
+        // Texto livre dos sub-agentes táticos (PASSO 3). Só sobrevive como array de strings; um
+        // valor de outro tipo vira campo AUSENTE, nunca `[]`, para que a tela continue
+        // distinguindo "não veio dica" de "veio dica vazia" -- e nunca vira SCHEMA_INVALID,
+        // porque uma nave sem dica é uma nave válida.
+        ...(Array.isArray(raw.build_metadata?.pilot_tips) &&
+        raw.build_metadata.pilot_tips.every((t: unknown) => typeof t === 'string')
+          ? { pilot_tips: raw.build_metadata.pilot_tips as string[] }
+          : {}),
         // Ausência aqui é um default NEUTRO ([]), não uma sinergia específica. Um agente que
         // seleciona cybernetics-shields mas mesmo assim não produz o campo é uma falha de
         // conformidade dele -- conceder "Glass Cannon" de graça contradiz a mesma REGRA ZERO

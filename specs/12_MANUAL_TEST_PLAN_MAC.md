@@ -1,14 +1,21 @@
-# 12 — Plano de Teste Manual no Mac (Gates M1, M2 e M3)
+# 12 — Plano de Teste Manual no Mac (Gates M1, M2, M3 e M6)
 
 **Objetivo:** fechar os gates que nenhuma máquina consegue fechar sozinha —
 **M1** (a engine, offline, e a dificuldade que a partida realmente transmite),
-**M2** (o ciclo completo com o `agy` real, incluindo as falhas provocadas), e
-**M3** (a nuvem — Firestore, Cloud Run, Vertex AI — com um projeto real e o Wi-Fi na mão).
+**M2** (o ciclo completo com o `agy` real, incluindo as falhas provocadas),
+**M3** (a nuvem — Firestore, Cloud Run, Vertex AI — com um projeto real e o Wi-Fi na mão), e
+**M6** (o grill-me de 4 linhas, a abertura sem digitação e as dicas de pilotagem).
 
 > **Acrescentado em 2026-08-24.** Os Blocos 0–9 abaixo são o registro original de M1/M2, fechados
-> em 2026-08-16/18/22 — não foram tocados. Os Blocos 10 em diante são novos, para o Gate M3, depois
-> de Tarefas C0–C10 mergeadas em `main`. Leia [`11_KNOWN_GAPS_AND_OPEN_ITEMS.md`](./11_KNOWN_GAPS_AND_OPEN_ITEMS.md)
+> em 2026-08-16/18/22 — não foram tocados. Os Blocos 10 a 18 são para o Gate M3, depois de
+> Tarefas C0–C10 mergeadas em `main`. Leia [`11_KNOWN_GAPS_AND_OPEN_ITEMS.md`](./11_KNOWN_GAPS_AND_OPEN_ITEMS.md)
 > §4.9 e §4.10 antes de começar M3 — são riscos aceitos, não bugs a caçar durante o teste.
+
+> **Acrescentado em 2026-08-30.** Os Blocos 19–24 fecham o **Gate M6**: o grill-me de quatro
+> perguntas com todas as armas e todas as cores à mostra, a abertura do terminal sem digitação
+> (`agy --prompt-interactive`) e as dicas de pilotagem dos sub-agentes táticos. Não dependem de
+> nuvem — rodam inteiramente na máquina do estande. Se você só quer validar esta entrega, faça o
+> Bloco 19 e siga direto para o 20.
 
 **Pré-condição:** Fases A e B mergeadas em `main`. Estado conhecido do repositório em
 [`11_KNOWN_GAPS_AND_OPEN_ITEMS.md`](./11_KNOWN_GAPS_AND_OPEN_ITEMS.md) — **leia antes de começar**,
@@ -34,6 +41,12 @@ perder tempo investigando algo já conhecido.
 | 14 | M3 parte 3 — painel de administração | 20 min |
 | 15 | M3 parte 4 — o teste de 10 minutos do Chrome real | 10 min |
 | 16 | Limpeza pós-teste (opcional) | 10 min |
+| 19 | M6 — preparação e sanidade da árvore | 10 min |
+| 20 | M6 — abertura sem digitação e clipboard entre telas | 10 min |
+| 21 | M6 — grill-me de 4 linhas, caminho feliz | 15 min |
+| 22 | M6 — combinações antes inalcançáveis (EMP) | 15 min |
+| 23 | M6 — dicas de pilotagem: presença, ausência e fallback | 10 min |
+| 24 | M6 — cronometragem do SLA e registro | 5 min |
 
 **Como registrar:** cada passo tem uma caixa. Marque `[x]` quando passar. Quando **não** passar,
 **não marque** — anote o que aconteceu na tabela do §8 e siga em frente, salvo indicação contrária.
@@ -1381,3 +1394,321 @@ junto com o painel. Não há flag para isentar uma rota. Rode sem `--with-iap`.
 **Faturamento não habilitado.** Firestore, Cloud Run e Vertex AI exigem uma conta de faturamento
 vinculada ao projeto — se `deploy.sh` falhar bem no início com um erro de billing, é isto, não um
 bug do script.
+
+---
+
+## Bloco 19 — Preparação e sanidade da árvore (Gate M6, uma vez)
+
+- [ ] **19.1 — Árvore limpa, dependências e portas**
+
+```bash
+cd ~/caminho/para/jogo-de-navinha-agy-summit-26
+git status --short          # precisa sair vazio
+npm install
+npm run kill:all            # derruba daemon, terminal e agy órfãos
+lsof -ti :3000              # não deve retornar nada
+```
+
+- [ ] **19.2 — Schema regerado bate com o commitado**
+
+```bash
+npm run gen:schema
+git diff --exit-code packages/shared/src/schema/ship_spec.schema.json
+```
+
+Esperado: saída vazia e código 0. Se houver diff, o JSON commitado está desatualizado — pare e
+commite o regerado antes de seguir.
+
+- [ ] **19.3 — Suíte automatizada**
+
+```bash
+npm test
+```
+
+Esperado: verde, **exceto** `packages/sim/src/balance-gate.test.ts:87` (espalhamento entre
+arquétipos), que já falha na `main` e **não** é regressão desta entrega. Qualquer outra falha em
+`packages/sim` é a mudança no dano da secundária — investigue antes de seguir.
+
+- [ ] **19.4 — Nenhum vestígio do vocabulário antigo**
+
+```bash
+grep -rn "weapon_focus\|WEAPON_FOCUS_TO_TYPES\|FastGrillMeWeaponFocus" \
+  packages/ --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=vendor
+```
+
+Esperado: nenhuma linha.
+
+- [ ] **19.5 — O `agy` instalado aceita `--prompt-interactive`**
+
+```bash
+agy --help | grep -- '--prompt-interactive'
+```
+
+Esperado: uma linha com a flag. **Se não aparecer**, o Bloco 20 muda de caminho: o supervisor cai
+no `agy` puro de propósito e o visitante precisa colar a frase à mão. Anote no Bloco 24 e siga —
+o teste continua válido, só passa pelo caminho de contingência.
+
+- [ ] **19.6 — Subir a pilha do estande** (dois terminais, deixe abertos até o Bloco 24)
+
+```bash
+# Terminal A
+npm run start:daemon
+# Terminal B
+npm run start:terminal
+```
+
+Esperado: A serve o player-app em `http://localhost:3000`; B mostra o banner cobalto
+`ESTAÇÃO DE ENGENHARIA PRONTA`. Abra `http://localhost:3000` no Chrome.
+
+---
+
+## Bloco 20 — Abertura sem digitação e clipboard entre telas
+
+- [ ] **20.1 — Chegar na tela do AGY**
+
+Percorra atrai → registro (callsign `TESTE01`, empresa qualquer) → briefing → sliders (deixe o
+padrão, os 3 MCPs, `combat-strategist`) → **Iniciar Forja**.
+
+Esperado: a tela 1 entra no ramo de espera e o Terminal B troca para o banner âmbar
+`🚀 PILOTO CONECTADO: TESTE01` e lança o `agy`.
+
+- [ ] **20.2 — O terminal começa sozinho** ← *asserção central do bloco*
+
+Não toque em nada. Esperado: o `agy` sobe já processando a frase de abertura e a **primeira coisa
+na tela** é o menu do Fast Grill-Me. Ninguém digitou nem colou nada.
+
+Se em vez disso o `agy` abrir num prompt vazio, confira o aviso âmbar do Terminal B
+(`⚠ Este 'agy' não suporta --prompt-interactive`) e siga pelo caminho de contingência (20.3–20.5).
+
+- [ ] **20.3 — O bloco de contingência existe, e é discreto**
+
+Na tela 1, **entre** a caixa "Converse com o `agy` no terminal ao lado" e a barra de tempo:
+uma linha baixa com o rótulo *"Se o terminal não começar sozinho, cole isto:"*, a frase em
+monoespaçado e um botão **Copiar**.
+
+Esperado: é um rodapé discreto, não a instrução principal da tela. Nada de múltiplos exemplos,
+nada de callsign interpolado — a frase é a mesma para todo visitante.
+
+- [ ] **20.4 — Copiar de fato copia**
+
+Clique em **Copiar**. Esperado: o ícone vira ✓ e o rótulo vira "Copiado" por ≈2s, depois volta.
+
+- [ ] **20.5 — Colar na tela 2 funciona**
+
+No Terminal B, cole com `Cmd+V` (macOS) / `Ctrl+Shift+V` (terminal Linux) e dê Enter.
+
+Esperado: o texto colado é **exatamente** a frase da tela 1. **Se a colagem falhar** (Chrome kiosk
+sem permissão de área de transferência, ou X/Wayland sem área compartilhada), anote no Bloco 24 e
+**digite a frase à mão** para não travar os blocos seguintes — ela foi escolhida curta exatamente
+por isso.
+
+- [ ] **20.6 — O agente começa pelo PASSO 1, sem enrolação**
+
+Esperado: a primeira resposta do `agy` é o menu do grill-me. **Não** pode haver saudação, resumo
+do protocolo, pergunta sobre o que o piloto quer, nem chamada de ferramenta MCP antes do menu.
+
+---
+
+## Bloco 21 — Grill-me de 4 linhas, caminho feliz
+
+- [ ] **21.1 — As quatro linhas aparecem num único turno**
+
+Esperado: um só bloco de texto com `[1]` primária, `[2]` secundária, `[3]` estilo, `[4]` cor.
+Não pode ser uma pergunta por turno.
+
+- [ ] **21.2 — Todas as opções estão à mostra**
+
+Confira, linha a linha:
+
+- `[1]` tem **3** opções: Laser Contínuo, Canhão de Plasma, Vulcan em Leque
+- `[2]` tem **2** opções: Mísseis Teleguiados e Pulso EMP — e o EMP diz que **não fere o boss**
+- `[3]` tem **3** temas
+- `[4]` tem **6** cores nomeadas (Rosa Choque, Ciano Elétrico, Verde Ácido, Vermelho Sangue,
+  Dourado Royal, Branco Gélido)
+
+`Sem armamento secundário` **não** pode aparecer.
+
+- [ ] **21.3 — Resposta única de quatro dígitos**
+
+Digite `1 1 1 2` (Laser + Mísseis + Synthwave + Ciano Elétrico) e Enter.
+
+Esperado: o agente aceita de uma vez, sem reperguntar, e segue direto para o PASSO 2 (chamadas MCP).
+
+- [ ] **21.4 — O arquivo grava as quatro chaves**
+
+```bash
+jq '.build_metadata.fast_grill_me_choices' /tmp/booth_session/ship_spec.json
+```
+
+Esperado exatamente:
+
+```json
+{ "primary_weapon": "laser", "secondary_weapon": "homing_missiles",
+  "visual_theme": "synthwave_80s", "accent_color": "ciano_eletrico" }
+```
+
+Nenhum `weapon_focus`. Se o Ajv tiver rejeitado, `spec_errors.txt` existe — leia-o e anote.
+
+- [ ] **21.5 — A cor escolhida chega no casco**
+
+```bash
+jq '.visuals' /tmp/booth_session/ship_spec.json
+```
+
+Esperado: o ciano `#00f3ff` (ou vizinho próximo) aparece em `primary_color` **ou** em
+`engine_trail_color`. Na tela de pré-voo, o casco desenhado deve ler como ciano, não como a
+paleta padrão de outro tema.
+
+- [ ] **21.6 — Segunda sessão: só a cor muda**
+
+Reinicie (`Ctrl+Shift+F12` na tela 1), refaça o fluxo e responda `1 1 1 4` — **mesmo** tema
+Synthwave, cor Vermelho Sangue.
+
+Esperado: a **geometria** do casco continua reconhecivelmente Synthwave; só a paleta muda. Se a
+silhueta mudar radicalmente, o `aesthetic-designer` está deixando a cor governar a estrutura —
+anote no Bloco 24.
+
+---
+
+## Bloco 22 — Combinações antes inalcançáveis
+
+O ponto do bloco: `emp_burst` nunca foi escolhível por um visitante até esta entrega.
+
+- [ ] **22.1 — Plasma + EMP**
+
+Nova sessão. Responda `2 2 3 5` (Plasma + EMP + Cyberpunk Gold + Dourado Royal).
+
+```bash
+jq '.weapons, .build_metadata.fast_grill_me_choices' /tmp/booth_session/ship_spec.json
+```
+
+Esperado: `weapons.primary.type == "plasma"` **e** `weapons.secondary.type == "emp_burst"`. Esta é
+a asserção central da mudança em `computeBaselineWeapons` — antes, qualquer resposta produzia
+`homing_missiles`.
+
+- [ ] **22.2 — O EMP se comporta como EMP na partida**
+
+Decole. Aperte **Shift** contra um grupo de drones.
+
+Esperado: anel de EMP visível, drones no raio levam dano, e **projéteis inimigos dentro do raio
+somem** (utilidade defensiva, `MainGameScene.ts:1033`). O HUD confirma o disparo.
+
+- [ ] **22.3 — O EMP não fere o boss, e o jogo avisou**
+
+Sobreviva até o Cyber Overlord e aperte Shift perto dele.
+
+Esperado: **zero** dano ao boss (é por construção — `combat-model.ts:311-314`). E, crucialmente:
+a dica do `combat-strategist` no pré-voo **já tinha avisado disso**. Se ela não avisou, o texto da
+persona está fraco — anote no Bloco 24.
+
+- [ ] **22.4 — Laser + EMP, só para confirmar que o par é livre**
+
+Nova sessão, responda `1 2 2 1`. Esperado: `laser` + `emp_burst` gravados. Não precisa jogar.
+
+- [ ] **22.5 — Um MCP só, para exercitar a fórmula-base**
+
+Nova sessão; nos sliders **desmarque** `weapons-arsenal`, deixando só `hull-propulsion`; escolha
+`systems-engineer`. Responda `3 1 2 3` (Vulcan + Mísseis).
+
+Esperado: a nave é aceita e `weapons.primary.type == "vulcan_spread"`,
+`weapons.secondary.type == "homing_missiles"` — vindos de `computeBaselineWeapons` com os tipos
+escolhidos, não de um mapeamento fixo.
+
+---
+
+## Bloco 23 — Dicas de pilotagem
+
+- [ ] **23.1 — As dicas chegam no arquivo**
+
+Em qualquer sessão bem-sucedida dos blocos anteriores:
+
+```bash
+jq '.build_metadata.pilot_tips' /tmp/booth_session/ship_spec.json
+```
+
+Esperado: array com **2** strings em português, no imperativo, cada uma ≤140 caracteres, falando
+de **pilotagem** (fugir, sustentar tiro, guardar a secundária) e não repetindo números que a tela
+já mostra.
+
+- [ ] **23.2 — As dicas aparecem no pré-voo, no lugar certo**
+
+Esperado: painel entre a grade de stats e o botão de decolagem, com o rótulo do especialista
+(`Estrategista Tático` ou `Engenheiro de Sistemas`) na cor do `SUBAGENT_CATALOG`. Nada abaixo de
+14px.
+
+- [ ] **23.3 — As dicas combinam com o build**
+
+Compare a dica com os sliders da sessão. Um build de casco baixo tem que falar em fugir; um de
+cadência alta, em sustentar o tiro. Se a dica for genérica ("pilote bem, boa sorte"), a persona
+está fraca — anote.
+
+- [ ] **23.4 — Ausência de dica não derruba a nave**
+
+Com uma sessão viva, edite o arquivo à mão para remover o campo e force um novo processamento:
+
+```bash
+jq 'del(.build_metadata.pilot_tips)' /tmp/booth_session/ship_spec.json > /tmp/s.json \
+  && mv /tmp/s.json /tmp/booth_session/ship_spec.json
+```
+
+Esperado: a nave continua **aceita** (nada de `spec_errors.txt`), o painel de dicas simplesmente
+**não é renderizado** — sem placeholder, sem "nenhuma dica disponível" — e o botão de decolar
+funciona.
+
+- [ ] **23.5 — Dica malformada também não derruba**
+
+Repita gravando `"pilot_tips": "uma string só"` (tipo errado).
+
+Esperado: `normalizeSpec` omite o campo, a nave é aceita, o painel some. **Não** pode aparecer
+`SCHEMA_INVALID`.
+
+- [ ] **23.6 — Preset de emergência traz dica própria**
+
+Force o timeout: inicie uma sessão e **não** digite nada no `agy` até o daemon desistir
+(`AGY_HARD_TIMEOUT_MS`, ≈165s).
+
+Esperado: a tela mostra o aviso de nave de preset de emergência **e** o painel de dicas com a dica
+fixa daquele preset. O caminho que salva a demonstração não pode ser o único sem a feature.
+
+---
+
+## Bloco 24 — SLA e registro (Gate M6)
+
+- [ ] **24.1 — Passada cronometrada, do zero**
+
+`Ctrl+Shift+F12`, cronômetro na mão, uma passada completa como visitante que nunca viu o estande:
+atrai → registro → briefing → sliders → o terminal abre já perguntando → 4 dígitos → pré-voo →
+90s de partida → debrief.
+
+**Alvo ≤ 2m30s, teto 3m00s** (descontando os 90s de partida, que são fixos).
+
+A abertura automática do terminal deve *encurtar* a hesitação na tela do AGY. As 2 perguntas extras
+do grill-me não podem comer esse ganho. **Se estourar o teto:** cortar a pergunta `[4]` de cor — o
+`accent_color` volta a ser o `signature_accent` do tema via backfill do `normalizeSpec`, que já
+existe, então é uma remoção de uma linha do prompt e nada mais.
+
+- [ ] **24.2 — Higiene de processos**
+
+```bash
+npm run kill:all
+lsof -ti :3000        # vazio
+pgrep -fl agy         # vazio
+```
+
+- [ ] **24.3 — Tabela de registro**
+
+| # | Passo | Passou? | Observação |
+|---|-------|---------|------------|
+| 19.5 | `agy` aceita `--prompt-interactive` | | |
+| 20.2 | Terminal começa sozinho | | |
+| 20.5 | Clipboard entre telas (contingência) | | |
+| 20.6 | Agente começa no PASSO 1 | | |
+| 21.2 | Todas as opções à mostra | | |
+| 21.4 | Quatro chaves gravadas | | |
+| 21.6 | Cor muda, geometria não | | |
+| 22.1 | Plasma + EMP alcançável | | |
+| 22.3 | Dica avisou sobre o EMP vs. boss | | |
+| 23.3 | Dica combina com o build | | |
+| 23.4 | Ausência de dica não rejeita | | |
+| 23.6 | Preset de emergência tem dica | | |
+| 24.1 | Tempo total medido | | ____ min ____ s |

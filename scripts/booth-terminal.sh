@@ -127,12 +127,35 @@ while true; do
   # subshell's *own* PID from within an existing bash session, which does not
   # apply here). This keeps the PID capture portable to Bash 3.2 (macOS's
   # default /bin/bash), unlike $BASHPID which is undefined there.
+  # Frase de abertura injetada no agy. Vai literal porque shell não importa TypeScript — mesma
+  # convenção dos arquivos index.html. A fonte é BOOTH_KICKOFF_PROMPT em
+  # packages/shared/src/constants/branding.ts, e a divergência entre os dois é travada por
+  # packages/daemon/src/services/kickoff-prompt-sync.test.ts.
+  KICKOFF_PROMPT="Forje minha nave seguindo o protocolo do AGENTS.md."
+
   if command -v agy >/dev/null 2>&1; then
-    bash -c '
-      echo "$$" > "$1"
-      echo "[booth-terminal] agy em execução no process group $$" >&2
-      exec agy
-    ' -- "$PID_FILE"
+    # `--prompt-interactive` roda o prompt inicial e SEGUE na sessão interativa. É o que faz a
+    # Spec 01 §1 ("o fluxo não pode exigir que ninguém digite um comando") valer de verdade: o
+    # visitante chega no terminal com o Fast-Grill-Me já na tela.
+    #
+    # A flag é sondada antes de ser usada. Numa versão do CLI que não a tenha, `exec agy
+    # --prompt-interactive ...` morreria na hora e deixaria o visitante diante de um terminal
+    # morto — pior que a situação anterior. Sem a flag, caímos no `agy` puro e a tela 1 continua
+    # oferecendo a mesma frase para colar à mão.
+    if agy --help 2>/dev/null | grep -q -- '--prompt-interactive'; then
+      bash -c '
+        echo "$$" > "$1"
+        echo "[booth-terminal] agy em execução no process group $$" >&2
+        exec agy --prompt-interactive "$2"
+      ' -- "$PID_FILE" "$KICKOFF_PROMPT"
+    else
+      echo -e "${AMBER}⚠ Este 'agy' não suporta --prompt-interactive: o visitante precisa colar a frase mostrada na tela 1.${RESET}"
+      bash -c '
+        echo "$$" > "$1"
+        echo "[booth-terminal] agy em execução no process group $$" >&2
+        exec agy
+      ' -- "$PID_FILE"
+    fi
   else
     echo -e "${AMBER}[Simulação Booth] Comando 'agy' em execução...${RESET}"
     bash -c '

@@ -153,11 +153,11 @@ export function EnergySlidersBuilder({ pilot, onProceedToTerminal, onBack }: Ene
   // (packages/shared/src/constants/baseline-ship-stats.ts), para que o número
   // mostrado aqui nunca divirja do que a nave realmente recebe.
   const baselineAttributes = computeBaselineAttributes(sliders);
-  // weapon_focus ainda não foi escolhido nesta tela (isso acontece depois, no
-  // Fast-Grill-Me do terminal AGY) -- mas nenhum dos campos numéricos de
-  // computeBaselineWeapons varia com weaponFocus (só o "type" narrativo varia),
-  // então qualquer valor válido serve aqui só para preview.
-  const baselineWeapons = computeBaselineWeapons(sliders, 'laser_piercing');
+  // As armas ainda não foram escolhidas nesta tela (isso acontece depois, no Fast-Grill-Me do
+  // terminal AGY). O par abaixo existe só para o preview: dos números que esta tela mostra, apenas
+  // o DPS primário vem daqui, e ele não varia com o tipo -- `damage` e `fire_rate` dependem só de
+  // `sliders.offense`. O tipo da secundária mudaria o dano dela, que esta tela não exibe.
+  const baselineWeapons = computeBaselineWeapons(sliders, 'laser', 'homing_missiles');
 
   // Os quatro números da telemetria são a linha de base pura, sem bônus nenhum: é exatamente o
   // que a nave recebe nos domínios que o visitante NÃO selecionar, e o ponto de partida do que a

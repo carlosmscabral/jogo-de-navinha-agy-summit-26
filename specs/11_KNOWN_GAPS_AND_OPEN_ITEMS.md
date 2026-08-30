@@ -532,8 +532,12 @@ Encontrados durante a execução do M3 e conscientemente adiados para não inter
 ### 4.13 O debrief esconde 5 dos 8 campos do `ScoreBreakdown`, 2026-08-27
 
 Encontrado durante a reforma visual da jornada (branch `feat/gravidade-zero-ux`) e deixado de fora
-de propósito: é o issue #2 do repositório (dicas dos sub-agentes) e merece plano próprio, não um
-remendo no fim de uma tarefa de CSS.
+de propósito: merecia plano próprio, não um remendo no fim de uma tarefa de CSS.
+
+> **Atualização, 2026-08-30:** esta lacuna estava pendurada no issue #2 (dicas dos sub-agentes),
+> que **fechou** — as dicas viraram `build_metadata.pilot_tips` e são mostradas na tela de pré-voo,
+> não no debrief. Os cinco campos escondidos do `ScoreBreakdown` continuam escondidos e esta
+> lacuna segue aberta **por conta própria**, sem issue que a carregue.
 
 `DebriefScreen.tsx` mostra `combatScore`, `timeBonus` e `mcpMultiplier`. Os outros cinco campos de
 `ScoreBreakdown` (`packages/shared/src/types/ship.ts`) são calculados pelo `ScoreCalculator`,

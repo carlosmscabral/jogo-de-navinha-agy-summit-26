@@ -28,3 +28,15 @@ export const EVENT_NAME = 'AGY SUMMIT 26';
 
 /** `── AGY SUMMIT 26 ──`, já com os travessões, para não repetir a decoração no JSX. */
 export const EVENT_BANNER = `── ${EVENT_NAME} ──`;
+
+/**
+ * A frase única que abre a sessão do `agy`. Genérica por decisão de produto: a seleção real
+ * acontece no Fast-Grill-Me, dentro do terminal, não aqui.
+ *
+ * No caminho feliz o visitante nunca a digita — `scripts/booth-terminal.sh` a injeta via
+ * `agy --prompt-interactive`, o que é o que a Spec 01 §1 ("o fluxo não pode exigir que ninguém
+ * digite um comando") de fato pede. A tela 1 a exibe como saída de emergência, para o caso de a
+ * injeção falhar no hardware do evento; por isso a frase é curta o bastante para ser digitada à
+ * mão. Os dois lados leem esta constante para nunca divergirem.
+ */
+export const BOOTH_KICKOFF_PROMPT = 'Forje minha nave seguindo o protocolo do AGENTS.md.';
