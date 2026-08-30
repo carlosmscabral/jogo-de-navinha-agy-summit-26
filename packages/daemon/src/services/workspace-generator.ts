@@ -6,6 +6,7 @@ import {
   BALANCE,
   BOOTH_KICKOFF_PROMPT,
   EnergySliders,
+  FALLBACK_PRESETS,
   GRILL_ME_SECONDARY_ORDER,
   McpServerName,
   PRIMARY_WEAPON_LABELS,
@@ -231,6 +232,16 @@ painéis angulares —, só que com \`#ff2d95\` no lugar do roxo padrão.
 
 Os três campos são hex de seis dígitos no formato \`#rrggbb\`; qualquer outro formato faz o
 validador do jogo rejeitar a nave inteira.
+
+## O nome de batismo
+
+\`style_name\` é o único texto livre seu que o piloto lê: aparece como **Classe** na tela de pré-voo.
+Escreva um nome próprio de 2 a 4 palavras, em Maiúsculas De Título, com no máximo 40 caracteres,
+combinando o tema com a build — \`${FALLBACK_PRESETS.interceptor.visuals.style_name}\`,
+\`${FALLBACK_PRESETS.vanguard.visuals.style_name}\`, \`${FALLBACK_PRESETS.striker.visuals.style_name}\`.
+
+NUNCA devolva o slug do tema (${VISUAL_THEME_ORDER.map((k) => `\`${k}\``).join(', ')}) neste campo: o
+slug é um identificador interno, e ler "synthwave_80s" na tela é pior que não ler nada.
 `;
     fs.writeFileSync(path.join(agentsDir, 'aesthetic-designer.md'), aestheticContent, 'utf8');
 
@@ -331,7 +342,9 @@ Orquestrador vai gravá-las em \`build_metadata.pilot_tips\`.
     }
 
     // Visuals are always included (aesthetic-designer is always active)
-    contractRows.push('| `visuals.style_name` | `aesthetic-designer` | texto curto |');
+    contractRows.push(
+      `| \`visuals.style_name\` | \`aesthetic-designer\` | Nome de batismo da nave: 2 a 4 palavras em Maiúsculas De Título, até 40 caracteres (ex.: \`${FALLBACK_PRESETS.interceptor.visuals.style_name}\`). NUNCA o slug do tema |`
+    );
     contractRows.push('| `visuals.primary_color`, `secondary_color`, `engine_trail_color` | `aesthetic-designer` (paleta do tema + a cor de destaque escolhida no PASSO 1) | hex `#rrggbb` |');
     contractRows.push('| `visuals.svg_path_data` | `aesthetic-designer` | Path SVG em viewBox `0 0 128 128`, nariz apontando para cima (y menor), apenas comandos M/L/C/Q/Z e números. Sem `<svg>`, sem atributos, sem `url()`. |');
 

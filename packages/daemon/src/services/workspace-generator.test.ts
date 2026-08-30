@@ -7,6 +7,7 @@ import {
   ACCENT_COLOR_ORDER,
   ACCENT_COLORS,
   BOOTH_KICKOFF_PROMPT,
+  FALLBACK_PRESETS,
   GRILL_ME_SECONDARY_ORDER,
   PRIMARY_WEAPON_LABELS,
   PRIMARY_WEAPON_ORDER,
@@ -358,6 +359,40 @@ describe('WorkspaceGeneratorService — sub-agentes táticos produzem dicas, nã
     const md = fs.readFileSync(path.join(dir, '.agents', 'agents', 'aesthetic-designer.md'), 'utf8');
     assert.doesNotMatch(md, /pilot_tips/);
     assert.doesNotMatch(md, /dicas de pilotagem/);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  /**
+   * Numa sessão real de 2026-08-30 o agente gravou `"style_name": "synthwave_80s"` — o slug interno
+   * do tema no lugar do nome da nave. O campo é o único texto livre agente→jogador que sobrevive ao
+   * pipeline (aparece como "Classe" no pré-voo), e nem a persona nem a tabela de contrato diziam o
+   * que ele deveria conter: a instrução inteira era "texto curto".
+   */
+  it('o aesthetic-designer sabe que assina o nome da nave, e que não é o slug', () => {
+    const dir = generateBoth();
+    const persona = fs.readFileSync(path.join(dir, '.agents', 'agents', 'aesthetic-designer.md'), 'utf8');
+
+    assert.match(persona, /style_name/);
+    assert.match(persona, /Maiúsculas De Título/);
+    assert.match(persona, /40 caracteres/);
+    // O exemplo vem dos presets de emergência, que são nomes já validados contra o maxLength do
+    // schema — nada de exemplo inventado no prompt.
+    assert.ok(persona.includes(FALLBACK_PRESETS.interceptor.visuals.style_name));
+    // A proibição precisa nomear os slugs de verdade, senão ela não cobre um tema novo.
+    for (const theme of VISUAL_THEME_ORDER) {
+      assert.ok(persona.includes(`\`${theme}\``), `persona não proíbe o slug ${theme} em style_name`);
+    }
+
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('a tabela de contrato descreve style_name em vez de dizer só "texto curto"', () => {
+    const dir = generateBoth();
+    const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
+    const row = md.split('\n').find((l) => l.includes('`visuals.style_name`'));
+    assert.ok(row, 'nenhuma linha de contrato para visuals.style_name');
+    assert.doesNotMatch(row, /\|\s*texto curto\s*\|/);
+    assert.match(row, /NUNCA o slug do tema/);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 });
