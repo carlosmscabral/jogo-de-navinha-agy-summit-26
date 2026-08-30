@@ -313,7 +313,11 @@ Orquestrador vai gravá-las em \`build_metadata.pilot_tips\`.
 
   private static generateGeminiInstructions(sessionDir: string, config: SessionWorkspaceConfig): void {
     const { pilot, energy_sliders, selected_mcps, selected_subagents } = config;
-    const activeSubagents = ['aesthetic-designer', ...selected_subagents];
+    // O `Set` não é higiene defensiva: `EnergySlidersBuilder.tsx:229` já inclui o designer na lista
+    // que envia, e sem deduplicar a tabela abaixo mandava o agente gravar "aesthetic-designer" duas
+    // vezes — o que ele fazia, obediente, porque a linha diz "Exatamente". O prefixo continua
+    // necessário para o default do daemon (`index.ts:335`) e para chamadores que só mandam o tático.
+    const activeSubagents = [...new Set<SubagentName>(['aesthetic-designer', ...selected_subagents])];
 
     // Build contract table rows dynamically based on selected MCPs
     const contractRows = [

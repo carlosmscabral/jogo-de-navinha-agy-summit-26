@@ -8,7 +8,8 @@ import {
   computeBaselineWeapons,
   BALANCE,
   VISUAL_THEMES,
-  FastGrillMeVisualTheme
+  FastGrillMeVisualTheme,
+  SubagentName
 } from '@jogo/shared';
 
 export interface McpActivityEvent {
@@ -366,9 +367,17 @@ export class FileWatcherService {
         selected_mcps: Array.isArray(raw.build_metadata?.selected_mcps)
           ? raw.build_metadata.selected_mcps
           : undefined,
-        selected_subagents: Array.isArray(raw.build_metadata?.selected_subagents)
-          ? raw.build_metadata.selected_subagents
-          : undefined,
+        // Deduplicado: a causa raiz da repetição estava no prompt (ver `workspace-generator.ts`),
+        // mas o campo é texto que o agente digita, e um nome repetido inflaria a contagem de
+        // sub-agentes no Firestore e no leaderboard. Normalizar em vez de rejeitar — o schema
+        // deliberadamente não tem `uniqueItems`: derrubar a nave de um visitante por um nome
+        // cosmético repetido é caro, e a auditoria dos MCPs é que prova o que de fato rodou.
+        // O `undefined` do ramo falso é deliberado e igual ao de `selected_mcps` acima: campo
+        // ausente segue para a validação estrita, que rejeita citando o campo de verdade em vez de
+        // esconder o erro atrás de um `[]`. O cast só recupera o tipo que o `Set` apagou.
+        selected_subagents: (Array.isArray(raw.build_metadata?.selected_subagents)
+          ? [...new Set(raw.build_metadata.selected_subagents)]
+          : undefined) as SubagentName[],
         energy_sliders: {
           offense: Number(raw.build_metadata?.energy_sliders?.offense || raw.offense || raw.attack),
           speed: Number(raw.build_metadata?.energy_sliders?.speed || raw.speed),

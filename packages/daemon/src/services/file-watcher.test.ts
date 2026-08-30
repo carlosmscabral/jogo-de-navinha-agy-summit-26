@@ -481,6 +481,58 @@ describe('FileWatcherService — backfill de baseline para MCPs não selecionado
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  it('normalizeSpec deduplica selected_subagents sem rejeitar a nave', async () => {
+    // Sessão real de 2026-08-30: o spec chegou com `["aesthetic-designer", "aesthetic-designer",
+    // "systems-engineer"]`. A causa raiz era o prompt (corrigida em `workspace-generator.ts`), mas o
+    // campo é texto que o agente digita, então a normalização também precisa segurar — senão o
+    // Firestore e o leaderboard contam o mesmo sub-agente duas vezes. Nunca por rejeição: o schema
+    // não tem `uniqueItems` de propósito.
+    const dir = tempSession();
+    const auditPath = path.join(dir, 'mcp_audit.log');
+    fs.writeFileSync(auditPath, '', 'utf8');
+
+    const readySpecs: any[] = [];
+    const rejections: any[] = [];
+    const w = new FileWatcherService();
+    w.startWatching(dir, {
+      requiredMcps: ['hull-propulsion'],
+      onShipReady: (s) => readySpecs.push(s),
+      onSpecRejected: (r) => rejections.push(r)
+    });
+
+    const rawSpec = {
+      pilot: FALLBACK_PRESETS.interceptor.pilot,
+      build_metadata: {
+        selected_mcps: ['hull-propulsion'],
+        selected_subagents: ['aesthetic-designer', 'aesthetic-designer', 'systems-engineer'],
+        energy_sliders: { offense: 35, speed: 35, defense: 15, tech: 15 },
+        fast_grill_me_choices: {
+          primary_weapon: 'vulcan_spread',
+          secondary_weapon: 'homing_missiles',
+          visual_theme: 'dark_void_stealth',
+          accent_color: 'verde_acido'
+        },
+        synergies_unlocked: []
+      },
+      attributes: { max_hp: 2, speed_px_s: 305, hitbox_radius: 11 },
+      visuals: FALLBACK_PRESETS.striker.visuals
+    };
+
+    fs.appendFileSync(auditPath, auditLine('hull-propulsion', 'tune_thrusters'));
+    fs.writeFileSync(path.join(dir, 'ship_spec.json'), JSON.stringify(rawSpec), 'utf8');
+    await wait(900);
+
+    assert.equal(rejections.length, 0, JSON.stringify(rejections));
+    assert.equal(readySpecs.length, 1, 'a duplicata não pode custar a nave do visitante');
+    assert.deepEqual(readySpecs[0].build_metadata.selected_subagents, [
+      'aesthetic-designer',
+      'systems-engineer'
+    ]);
+
+    w.stopWatching();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   it('normalizeSpec sozinho (sem o ramo de backfill tocá-lo) usa [] como padrão para synergies_unlocked ausente, não mais "Glass Cannon 🔥"', async () => {
     // cybernetics-shields FOI selecionado aqui, então applyBaselineForUnselectedMcps não entra
     // no ramo que zera synergies_unlocked -- isso isola o default do próprio normalizeSpec.

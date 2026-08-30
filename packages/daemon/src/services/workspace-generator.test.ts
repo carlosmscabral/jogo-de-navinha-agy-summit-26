@@ -13,7 +13,8 @@ import {
   PRIMARY_WEAPON_ORDER,
   SECONDARY_WEAPON_LABELS,
   VISUAL_THEME_ORDER,
-  VISUAL_THEMES
+  VISUAL_THEMES,
+  type SubagentName
 } from '@jogo/shared';
 import { WorkspaceGeneratorService } from './workspace-generator.js';
 
@@ -29,6 +30,54 @@ function generate(): string {
   });
   return dir;
 }
+
+/**
+ * Numa sessão real de 2026-08-30 o `ship_spec.json` saiu com
+ * `"selected_subagents": ["aesthetic-designer", "aesthetic-designer", "systems-engineer"]`.
+ *
+ * O agente não errou: `EnergySlidersBuilder.tsx:229` já envia `['aesthetic-designer', tático]`, o
+ * gerador prefixava `'aesthetic-designer'` outra vez, e a tabela de contrato manda gravar a lista
+ * "Exatamente". Nenhum teste pegou porque as fixtures daqui mandavam só o tático, uma forma que o
+ * builder nunca produz.
+ *
+ * O dano é nos dados persistidos (Firestore, leaderboard contam o designer duas vezes), não na
+ * tela: `PilotBriefingPanel.tsx:40` procura o primeiro sub-agente `selectable` e o designer é
+ * `selectable: false`.
+ */
+describe('WorkspaceGeneratorService — selected_subagents', () => {
+  const contractRow = (selected: SubagentName[]): string => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'booth-ws-'));
+    WorkspaceGeneratorService.generateWorkspace({
+      sessionDir: dir,
+      pilot: { callsign: 'TESTE', company_raw: 'Acme', company_canonical: 'Acme' },
+      energy_sliders: { offense: 40, speed: 20, defense: 25, tech: 15 },
+      selected_mcps: ['weapons-arsenal'],
+      selected_subagents: selected,
+      mcpsDistDir: '/tmp/fake-mcps'
+    });
+    const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
+    fs.rmSync(dir, { recursive: true, force: true });
+    const row = md.split('\n').find((l) => l.includes('`build_metadata.selected_subagents`'));
+    assert.ok(row, 'nenhuma linha de contrato para selected_subagents');
+    return row;
+  };
+
+  it('não manda gravar o mesmo sub-agente duas vezes', () => {
+    // A forma que o builder de verdade envia: o designer já vem na lista.
+    const row = contractRow(['aesthetic-designer', 'systems-engineer']);
+    const listed = [...row.matchAll(/"([a-z-]+)"/g)].map((m) => m[1]);
+    assert.deepEqual(listed, [...new Set(listed)], `sub-agente repetido no contrato: ${listed.join(', ')}`);
+    assert.deepEqual(listed, ['aesthetic-designer', 'systems-engineer']);
+  });
+
+  it('continua garantindo o aesthetic-designer quando o chamador o omite', () => {
+    // O default do daemon (`index.ts:335`) e as fixtures antigas mandam só o tático; o designer é
+    // sempre ativo, então a lista precisa ganhá-lo — uma vez.
+    const row = contractRow(['combat-strategist']);
+    const listed = [...row.matchAll(/"([a-z-]+)"/g)].map((m) => m[1]);
+    assert.deepEqual(listed, ['aesthetic-designer', 'combat-strategist']);
+  });
+});
 
 describe('WorkspaceGeneratorService — GEMINI.md', () => {
   it('contém a regra anti-alucinação', () => {
