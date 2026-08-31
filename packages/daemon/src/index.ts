@@ -40,14 +40,13 @@ function broadcast(message: Record<string, unknown>): void {
 }
 
 // 2026-08-16: armar este relógio desde o início da sessão (não só depois da primeira atividade
-// de MCP) expôs que ele mede a coisa errada na largada. O Fast-Grill-Me faz DUAS perguntas
-// conversacionais (foco de arma, estilo estético) ANTES de qualquer ferramenta MCP ser chamada,
-// e o daemon não enxerga nada dessa troca -- só `mcp_audit.log` e `ship_spec.json` contam como
-// sinal de vida. Um teste manual real (visitante lendo e respondendo as duas perguntas, sem
-// pressa nenhuma) já bastou pra estourar os 30s antigos e matar o `agy` no meio da conversa. 30s
-// nunca foi pouco tempo pra "o agente travou"; era pouco tempo pra "um humano leu duas perguntas
-// e digitou duas respostas". Ver AGY_SILENCE_TIMEOUT_MS abaixo para a fase que continua rápida
-// por natureza (chamadas de ferramenta são automáticas, não esperam humano).
+// de MCP) expôs que ele mede a coisa errada na largada. O Fast-Grill-Me é conversa pura ANTES de
+// qualquer ferramenta MCP ser chamada, e o daemon não enxerga nada dessa troca -- só
+// `mcp_audit.log` e `ship_spec.json` contam como sinal de vida. Um teste manual real (visitante
+// lendo e respondendo sem pressa nenhuma) já bastou pra estourar os 30s antigos e matar o `agy`
+// no meio da conversa. 30s nunca foi pouco tempo pra "o agente travou"; era pouco tempo pra "um
+// humano leu uma pergunta e digitou uma resposta". Ver AGY_SILENCE_TIMEOUT_MS abaixo para a fase
+// que continua rápida por natureza (chamadas de ferramenta são automáticas, não esperam humano).
 //
 // 60s -> 75s em 2026-08-24. Este número NÃO mede silêncio: como o daemon é cego à conversa, o
 // relógio é armado uma única vez no início da sessão e nunca é rearmado antes da primeira chamada
@@ -55,7 +54,14 @@ function broadcast(message: Record<string, unknown>): void {
 // esse orçamento cobre duas coisas somadas: o visitante lendo/respondendo E o modelo pensando. Um
 // modelo lento ou momentaneamente travado consome o mesmo relógio que o humano, e era esse o caso
 // que os 60s não cobriam.
-const AGY_PRE_MCP_SILENCE_TIMEOUT_MS = Number(process.env.AGY_PRE_MCP_SILENCE_TIMEOUT_MS) || 75_000;
+//
+// 75s -> 135s em 2026-08-31, quando o Fast-Grill-Me passou de UM turno (quatro dígitos de uma vez)
+// para QUATRO, um por pergunta, cada uma com as opções descritas. É a mesma conta de 2026-08-16
+// multiplicada: o orçamento não é por pergunta, é da sessão inteira, então quadruplicar os turnos
+// consome o mesmo relógio quatro vezes. O tempo de leitura também subiu — o piloto agora lê três a
+// seis linhas descritas por cartão em vez de uma grade compacta. O Bloco 21.3 do plano de teste
+// manual cronometra exatamente esta janela; é o número que confirma ou derruba os 135s.
+const AGY_PRE_MCP_SILENCE_TIMEOUT_MS = Number(process.env.AGY_PRE_MCP_SILENCE_TIMEOUT_MS) || 135_000;
 // Vale só DEPOIS da primeira ferramenta MCP já ter sido chamada: daqui pra frente é o `agy`
 // encadeando chamadas de tool sozinho, sem esperar resposta de humano, então o ritmo é de
 // máquina -- 30s de silêncio nessa fase é sinal real de travamento, não de gente pensando.
@@ -66,12 +72,16 @@ const AGY_SILENCE_TIMEOUT_MS = Number(process.env.AGY_SILENCE_TIMEOUT_MS) || 30_
 // deste teto, existe uma sessão que está progredindo normalmente, dentro de cada janela de fase,
 // e mesmo assim morre aqui no meio da geração — o visitante recebe fallback sem que nada tenha
 // travado. Até 2026-08-24 os números fechavam exatos (60 + 90 = 150); subir o pré-MCP para 75s
-// quebraria a soma, então o teto subiu junto, para 165s.
+// quebraria a soma, então o teto subiu junto, para 165s, e em 2026-08-31 para 225s (135 + 90) pelo
+// mesmo motivo — o grill-me de quatro turnos.
 //
 // O SLA do ciclo do visitante (Spec 01 §1: meta 2m30s, teto 3m00s) cobre a jornada INTEIRA, não
-// só a forja. Com 165s aqui, uma sessão que vai até o teto já estoura a meta sozinha. Isso não é
-// novo — 150s já estourava — mas é o número que o cronômetro do Gate M4 tem que confrontar.
-const AGY_HARD_TIMEOUT_MS = Number(process.env.AGY_HARD_TIMEOUT_MS) || 165_000;
+// só a forja. Com 225s aqui, uma sessão que vai até o teto estoura a meta com folga. Isso não é
+// novo — 150s já estourava — mas a folga cresceu, e o custo é concreto: uma sessão de fato travada
+// deixa o visitante olhando um terminal morto por 3m45 antes do preset aparecer. O contrapeso é
+// que morrer cedo demais no meio de uma conversa saudável é pior: o visitante vê a própria escolha
+// ser ignorada. Este é o número que o cronômetro do Gate M4 tem que confrontar.
+const AGY_HARD_TIMEOUT_MS = Number(process.env.AGY_HARD_TIMEOUT_MS) || 225_000;
 const AGY_POST_AUDIT_TIMEOUT_MS = Number(process.env.AGY_POST_AUDIT_TIMEOUT_MS) || 90_000;
 const AGY_LIVENESS_POLL_MS = 1_000;
 

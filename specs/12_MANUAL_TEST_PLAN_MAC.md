@@ -4,7 +4,7 @@
 **M1** (a engine, offline, e a dificuldade que a partida realmente transmite),
 **M2** (o ciclo completo com o `agy` real, incluindo as falhas provocadas),
 **M3** (a nuvem — Firestore, Cloud Run, Vertex AI — com um projeto real e o Wi-Fi na mão), e
-**M6** (o grill-me de 4 linhas, a abertura sem digitação e as dicas de pilotagem).
+**M6** (o grill-me de 4 perguntas, a abertura sem digitação e as dicas de pilotagem).
 
 > **Acrescentado em 2026-08-24.** Os Blocos 0–9 abaixo são o registro original de M1/M2, fechados
 > em 2026-08-16/18/22 — não foram tocados. Os Blocos 10 a 18 são para o Gate M3, depois de
@@ -43,7 +43,7 @@ perder tempo investigando algo já conhecido.
 | 16 | Limpeza pós-teste (opcional) | 10 min |
 | 19 | M6 — preparação e sanidade da árvore | 10 min |
 | 20 | M6 — abertura sem digitação e clipboard entre telas | 10 min |
-| 21 | M6 — grill-me de 4 linhas, caminho feliz | 15 min |
+| 21 | M6 — grill-me de 4 perguntas, caminho feliz | 15 min |
 | 22 | M6 — combinações antes inalcançáveis (EMP) | 15 min |
 | 23 | M6 — dicas de pilotagem: presença, ausência e fallback | 10 min |
 | 24 | M6 — cronometragem do SLA e registro | 5 min |
@@ -594,7 +594,7 @@ self-service da experiência `agy`. Se aparecer um botão desses, é regressão.
 
 - [ ] **5.12 — A forja acontece de verdade**
 
-No Terminal 3, o `agy` conversa com você (Fast-Grill-Me: foco de arma e tema visual). Na Tela 1, os
+No Terminal 3, o `agy` conversa com você (Fast-Grill-Me: quatro perguntas, uma por turno). Na Tela 1, os
 badges de MCP acendem ao vivo conforme as ferramentas são chamadas.
 
 - [ ] **5.13 — `/agents` e `/mcp` listam só o desta sessão**
@@ -711,11 +711,11 @@ JSON que `build_metadata.fallback_used` é `true`.
 
 Comece uma sessão e simplesmente **não responda** ao `agy`.
 
-**Critério:** o fallback dispara em **75s** (`AGY_PRE_MCP_SILENCE_TIMEOUT_MS`) — este é o relógio que
+**Critério:** o fallback dispara em **135s** (`AGY_PRE_MCP_SILENCE_TIMEOUT_MS`) — este é o relógio que
 vale enquanto nenhuma ferramenta MCP tiver sido chamada, e ele não é rearmado pela conversa, porque o
 daemon não a enxerga. Se você responder e o agente já tiver chamado MCPs, passam a valer os relógios
 mais curtos entre chamadas (30s, `AGY_SILENCE_TIMEOUT_MS`) e, depois do gate de auditoria, o mais
-generoso (90s, `AGY_POST_AUDIT_TIMEOUT_MS`). Em qualquer caminho, o teto rígido de 165s
+generoso (90s, `AGY_POST_AUDIT_TIMEOUT_MS`). Em qualquer caminho, o teto rígido de 225s
 (`AGY_HARD_TIMEOUT_MS`) é a última rede. Ver [Spec 06](./06_RELIABILITY_FAILOVER_AND_SECURITY_SPEC.md) §1.1.
 
 ---
@@ -1504,35 +1504,54 @@ por isso.
 
 - [ ] **20.6 — O agente começa pelo PASSO 1, sem enrolação**
 
-Esperado: a primeira resposta do `agy` é o menu do grill-me. **Não** pode haver saudação, resumo
-do protocolo, pergunta sobre o que o piloto quer, nem chamada de ferramenta MCP antes do menu.
+Esperado: a primeira resposta do `agy` é a `PERGUNTA 1/4`, **sozinha**. Não pode haver saudação,
+resumo do protocolo, pergunta sobre o que o piloto quer, anúncio de quantas perguntas vêm pela
+frente, nem chamada de ferramenta MCP antes dela.
 
 ---
 
-## Bloco 21 — Grill-me de 4 linhas, caminho feliz
+## Bloco 21 — Grill-me de 4 perguntas, caminho feliz
 
-- [ ] **21.1 — As quatro linhas aparecem num único turno**
+- [ ] **21.1 — Uma pergunta por turno, nunca duas**
 
-Esperado: um só bloco de texto com `[1]` primária, `[2]` secundária, `[3]` estilo, `[4]` cor.
-Não pode ser uma pergunta por turno.
+Esperado: o `agy` mostra `PERGUNTA 1/4`, para e espera. As perguntas 2, 3 e 4 **não** podem
+aparecer antes de você responder a anterior. Entre a sua resposta e o próximo cartão não pode
+haver comentário, elogio nem repetição da escolha — só o cartão seguinte.
 
-- [ ] **21.2 — Todas as opções estão à mostra**
+- [ ] **21.2 — Cada opção vem descrita, e todas as opções estão à mostra**
 
-Confira, linha a linha:
+Confira, cartão por cartão. As três primeiras perguntas têm uma linha por opção no formato
+`n) Rótulo — descrição`; a quarta lista só os rótulos.
 
-- `[1]` tem **3** opções: Laser Contínuo, Canhão de Plasma, Vulcan em Leque
-- `[2]` tem **2** opções: Mísseis Teleguiados e Pulso EMP — e o EMP diz que **não fere o boss**
-- `[3]` tem **3** temas
-- `[4]` tem **6** cores nomeadas (Rosa Choque, Ciano Elétrico, Verde Ácido, Vermelho Sangue,
-  Dourado Royal, Branco Gélido)
+- `PERGUNTA 1/4` tem **3** opções descritas: Laser Contínuo, Canhão de Plasma, Vulcan em Leque
+- `PERGUNTA 2/4` tem **2** opções descritas: Mísseis Teleguiados e Pulso EMP — e o EMP diz que
+  **não fere o boss**
+- `PERGUNTA 3/4` tem **3** temas, cada um com a forma do casco descrita
+- `PERGUNTA 4/4` tem **6** cores nomeadas (Rosa Choque, Ciano Elétrico, Verde Ácido, Vermelho
+  Sangue, Dourado Royal, Branco Gélido)
 
 `Sem armamento secundário` **não** pode aparecer.
 
-- [ ] **21.3 — Resposta única de quatro dígitos**
+- [ ] **21.3 — Quatro respostas, uma de cada vez**
 
-Digite `1 1 1 2` (Laser + Mísseis + Synthwave + Ciano Elétrico) e Enter.
+Responda `1`, depois `1`, depois `1`, depois `2` (Laser + Mísseis + Synthwave + Ciano Elétrico),
+esperando o cartão seguinte a cada vez.
 
-Esperado: o agente aceita de uma vez, sem reperguntar, e segue direto para o PASSO 2 (chamadas MCP).
+Esperado: depois da quarta resposta o agente vai **direto** ao PASSO 2 (chamadas MCP), sem
+resumir as escolhas e sem perguntar se pode começar.
+
+> **Cronometre este bloco.** Da `PERGUNTA 1/4` até a primeira chamada MCP aparecer na Tela 1. Esse
+> intervalo tem que caber em `AGY_PRE_MCP_SILENCE_TIMEOUT_MS` (`daemon/src/index.ts`), que é um
+> orçamento total de sessão-até-primeira-ferramenta, **não** um relógio de silêncio: ele é armado
+> uma vez e nunca rearmado. Quatro turnos consomem o mesmo orçamento que um. Anote o tempo no
+> Bloco 24 mesmo se passar — o fallback disparando aqui é o risco central desta mudança.
+
+- [ ] **21.3b — Responder pelo nome funciona igual**
+
+Numa sessão nova, responda a `PERGUNTA 1/4` com `Canhão de Plasma` em vez de `2`.
+
+Esperado: o agente aceita e segue. Responder algo fora da lista (ex.: `7`) deve repetir **só**
+aquela pergunta, sem reiniciar o grill-me.
 
 - [ ] **21.4 — O arquivo grava as quatro chaves**
 
@@ -1561,7 +1580,7 @@ paleta padrão de outro tema.
 
 - [ ] **21.6 — Segunda sessão: só a cor muda**
 
-Reinicie (`Ctrl+Shift+F12` na tela 1), refaça o fluxo e responda `1 1 1 4` — **mesmo** tema
+Reinicie (`Ctrl+Shift+F12` na tela 1), refaça o fluxo e responda `1`, `1`, `1`, `4` — **mesmo** tema
 Synthwave, cor Vermelho Sangue.
 
 Esperado: a **geometria** do casco continua reconhecivelmente Synthwave; só a paleta muda. Se a
@@ -1576,7 +1595,8 @@ O ponto do bloco: `emp_burst` nunca foi escolhível por um visitante até esta e
 
 - [ ] **22.1 — Plasma + EMP**
 
-Nova sessão. Responda `2 2 3 5` (Plasma + EMP + Cyberpunk Gold + Dourado Royal).
+Nova sessão. Responda `2`, `2`, `3`, `5` (Plasma + EMP + Cyberpunk Gold + Dourado Royal), uma
+resposta por cartão.
 
 ```bash
 jq '.weapons, .build_metadata.fast_grill_me_choices' /tmp/booth_session/ship_spec.json
@@ -1603,12 +1623,12 @@ persona está fraco — anote no Bloco 24.
 
 - [ ] **22.4 — Laser + EMP, só para confirmar que o par é livre**
 
-Nova sessão, responda `1 2 2 1`. Esperado: `laser` + `emp_burst` gravados. Não precisa jogar.
+Nova sessão, responda `1`, `2`, `2`, `1`. Esperado: `laser` + `emp_burst` gravados. Não precisa jogar.
 
 - [ ] **22.5 — Um MCP só, para exercitar a fórmula-base**
 
 Nova sessão; nos sliders **desmarque** `weapons-arsenal`, deixando só `hull-propulsion`; escolha
-`systems-engineer`. Responda `3 1 2 3` (Vulcan + Mísseis).
+`systems-engineer`. Responda `3`, `1`, `2`, `3` (Vulcan + Mísseis).
 
 **Não procure `weapons` no arquivo.** Com `weapons-arsenal` desmarcado o contrato autoriza o agente
 a omitir o bloco inteiro, e o daemon **não reescreve** o `ship_spec.json`: `applyBaselineForUnselectedMcps`
@@ -1678,8 +1698,8 @@ Esperado: `normalizeSpec` omite o campo, a nave é aceita, o painel some. **Não
 
 Force o timeout: inicie uma sessão e **não** digite nada no `agy`.
 
-O relógio que dispara aqui é o de **pré-conversa**, `AGY_PRE_MCP_SILENCE_TIMEOUT_MS` = **75s**
-(`daemon/src/index.ts:58`), não o teto rígido de 165s: sem digitar nada nenhum MCP roda, e o daemon
+O relógio que dispara aqui é o de **pré-conversa**, `AGY_PRE_MCP_SILENCE_TIMEOUT_MS` = **135s**
+(`daemon/src/index.ts`), não o teto rígido de 225s: sem digitar nada nenhum MCP roda, e o daemon
 nunca sai do primeiro nível da escada de silêncio. Se quiser encurtar a espera, suba o daemon com o
 valor reduzido — o mecanismo exercitado é o mesmo:
 
@@ -1702,15 +1722,20 @@ dica é *"Casco fino: fique em movimento e use os corredores laterais..."*.
 - [ ] **24.1 — Passada cronometrada, do zero**
 
 `Ctrl+Shift+F12`, cronômetro na mão, uma passada completa como visitante que nunca viu o estande:
-atrai → registro → briefing → sliders → o terminal abre já perguntando → 4 dígitos → pré-voo →
+atrai → registro → briefing → sliders → o terminal abre já perguntando → 4 respostas → pré-voo →
 90s de partida → debrief.
 
 **Alvo ≤ 2m30s, teto 3m00s** (descontando os 90s de partida, que são fixos).
 
-A abertura automática do terminal deve *encurtar* a hesitação na tela do AGY. As 2 perguntas extras
-do grill-me não podem comer esse ganho. **Se estourar o teto:** cortar a pergunta `[4]` de cor — o
+A abertura automática do terminal deve *encurtar* a hesitação na tela do AGY. As quatro perguntas
+sequenciais não podem comer esse ganho. **Se estourar o teto:** cortar a `PERGUNTA 4/4` de cor — o
 `accent_color` volta a ser o `signature_accent` do tema via backfill do `normalizeSpec`, que já
-existe, então é uma remoção de uma linha do prompt e nada mais.
+existe, então é remover um cartão do prompt e nada mais.
+
+> **Compare com o tempo anotado em 21.3.** São dois orçamentos diferentes e o menor não é o do
+> SLA: a jornada tem 3m00s de teto, mas a fase entre a abertura da sessão e a primeira chamada MCP
+> tem só `AGY_PRE_MCP_SILENCE_TIMEOUT_MS`. Uma passada pode caber folgada no SLA e ainda assim
+> receber nave de preset por estourar aquele orçamento no meio do grill-me.
 
 - [ ] **24.2 — Higiene de processos**
 
@@ -1728,7 +1753,9 @@ pgrep -fl agy         # vazio
 | 20.2 | Terminal começa sozinho | | |
 | 20.5 | Clipboard entre telas (contingência) | | |
 | 20.6 | Agente começa no PASSO 1 | | |
-| 21.2 | Todas as opções à mostra | | |
+| 21.1 | Uma pergunta por turno | | |
+| 21.2 | Toda opção descrita e à mostra | | |
+| 21.3 | Grill-me até a 1ª chamada MCP | | ____ s (orçamento pré-MCP) |
 | 21.4 | Quatro chaves gravadas | | |
 | 21.6 | Cor muda, geometria não | | |
 | 22.1 | Plasma + EMP alcançável | | |

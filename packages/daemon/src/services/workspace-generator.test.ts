@@ -123,14 +123,46 @@ describe('WorkspaceGeneratorService — GEMINI.md', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it('Fast-Grill-Me (PASSO 1) faz as quatro perguntas num único turno', () => {
+  // Até 2026-08-30 as quatro perguntas vinham num turno só e o piloto respondia quatro dígitos de
+  // uma vez. Ninguém errava, mas ninguém escolhia informado: só a secundária tinha descrição,
+  // porque só ela cabia. Uma pergunta por turno compra espaço para descrever cada opção.
+  it('Fast-Grill-Me (PASSO 1) faz uma pergunta por turno, com um cartão numerado por etapa', () => {
     const dir = generate();
     const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
-    assert.match(md, /QUATRO perguntas abaixo de uma vez só, em UM único\s+turno/);
-    assert.match(md, /\[1\] Canhão primário:/);
-    assert.match(md, /\[2\] Arma secundária:/);
-    assert.match(md, /\[3\] Estilo do casco:/);
-    assert.match(md, /\[4\] Cor de destaque:/);
+
+    assert.match(md, /\*\*uma por turno\*\*/);
+    assert.match(md, /\*\*pare e espere\*\*/);
+    for (let n = 1; n <= 4; n++) {
+      assert.match(md, new RegExp(`PERGUNTA ${n}/4 — `), `cartão da pergunta ${n} ausente`);
+    }
+
+    // O formato antigo não pode sobreviver em lugar nenhum do prompt: as duas instruções são
+    // contraditórias, e um agente que encontrasse as duas escolheria a errada metade das vezes.
+    assert.doesNotMatch(md, /de uma vez só, em UM único/);
+    assert.doesNotMatch(md, /\[1\] Canhão primário:/);
+
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  // Cada opção precisa dizer o que ela faz no jogo — é o pedido inteiro desta mudança. As frases
+  // saem dos catálogos, então o teste cobra a presença de uma descrição por opção, não o texto.
+  it('descreve cada arma e cada formato de casco na própria linha da opção', () => {
+    const dir = generate();
+    const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
+    const passo1 = md.slice(md.indexOf('PERGUNTA 1/4'), md.indexOf('PERGUNTA 4/4'));
+
+    for (const label of Object.values(PRIMARY_WEAPON_LABELS)) {
+      assert.match(passo1, new RegExp(`\\d\\) ${label} — \\S`), `primária '${label}' sem descrição`);
+    }
+    for (const key of GRILL_ME_SECONDARY_ORDER) {
+      const label = SECONDARY_WEAPON_LABELS[key];
+      assert.match(passo1, new RegExp(`\\d\\) ${label} — \\S`), `secundária '${key}' sem descrição`);
+    }
+    for (const key of VISUAL_THEME_ORDER) {
+      const label = VISUAL_THEMES[key].label;
+      assert.match(passo1, new RegExp(`\\d\\) ${label} — \\S`), `tema '${key}' sem descrição`);
+    }
+
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
@@ -169,7 +201,8 @@ describe('WorkspaceGeneratorService — GEMINI.md', () => {
     const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
     assert.ok(md.includes(BOOTH_KICKOFF_PROMPT), 'a frase de abertura do estande não aparece');
     assert.match(md, /sem saudação/);
-    assert.match(md, /sem chamar nenhuma ferramenta MCP antes do menu/);
+    assert.match(md, /sem chamar nenhuma ferramenta\s+MCP antes delas/);
+    assert.match(md, /é a `PERGUNTA 1\/4`, sozinha/);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 

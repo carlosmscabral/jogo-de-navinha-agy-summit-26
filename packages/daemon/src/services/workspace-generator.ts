@@ -11,6 +11,7 @@ import {
   McpServerName,
   PRIMARY_WEAPON_LABELS,
   PRIMARY_WEAPON_ORDER,
+  PrimaryWeaponType,
   SECONDARY_WEAPON_LABELS,
   SecondaryWeaponType,
   SubagentName,
@@ -45,22 +46,29 @@ const SECONDARY_WEAPON_TRADEOFFS: Record<SecondaryWeaponType, string> = {
   none: 'sem arma secundária'
 };
 
-/** Monta uma linha de menu numerada: `1-Rótulo  2-Rótulo`. O índice + 1 é o que o piloto digita. */
-function menuOptions<T extends string>(order: T[], label: (key: T) => string): string {
-  return order.map((key, i) => `${i + 1}-${label(key)}`).join('  ');
-}
+/**
+ * O mesmo para os canhões primários. As três frases descrevem o que `PRIMARY_PROFILES`
+ * (`packages/mcps/src/weapons-arsenal.ts`) de fato produz — dano por tiro, velocidade do projétil
+ * e leque — em linguagem de pilotagem, não de estatística: o piloto escolhe antes de ver número
+ * nenhum, e o número exato ainda depende do slider de Ataque dele.
+ *
+ * O vulcan dispara `BALANCE.weapons.primary.vulcan_pellet_count` pelotas em leque; as externas
+ * passam ao largo de um alvo distante (`combat-model.ts`), e é por isso que a frase fala em
+ * distância em vez de prometer o dano somado.
+ */
+const PRIMARY_WEAPON_TRADEOFFS: Record<PrimaryWeaponType, string> = {
+  laser: 'tiro rápido e preciso, projétil veloz; pouco dano por acerto, rende no fogo sustentado',
+  plasma: 'maior dano por acerto e projétil mais lento; recompensa mirar em vez de varrer',
+  vulcan_spread: 'várias pelotas em leque; cobre muito espaço de perto e desperdiça de longe'
+};
 
 /** Monta as linhas `N-Rótulo → "slug"` da tabela de conversão que o agente precisa gravar. */
 function slugRows<T extends string>(order: T[], label: (key: T) => string, indent: string): string {
   return order.map((key, i) => `${indent}${i + 1}-${label(key)} → "${key}"`).join('\n');
 }
 
-/**
- * Recuo das linhas de continuação de um menu, alinhado sob a primeira opção. Os quatro rótulos
- * (`Canhão primário:`, `Arma secundária:`, `Estilo do casco:`, `Cor de destaque:`) têm 16
- * caracteres de propósito, então uma única constante alinha os quatro.
- */
-const MENU_INDENT = ' '.repeat(25);
+/** Recuo das opções dentro de um cartão de pergunta. */
+const OPTION_INDENT = ' '.repeat(3);
 
 /** Quebra uma lista de opções já numeradas em linhas de no máximo `perLine` itens. */
 function menuLines(options: string[], perLine: number): string {
@@ -68,25 +76,75 @@ function menuLines(options: string[], perLine: number): string {
   for (let i = 0; i < options.length; i += perLine) {
     lines.push(options.slice(i, i + perLine).join('  '));
   }
-  return lines.join(`\n${MENU_INDENT}`);
+  return lines.join(`\n${OPTION_INDENT}`);
 }
-
-const primaryOptions = menuOptions(PRIMARY_WEAPON_ORDER, (k) => PRIMARY_WEAPON_LABELS[k]);
-const themeOptions = menuOptions(VISUAL_THEME_ORDER, (k) => VISUAL_THEMES[k].label);
-
-/** A secundária ganha uma linha por opção porque cada uma carrega seu compromisso de jogo. */
-const secondaryOptionsBlock = menuLines(
-  GRILL_ME_SECONDARY_ORDER.map(
-    (k, i) => `${i + 1}-${SECONDARY_WEAPON_LABELS[k]} (${SECONDARY_WEAPON_TRADEOFFS[k]})`
-  ),
-  1
-);
 
 /** Seis cores em duas linhas de três — uma linha só passaria da largura do terminal do estande. */
 const accentOptionsBlock = menuLines(
-  ACCENT_COLOR_ORDER.map((k, i) => `${i + 1}-${ACCENT_COLORS[k].label}`),
+  ACCENT_COLOR_ORDER.map((k, i) => `${i + 1}) ${ACCENT_COLORS[k].label}`),
   3
 );
+
+/**
+ * Monta um dos quatro cartões de pergunta que o agente copia para a tela, um por turno.
+ *
+ * Cada opção ocupa uma linha própria porque agora há espaço para isso: até 2026-08-30 as quatro
+ * perguntas dividiam um único turno e a tela precisava caber tudo de uma vez, então só a
+ * secundária tinha descrição. Com uma pergunta por turno, o piloto lê três ou seis linhas
+ * descritas em vez de decorar uma grade e responder quatro dígitos de cabeça.
+ *
+ * O texto é gerado dos catálogos pelo mesmo motivo que `rangeRow()` lê `BALANCE.ranges`: o prompt
+ * não pode anunciar uma opção que o schema depois rejeita, nem descrevê-la de um jeito que os
+ * números do MCP desmintam.
+ */
+const QUESTION_COUNT = 4;
+
+function questionCard<T extends string>(
+  n: number,
+  heading: string,
+  order: T[],
+  label: (key: T) => string,
+  blurb: (key: T) => string
+): string {
+  const rows = order
+    // O ponto final some porque os catálogos discordam entre si: `VISUAL_THEMES[].blurb` é uma
+    // frase pontuada e os compromissos de arma não são. Numa lista de opções lado a lado essa
+    // diferença aparece, e o piloto lê as quatro perguntas em sequência.
+    .map((key, i) => `${OPTION_INDENT}${i + 1}) ${label(key)} — ${blurb(key).replace(/\.$/, '')}`)
+    .join('\n');
+  return `PERGUNTA ${n}/${QUESTION_COUNT} — ${heading}\n\n${rows}`;
+}
+
+const primaryQuestion = questionCard(
+  1,
+  'Qual vai ser o canhão primário da sua nave?',
+  PRIMARY_WEAPON_ORDER,
+  (k) => PRIMARY_WEAPON_LABELS[k],
+  (k) => PRIMARY_WEAPON_TRADEOFFS[k]
+);
+
+const secondaryQuestion = questionCard(
+  2,
+  'E a arma secundária, no Shift?',
+  GRILL_ME_SECONDARY_ORDER,
+  (k) => SECONDARY_WEAPON_LABELS[k],
+  (k) => SECONDARY_WEAPON_TRADEOFFS[k]
+);
+
+const themeQuestion = questionCard(
+  3,
+  'Qual o formato do casco?',
+  VISUAL_THEME_ORDER,
+  (k) => VISUAL_THEMES[k].label,
+  (k) => VISUAL_THEMES[k].blurb
+);
+
+/**
+ * A cor é a única das quatro sem descrição: o rótulo já é a descrição, e seis linhas explicando
+ * o que é "Rosa Choque" custariam segundos do SLA sem informar nada. As seis cabem em duas linhas
+ * de três, como no menu antigo.
+ */
+const accentQuestion = `PERGUNTA ${QUESTION_COUNT}/${QUESTION_COUNT} — Qual a cor de destaque?\n\n${OPTION_INDENT}${accentOptionsBlock}`;
 
 const primarySlugRows = slugRows(PRIMARY_WEAPON_ORDER, (k) => PRIMARY_WEAPON_LABELS[k], '     ');
 const secondarySlugRows = slugRows(
@@ -112,20 +170,6 @@ const THEME_PALETTE_ROWS = VISUAL_THEME_ORDER.map((key) => {
 const ACCENT_HEX_ROWS = ACCENT_COLOR_ORDER.map(
   (key) => `- ${ACCENT_COLORS[key].label} (\`${key}\`): \`${ACCENT_COLORS[key].hex}\``
 ).join('\n');
-
-/**
- * Exemplo de resposta de quatro dígitos exibido no prompt. Os dígitos são clampados ao tamanho real
- * de cada catálogo para que o exemplo continue válido se alguém acrescentar ou remover uma opção —
- * um exemplo inválido no prompt é pior que nenhum exemplo.
- */
-const grillMeExample = [
-  { picks: 2, order: PRIMARY_WEAPON_ORDER as string[] },
-  { picks: 1, order: GRILL_ME_SECONDARY_ORDER as string[] },
-  { picks: 3, order: VISUAL_THEME_ORDER as string[] },
-  { picks: 5, order: ACCENT_COLOR_ORDER as string[] }
-]
-  .map(({ picks, order }) => Math.min(picks, order.length))
-  .join(' ');
 
 export interface SessionWorkspaceConfig {
   sessionDir?: string;
@@ -402,8 +446,8 @@ A primeira mensagem do piloto é sempre exatamente esta frase, injetada pelo est
 
 Ela não contém nenhuma escolha — a escolha acontece no PASSO 1. A resposta correta é **começar o
 PASSO 1 imediatamente**: sem saudação, sem se apresentar, sem resumir este protocolo, sem perguntar
-o que o piloto quer e sem chamar nenhuma ferramenta MCP antes do menu. A primeira coisa que o piloto
-lê na tela é o menu das quatro perguntas.
+o que o piloto quer, sem anunciar quantas perguntas vêm pela frente e sem chamar nenhuma ferramenta
+MCP antes delas. A primeira coisa que o piloto lê na tela é a \`PERGUNTA 1/${QUESTION_COUNT}\`, sozinha.
 
 Campos do \`ship_spec.json\` que pertencem a um MCP **fora** da lista acima (ex.: \`weapons.*\` se
 \`weapons-arsenal\` não estiver listado, \`attributes.max_hp\`/\`speed_px_s\`/\`hitbox_radius\` se
@@ -414,16 +458,31 @@ energia do piloto. Isso NÃO é uma violação da REGRA ZERO: você só é proib
 para os MCPs que ESTÃO ativos.
 
 ### PROTOCOLO RÍGIDO DE 5 PASSOS:
-1. **PASSO 1 - FAST GRILL-ME:** Faça as QUATRO perguntas abaixo de uma vez só, em UM único turno,
-   exatamente como estão escritas. Não faça uma pergunta por turno, não acrescente perguntas, não
-   ofereça opções que não estejam nesta lista. Aceite a resposta em qualquer formato (\`${grillMeExample}\`,
-   \`${grillMeExample.split(' ').join(',')}\`, ou uma resposta por vez); se o piloto responder com o
-   rótulo em português em vez do número, aceite igual.
+1. **PASSO 1 - FAST GRILL-ME:** São ${QUESTION_COUNT} perguntas, **uma por turno**. Faça a
+   pergunta, **pare e espere** o piloto responder; só depois faça a próxima. Nunca junte duas
+   perguntas na mesma mensagem, nunca adiante o que vem a seguir, nunca acrescente uma pergunta
+   que não esteja aqui e nunca ofereça uma opção fora das listadas.
 
-   [1] Canhão primário:  ${primaryOptions}
-   [2] Arma secundária:  ${secondaryOptionsBlock}
-   [3] Estilo do casco:  ${themeOptions}
-   [4] Cor de destaque:  ${accentOptionsBlock}
+   Escreva cada cartão **exatamente** como está abaixo — o cabeçalho \`PERGUNTA n/${QUESTION_COUNT}\`,
+   a linha em branco e uma opção por linha com a descrição dela. Essa descrição é o motivo de a
+   pergunta existir sozinha num turno: sem ela o piloto escolhe no escuro.
+
+   Entre a resposta e a pergunta seguinte não comente, não resuma, não elogie a escolha e não
+   repita o que ele escolheu — mande só o próximo cartão. O piloto responde com o número **ou**
+   com o rótulo em português; aceite os dois. Se ele responder algo que não está na lista, repita
+   só aquela pergunta. Se ele se adiantar e responder mais de uma de uma vez, aproveite as
+   respostas e pule as perguntas já respondidas — mas nunca ofereça esse atalho.
+
+${primaryQuestion}
+
+${secondaryQuestion}
+
+${themeQuestion}
+
+${accentQuestion}
+
+   Depois da resposta da PERGUNTA ${QUESTION_COUNT}/${QUESTION_COUNT}, vá **direto** ao PASSO 2:
+   sem resumo das quatro escolhas, sem confirmar, sem perguntar se pode começar.
 
    Grave as respostas em \`build_metadata.fast_grill_me_choices\` com EXATAMENTE estas QUATRO
    chaves, usando estes slugs em inglês (nunca o texto em português, nunca outro nome de campo):

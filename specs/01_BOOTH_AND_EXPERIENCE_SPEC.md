@@ -74,15 +74,22 @@ terminal e oferece prompts de inspiração copiáveis.
   `agy --prompt-interactive`, de modo que o visitante encontra o Fast Grill-Me já na tela. A Tela 1
   mantém a mesma frase num bloco de contingência com botão **Copiar**, para o caso de um `agy` sem
   a flag — o script sonda `agy --help` antes de usá-la.
-- **Fast Grill-Me:** quatro perguntas feitas **de uma vez, em um único turno**, respondidas com
-  quatro dígitos (`2 1 3 5`) no teclado da Tela 2:
+- **Fast Grill-Me:** quatro perguntas, **uma por turno**, cada uma como um cartão
+  `PERGUNTA n/4` com uma opção por linha. O piloto responde com o número ou com o rótulo em
+  português, e o agente segue para a seguinte sem comentar a escolha:
   1. *Canhão primário:* Laser Contínuo / Canhão de Plasma / Vulcan em Leque.
   2. *Arma secundária:* Mísseis Teleguiados / Pulso EMP — o menu diz que o EMP **não fere o boss**.
   3. *Estilo do casco:* Synthwave 80s / Dark Void Stealth / Cyberpunk Gold.
   4. *Cor de destaque:* as seis cores curadas de `ACCENT_COLORS`, cada uma com hex definido.
 
+  As três primeiras trazem uma frase de descrição por opção — o que a arma faz em partida, que
+  forma o casco tem. A cor não traz: o rótulo já é a descrição. Até 2026-08-30 as quatro vinham
+  num único turno respondido com quatro dígitos (`2 1 3 5`); cabia na tela, mas só a secundária
+  tinha espaço para explicar a própria escolha.
+
   As opções do menu são **geradas** a partir dos catálogos de `@jogo/shared`, nunca digitadas no
-  template: o prompt não pode anunciar uma opção que o schema rejeita. As respostas viram
+  template: o prompt não pode anunciar uma opção que o schema rejeita, nem descrevê-la de um jeito
+  que os números do MCP desmintam. As respostas viram
   `build_metadata.fast_grill_me_choices` com quatro chaves — `primary_weapon`, `secondary_weapon`,
   `visual_theme`, `accent_color` — e os dois tipos de arma são exatamente os que entram em
   `weapons.primary.type` e `weapons.secondary.type`, sem tradução no meio.
