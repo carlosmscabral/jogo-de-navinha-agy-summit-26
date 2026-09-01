@@ -252,6 +252,15 @@ futuro não exige um novo deploy de código.
 
 ## 7. Contingência: se o hardware for um Chromebook simples
 
+> **Nota de 2026-09-01.** Uma verificação de bancada estreitou o gatilho desta seção: um Chromebook
+> **com Crostini habilitado** roda a Camada L localmente — o `agy` tem build oficial `linux_arm64` em
+> paridade de versão, e o jogo roda no Chrome nativo do ChromeOS, fora do caminho VirGL do container.
+> Esta contingência passa a valer sobretudo para o caso em que o Crostini **não pode ser habilitado**
+> (dispositivo gerenciado com `VirtualMachinesAllowed` desabilitada). O custo real de um Chromebook
+> com Crostini é outro — não existe modo quiosque sem enrollment corporativo, e o estande vira uma
+> máquina operada por equipe. Bloqueadores, roteiro de instalação e os testes que só o hardware fecha
+> estão na [Spec 13](./13_CHROMEBOOK_AND_CROSTINI_SPEC.md). Esta seção não foi reescrita.
+
 Ativar apenas se §3 não for atendível. Move a Camada L para uma VM por estação:
 
 - **`agy`, MCPs, workspace e bridge** migram para uma GCE VM pequena (ou Cloud Workstation) dedicada a

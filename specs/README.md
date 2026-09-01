@@ -57,6 +57,7 @@ permanece e ganhou um ID de defeito.
 | **[10 Plano de Implementação](./10_IMPLEMENTATION_PLAN.md)** | Sequenciamento por fases e gates de ensaio manual | Nova |
 | **[11 Lacunas Conhecidas](./11_KNOWN_GAPS_AND_OPEN_ITEMS.md)** | O que está quebrado, não verificado ou adiado — lista honesta | Fases A+B mergeadas |
 | **[12 Plano de Teste Manual (Mac)](./12_MANUAL_TEST_PLAN_MAC.md)** | Roteiro passo a passo que fecha os gates M1 e M2 | Pendente de execução |
+| **[13 Chromebook & Crostini](./13_CHROMEBOOK_AND_CROSTINI_SPEC.md)** | O que muda se o hardware do estande for um Chromebook: bloqueadores, instalação e testes que só o hardware fecha | Nova; hardware não confirmado |
 
 ---
 
