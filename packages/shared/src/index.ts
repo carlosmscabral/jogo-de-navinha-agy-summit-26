@@ -4,6 +4,7 @@ export * from './game/synergies.js';
 export * from './game/fire-cadence.js';
 export * from './game/score-calculator.js';
 export * from './game/dev-archetypes.js';
+export * from './game/ship-card-svg.js';
 export * from './constants/branding.js';
 export * from './constants/balance.js';
 export * from './constants/mcp-catalog.js';

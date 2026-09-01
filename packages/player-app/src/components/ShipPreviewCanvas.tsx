@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import Phaser from 'phaser';
-import { BALANCE, ShipAttributes, ShipVisuals, ShipWeapons } from '@jogo/shared';
+import {
+  BALANCE,
+  NEUTRAL_HULL_PATH,
+  ShipAttributes,
+  ShipVisuals,
+  ShipWeapons,
+  VIEWBOX_SIZE
+} from '@jogo/shared';
 import { renderSvgShipTexture } from '../game/factories/SvgShipRenderer.js';
 import { ShipTextureFactory } from '../game/factories/ShipTextureFactory.js';
 import {
@@ -23,7 +30,6 @@ import {
  * ele jamais pode derrubar a tela.
  */
 
-const VIEWBOX = 128;
 /** Altura de referência da partida; escala a velocidade dos projéteis para o mini-canvas. */
 const MATCH_HEIGHT = 800;
 
@@ -209,13 +215,11 @@ function StaticShipSilhouette({
   className
 }: ShipPreviewCanvasProps & { className?: string }) {
   const hull = visuals ?? DEMO_VISUALS;
-  const d = usesForgedHull(mode, visuals)
-    ? hull.svg_path_data
-    : 'M 64 10 L 92 96 L 64 82 L 36 96 Z';
+  const d = usesForgedHull(mode, visuals) ? hull.svg_path_data : NEUTRAL_HULL_PATH;
 
   return (
     <svg
-      viewBox={`0 0 ${VIEWBOX} ${VIEWBOX}`}
+      viewBox={`0 0 ${VIEWBOX_SIZE} ${VIEWBOX_SIZE}`}
       width={size}
       height={size}
       className={className}
