@@ -249,8 +249,11 @@ renderiza `ship_card_svg` a partir de `ship_spec_snapshot` e grava de volta. `sr
   consultar e que o Firestore indexaria sozinho — custo de escrita e de armazenamento sem
   contrapartida. Publicar isso **antes** do primeiro backfill (`scripts/backfill-ship-cards.mjs`)
   evita gerar índice que seria apagado em seguida.
-- **Partidas anteriores ao gatilho** não têm cartão: `scripts/backfill-ship-cards.mjs` cobre o
-  passado, e serve de novo quando `SHIP_CARD_VERSION` subir.
+- **Partidas anteriores ao gatilho** não têm cartão, e nenhum evento as reprocessa:
+  `npm run backfill:cards` (dry-run, não escreve nada) e `npm run backfill:cards -- --apply`
+  cobrem o passado, com o mesmo renderizador do serviço. Serve de novo, inteiro, quando
+  `SHIP_CARD_VERSION` subir. Usa ADC do operador (`gcloud auth application-default login`) e
+  **recusa rodar** se `GOOGLE_APPLICATION_CREDENTIALS` estiver definida.
 
 ### Por que este pacote usa Express 5, e o `daemon` usa Express 4
 

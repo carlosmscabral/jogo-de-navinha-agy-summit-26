@@ -31,7 +31,8 @@
     "kill:all": "bash scripts/kill-all.sh",
     "reset:db": "bash scripts/reset_local_db.sh",
     "deploy:gcp": "bash scripts/deploy.sh",
-    "undeploy:gcp": "bash scripts/undeploy.sh"
+    "undeploy:gcp": "bash scripts/undeploy.sh",
+    "backfill:cards": "npm run build:shared && node scripts/backfill-ship-cards.mjs"
   },
   "devDependencies": {
     "typescript": "^5.7.3",
