@@ -109,7 +109,8 @@ arquivo commitado); `PORT` é injetada pelo Cloud Run. Desde a Tarefa C4: `GOOGL
 todo visitante do evento começa a ser recusado pela moderação), `VERTEX_LOCATION` (default
 `global` — é a única região que serve `gemini-3.7-flash` hoje) e `MODERATION_L2_TIMEOUT_MS`
 (default `1500`). Desde a Tarefa C10: `ADMIN_PANEL_PASSWORD`, também do Secret Manager em
-produção — ver "Autenticação do painel de admin" acima.
+produção — ver "Autenticação do painel de admin" acima. `CARDGEN_ENABLED=1` troca o papel do
+processo inteiro — ver "Serviço `cardgen`" abaixo; **não a ligue** no serviço de ingestão.
 
 ## Testes locais
 
@@ -163,12 +164,13 @@ admin-app — sem isso a tela Rankings falha com "is not configured", achado ao 
 deploy real — e builda e publica no Cloud Run. É idempotente: rodar de novo sobre um projeto já
 provisionado só atualiza o que mudou, nunca recria ou sobrescreve um segredo já existente.
 Aceita `PROJECT_ID=outro-projeto npm run deploy:gcp -- --yes` para reproduzir em outro projeto
-sem editar nada versionado. `npm run undeploy:gcp` desfaz (Cloud Run, segredos, service
-account — nunca o banco Firestore, a menos que `--delete-database` seja passado explicitamente
-e o operador digite `EXCLUIR`). Ver `scripts/deploy.sh`/`scripts/undeploy.sh` para os passos
-exatos e todas as variáveis de ambiente aceitas.
+sem editar nada versionado. `npm run undeploy:gcp` desfaz (os dois serviços Cloud Run, o gatilho
+Eventarc, os segredos e as duas service accounts — nunca o banco Firestore, a menos que
+`--delete-database` seja passado explicitamente e o operador digite `EXCLUIR`). Ver
+`scripts/deploy.sh`/`scripts/undeploy.sh` para os passos exatos e todas as variáveis de ambiente
+aceitas.
 
-O comando manual abaixo é o que `deploy.sh` roda no passo 7 (Cloud Run) — documentado aqui para
+O comando manual abaixo é o que `deploy.sh` roda no passo 8/11 (Cloud Run) — documentado aqui para
 referência. **`--allow-unauthenticated`, não `--no-allow-unauthenticated`** — ver "Autenticação do
 painel de admin" acima para o porquê (a plataforma precisa deixar o tráfego passar; o código faz a
 autenticação real).
@@ -218,6 +220,37 @@ painel de admin" acima) protege a rota inteira de uma vez, tanto `/admin` (a UI)
   rodar `npm run build --workspace=packages/admin-app` (ou o `vendor:admin-app` do Docker).
 
 Ver "Autenticação do painel de admin" acima para por que não há IAP nesta topologia.
+
+### Serviço `cardgen`: o cartão SVG da nave, fora do fluxo do jogo
+
+`jogo-navinha-cardgen` é um **segundo serviço Cloud Run rodando a mesma imagem deste pacote**, com
+`CARDGEN_ENABLED=1`. A criação de um documento em `matches/{match_id}` dispara um gatilho Eventarc
+(`google.cloud.firestore.document.v1.created`, filtrado por `database=jogo-navinha` e
+`document=matches/{matchId}`) que chama `POST /internal/cardgen`; o serviço relê o documento,
+renderiza `ship_card_svg` a partir de `ship_spec_snapshot` e grava de volta. `src/cardgen.ts`.
+
+- **Nada disto está no caminho síncrono de `POST /v1/matches`.** O estande considera a partida
+  sincronizada sem esperar cartão nenhum, e uma falha de desenho nunca rejeita uma partida.
+- **A flag é a fronteira de segurança.** Com `CARDGEN_ENABLED=1` o processo monta **apenas**
+  `/v1/health` e `/internal/cardgen`: a ingestão e o painel não existem ali. Isso é defesa em
+  profundidade — o serviço já sobe com `--no-allow-unauthenticated` e só a SA do gatilho tem
+  `run.invoker` —, e está provado por `src/cardgen-routes.test.ts`, que sobe o `app` de verdade
+  com a flag ligada e exige **404** (não 401) em `/admin` e em `/v1/matches`.
+- **O evento não é decodificado.** O corpo do CloudEvent do Firestore é protobuf; o cabeçalho
+  `ce-subject` traz `documents/matches/{matchId}`, e reler o documento é melhor que confiar no
+  payload — o que se renderiza é sempre o estado atual, mesmo com evento fora de ordem.
+- **Sem laço:** o gatilho escuta só `created`, e a gravação de volta é um `update`. Como segunda
+  camada, o serviço sai sem escrever quando `ship_card_version` já é a corrente.
+- **Retentativa:** o Eventarc reentrega qualquer resposta não-2xx. Por isso `204` (não 4xx/5xx)
+  para falha permanente — subject malformado, documento apagado, spec ilegível — e `500` apenas
+  para erro de Firestore, que é transiente e onde a retentativa é justamente o que se quer.
+- **Índices:** `firestore.indexes.json` isenta (`indexes: []`) `ship_card_svg` e
+  `ship_spec_snapshot.visuals.svg_path_data`. São dois blobs de até ≈4 KB que ninguém vai
+  consultar e que o Firestore indexaria sozinho — custo de escrita e de armazenamento sem
+  contrapartida. Publicar isso **antes** do primeiro backfill (`scripts/backfill-ship-cards.mjs`)
+  evita gerar índice que seria apagado em seguida.
+- **Partidas anteriores ao gatilho** não têm cartão: `scripts/backfill-ship-cards.mjs` cobre o
+  passado, e serve de novo quando `SHIP_CARD_VERSION` subir.
 
 ### Por que este pacote usa Express 5, e o `daemon` usa Express 4
 
