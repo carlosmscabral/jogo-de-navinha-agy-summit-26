@@ -108,15 +108,30 @@ arquivo commitado); `PORT` é injetada pelo Cloud Run. Desde a Tarefa C4: `GOOGL
 `NODE_ENV=test` — falhar já na subida é preferível a descobrir a ausência da variável só quando
 todo visitante do evento começa a ser recusado pela moderação), `VERTEX_LOCATION` (default
 `global` — é a única região que serve `gemini-3.7-flash` hoje) e `MODERATION_L2_TIMEOUT_MS`
-(default `1500`). Desde a Tarefa C10: `ADMIN_PANEL_PASSWORD`, também do Secret Manager em
+(default `20000`, e tem que ser **menor** que o `BOOTH_MODERATION_L2_TIMEOUT_MS` do daemon, hoje
+`25000` — senão o abort local vence sempre e o fail-closed do servidor nunca chega lá).
+Desde a Tarefa C10: `ADMIN_PANEL_PASSWORD`, também do Secret Manager em
 produção — ver "Autenticação do painel de admin" acima. `CARDGEN_ENABLED=1` troca o papel do
 processo inteiro — ver "Serviço `cardgen`" abaixo; **não a ligue** no serviço de ingestão.
 
 ## Testes locais
 
 ```bash
-npx firebase emulators:start --only firestore
+npx firebase emulators:start --only firestore --project vibe-cabral
 FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 npm run test --workspace=packages/cloud-api
+```
+
+**Se a 8080 já estiver ocupada** — um `code-server`, por exemplo — os testes batem no processo
+errado e saem ≈20 falhas com cara de bug real (`405` em `clearFirestore`). Confira antes
+(`lsof -ti :8080`) e, se estiver tomada, rode o emulador noutra porta. Não existe flag de porta na
+CLI: a porta vem do `firebase.json`, então use uma cópia temporária dele, na raiz do repositório
+(caminhos relativos como `firestore.rules` são resolvidos a partir do diretório do arquivo):
+
+```bash
+jq '.emulators.firestore.port = 8085' firebase.json > firebase.emulator.json
+npx firebase emulators:start --only firestore --project vibe-cabral --config firebase.emulator.json
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8085 npm run test --workspace=packages/cloud-api
+rm firebase.emulator.json   # é arquivo descartável, não commitar
 ```
 
 `ingest.test.ts` e `canonicalize.test.ts` compartilham o mesmo projeto/banco do emulador via
