@@ -11,6 +11,7 @@ import {
   renderShipCardSvg
 } from './ship-card-svg.js';
 import { VISUAL_THEMES } from '../constants/visual-catalog.js';
+import { FALLBACK_PRESETS } from '../constants/fallback-presets.js';
 import type { ShipSpecification } from '../types/ship.js';
 
 /** Casco válido e reconhecível: serve para provar que o `d` sai byte-idêntico ao que entrou. */
@@ -119,6 +120,25 @@ describe('renderShipCardSvg', () => {
   it('cai na silhueta neutra quando o casco vem vazio', () => {
     const svg = renderShipCardSvg(makeSpec({ visuals: { svg_path_data: '' } }));
     assert.equal(attr(svg, 'path', 'd'), NEUTRAL_HULL_PATH);
+  });
+
+  it('desenha um preset de emergência com a silhueta neutra — igual ao que o piloto viu', () => {
+    // Os presets de fallback trazem MARCAÇÃO SVG em `svg_path_data` (`<polygon .../>` e
+    // companhia), não comandos de path. `isDrawablePathData` recusa, e é assim que o jogo e o
+    // pré-voo já se comportam hoje: `usesForgedHull` também recusa, e a nave é a procedural.
+    // O cartão só pode fazer o mesmo — mostrar o casco do preset aqui seria mostrar uma nave que
+    // o visitante nunca viu na tela. As CORES do preset, essas sim, são preservadas.
+    const preset = FALLBACK_PRESETS.interceptor;
+    assert.equal(
+      isDrawablePathData(preset.visuals.svg_path_data),
+      false,
+      'pré-condição: o preset não traz um path desenhável'
+    );
+
+    const svg = renderShipCardSvg(preset);
+    assert.equal(attr(svg, 'path', 'd'), NEUTRAL_HULL_PATH);
+    assert.equal(attr(svg, 'path', 'fill'), preset.visuals.primary_color);
+    assert.equal(XMLValidator.validate(svg), true);
   });
 
   it('cai na paleta do tema quando uma cor não é um hex de 6 dígitos', () => {
