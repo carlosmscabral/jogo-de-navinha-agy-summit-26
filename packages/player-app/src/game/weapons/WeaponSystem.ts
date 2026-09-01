@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BALANCE, ShipWeapons, SecondaryWeaponType, resolveFireCadence } from '@jogo/shared';
+import { BALANCE, ShipWeapons, PrimaryWeaponType, SecondaryWeaponType, resolveFireCadence } from '@jogo/shared';
 import { despawnPooled, respawnPooled } from '../objects/pooled-body.js';
 import { audioManager } from '../audio/AudioManager.js';
 
@@ -47,6 +47,23 @@ export class WeaponSystem {
       g.destroy();
     }
 
+    // A textura do laser é de 16x16 como a do plasma, e isso **não** é escolha estética:
+    // `PRIMARY_TRAVEL_PX.laser` (`packages/sim/src/combat-model.ts:88-93`) subtrai 8px de
+    // meia-altura para saber a que distância o overlap com o boss dispara, e o comentário de lá
+    // amarra esse 8 à "textura de 16px do plasma". Mudar a altura aqui desalinharia o simulador do
+    // motor em silêncio: o balanceamento passaria a ser validado contra um jogo que não existe.
+    // A diferença é de forma e matiz dentro do mesmo canvas -- feixe fino e claro contra orbe
+    // grosso e saturado.
+    if (!this.scene.textures.exists('bullet_laser')) {
+      const g = this.scene.add.graphics();
+      g.fillStyle(0x7dd3fc, 1);
+      g.fillRect(6, 0, 4, 16);
+      g.fillStyle(0xffffff, 1);
+      g.fillRect(7, 1, 2, 14);
+      g.generateTexture('bullet_laser', 16, 16);
+      g.destroy();
+    }
+
     if (!this.scene.textures.exists('bullet_vulcan')) {
       const g = this.scene.add.graphics();
       g.fillStyle(0xff9e0b, 1);
@@ -74,6 +91,41 @@ export class WeaponSystem {
    */
   onPrimaryShotsFired?: (projectiles: number) => void;
 
+  /**
+   * Textura do projétil primário, por tipo.
+   *
+   * Havia duas texturas para três tipos até 2026-09-01: os ramos `laser` e `plasma` de
+   * `firePrimary` eram a mesma linha, caractere por caractere, e um playtest reportou "as duas
+   * armas parecem exatamente iguais, só vejo bolas azuis". A **mecânica** estava certa -- a
+   * Spec 04 (`specs/04_GAME_ENGINE_AND_MECHANICS_SPEC.md:100`) manda que laser e plasma disparem
+   * um projétil por ciclo com o dano cheio, e a diferença real vive nos números que o MCP escreve
+   * (25 de dano a 750 px/s contra 35 a 650). O que faltava era essa diferença **aparecer**.
+   *
+   * As três texturas ficam na família fria de propósito. A alternativa considerada era tingir o
+   * projétil com a cor de destaque escolhida no Fast-Grill-Me, e ela foi descartada: a bala
+   * inimiga é um círculo vermelho (`MainGameScene.ts:218`, `0xef4444`) e `vermelho_sangue` é uma
+   * das seis cores do menu. Quem escolhesse vermelho passaria a partida sem distinguir o próprio
+   * tiro do tiro que o mata. Cor é o canal de amigo-contra-inimigo; a identidade da arma vai na
+   * forma.
+   */
+  static primaryBulletTexture(type: PrimaryWeaponType): string {
+    if (type === 'vulcan_spread') return 'bullet_vulcan';
+    return type === 'laser' ? 'bullet_laser' : 'bullet_plasma';
+  }
+
+  /**
+   * Timbre do disparo primário, por tipo.
+   *
+   * `AudioManager.playLaser` (`../audio/AudioManager.ts:262`) já tinha os três timbres escritos e
+   * **nenhum call-site** -- a diferenciação sonora existia pronta e nunca foi ligada. O nome do
+   * timbre do vulcan é `'vulcan'`, não `'vulcan_spread'`: o `AudioManager` não conhece
+   * `PrimaryWeaponType`, e é esta função que faz a tradução em vez de vazar o enum para lá.
+   */
+  static primaryAudioTimbre(type: PrimaryWeaponType): 'laser' | 'plasma' | 'vulcan' {
+    if (type === 'vulcan_spread') return 'vulcan';
+    return type === 'laser' ? 'laser' : 'plasma';
+  }
+
   firePrimary(x: number, y: number, time: number): boolean {
     // [D14] fire_rate já chega validado pelo schema (5 a 12 -- ver BALANCE.ranges);
     // reclampar aqui seria o próprio bug que a Tarefa B2 elimina.
@@ -94,9 +146,12 @@ export class WeaponSystem {
 
     let projectiles = 1;
 
+    const texture = WeaponSystem.primaryBulletTexture(type);
+
     if (type === 'laser') {
-      // Rapid focused laser pulse
-      this.spawnBullet(x, y - 20, 0, -speed, 'bullet_plasma', balancedDamage);
+      // Feixe único e veloz: mesmo cano e mesma cadência do plasma, projétil mais rápido e mais
+      // fraco. A diferença de aparência vem da textura, não deste ramo.
+      this.spawnBullet(x, y - 20, 0, -speed, texture, balancedDamage);
     } else if (type === 'vulcan_spread') {
       // 3-way spread (slightly reduced per-pellet damage for balance)
       const spreadDamage = Math.round(balancedDamage * BALANCE.weapons.primary.vulcan_pellet_factor);
@@ -108,13 +163,18 @@ export class WeaponSystem {
         const rad = Phaser.Math.DegToRad(a - 90);
         const vx = Math.cos(rad) * speed;
         const vy = Math.sin(rad) * speed;
-        this.spawnBullet(x, y - 10, vx, vy, 'bullet_vulcan', spreadDamage);
+        this.spawnBullet(x, y - 10, vx, vy, texture, spreadDamage);
       }
       projectiles = angles.length;
     } else {
       // Plasma cannon
-      this.spawnBullet(x, y - 20, 0, -speed, 'bullet_plasma', balancedDamage);
+      this.spawnBullet(x, y - 20, 0, -speed, texture, balancedDamage);
     }
+
+    // Depois de gastar o portão de cadência, nunca antes: um `firePrimary` recusado sai pelo
+    // `return false` lá em cima e não pode soar. Sem isso o motor grita a cada quadro em que o
+    // gatilho está apertado, e não a cada tiro.
+    audioManager.playLaser(WeaponSystem.primaryAudioTimbre(type));
 
     this.onPrimaryShotsFired?.(projectiles);
 
