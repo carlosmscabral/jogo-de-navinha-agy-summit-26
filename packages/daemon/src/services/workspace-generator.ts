@@ -57,7 +57,11 @@ const SECONDARY_WEAPON_TRADEOFFS: Record<SecondaryWeaponType, string> = {
  * distância em vez de prometer o dano somado.
  */
 const PRIMARY_WEAPON_TRADEOFFS: Record<PrimaryWeaponType, string> = {
-  laser: 'tiro rápido e preciso, projétil veloz; pouco dano por acerto, rende no fogo sustentado',
+  // Não diga "tiro rápido": `fire_rate` não faz parte do perfil do tipo (`weapons-arsenal.ts`
+  // PRIMARY_PROFILES) nem do backfill de `computeBaselineWeapons` — vem do argumento do agente,
+  // default 8, igual para os três. O que o laser realmente tem é `bullet_speed` 750 contra 650 do
+  // plasma, e 25 de dano contra 35. A opção descreve o que o MCP escreve, não o que soa bem.
+  laser: 'projétil mais veloz e preciso; menos dano por acerto, rende no fogo sustentado',
   plasma: 'maior dano por acerto e projétil mais lento; recompensa mirar em vez de varrer',
   vulcan_spread: 'várias pelotas em leque; cobre muito espaço de perto e desperdiça de longe'
 };
@@ -492,7 +496,7 @@ ${askQuestionPayload}
 
    Grave as respostas em \`build_metadata.fast_grill_me_choices\` com EXATAMENTE estas QUATRO
    chaves, usando estes slugs em inglês (nunca o texto em português, nunca outro nome de campo).
-   O rótulo de cada opção é o que vem **antes** do travessão — \`Laser Contínuo — tiro rápido…\`
+   O rótulo de cada opção é o que vem **antes** do travessão — \`${PRIMARY_WEAPON_LABELS.laser} — ${PRIMARY_WEAPON_TRADEOFFS.laser.split(';')[0]}…\`
    é \`"laser"\`:
 
    \`primary_weapon\`:
