@@ -12,7 +12,7 @@ echo "Matando daemon (porta 3000)..."
 npm run --silent kill:daemon >/dev/null 2>&1 || true
 
 echo "Matando player-app / leaderboard (portas 5173, 5174)..."
-lsof -ti :5173 :5174 2>/dev/null | xargs -r kill -9 2>/dev/null || true
+lsof -ti :5173 -i :5174 2>/dev/null | xargs -r kill -9 2>/dev/null || true
 
 echo "Matando supervisor do terminal..."
 pkill -f booth-terminal.sh 2>/dev/null || true

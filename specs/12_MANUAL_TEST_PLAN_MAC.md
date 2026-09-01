@@ -81,7 +81,7 @@ npm install
 - [ ] **0.4 — Portas livres**
 
 ```bash
-lsof -ti :3000 :5173 :5174   # não deve retornar nada
+lsof -ti :3000 -i :5173 -i :5174   # não deve retornar nada
 npm run kill:daemon          # se a 3000 estiver ocupada
 ```
 
