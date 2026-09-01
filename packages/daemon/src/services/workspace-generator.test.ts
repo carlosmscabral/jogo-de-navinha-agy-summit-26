@@ -171,6 +171,26 @@ describe('WorkspaceGeneratorService — GEMINI.md', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  // Duas respostas inválidas na mesma rodada têm que caber numa reperguntada só. Medido em sessão
+  // real em 2026-09-01: o piloto escreveu "picanha" na primária e "lazanha" no casco, e o agente
+  // agrupou as duas — mas o texto dizia "apenas aquela pergunta", no singular, e uma leitura
+  // literal gastaria dois turnos onde cabe um. Cada turno extra sai do mesmo orçamento pré-MCP.
+  it('manda reperguntar todas as inválidas de uma vez, preservando as respostas válidas', () => {
+    const dir = generate();
+    const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
+
+    assert.match(md, /chame `ask_question` \*\*uma vez só\*\*/);
+    assert.match(md, /\*\*exatamente as perguntas inválidas\*\* — todas elas juntas/);
+    assert.match(md, /não repergunte\s+o que o piloto já respondeu/);
+    assert.match(md, /nunca\s+repita as 4 por causa de uma/);
+    // Sem esta frase o agente para na segunda rodada se o piloto insistir no texto livre.
+    assert.match(md, /rodada nova trouxer resposta inválida de\s+novo/);
+    // O singular era a ambiguidade; ele não pode voltar.
+    assert.doesNotMatch(md, /repergunte só aquela/);
+
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   // Cada opção precisa dizer o que ela faz no jogo — é o pedido inteiro desta mudança. As frases
   // saem dos catálogos, então o teste cobra a presença de uma descrição por opção, não o texto.
   // A cor fica de fora de propósito: o rótulo já é a descrição.

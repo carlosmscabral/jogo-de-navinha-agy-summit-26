@@ -1577,6 +1577,25 @@ frente com a escolha em branco.
 Repita escolhendo `Write-in...` e digitando `Canhão de Plasma` — texto que **corresponde** a uma
 opção. Aí sim ele deve aceitar e seguir.
 
+- [ ] **21.3c — Duas inválidas voltam numa reperguntada só**
+
+Sessão nova. Use `Write-in...` em **duas** perguntas não adjacentes — primária e casco — com texto
+absurdo (`picanha` e `lazanha` servem), e responda a secundária e a cor normalmente, pelo seletor.
+
+Esperado: **uma** reperguntada com **duas** perguntas (`Question 1/2` e `2/2`), a primária e o
+casco, com as opções de sempre. A secundária e a cor **não** reaparecem — o que já foi respondido
+fica. Duas reperguntadas separadas custam um turno de modelo a mais do orçamento pré-MCP medido em
+21.3; se acontecer, anote no Bloco 24.
+
+Confirme que o texto absurdo não sobreviveu em lugar nenhum:
+
+```bash
+jq '.build_metadata.fast_grill_me_choices' /tmp/booth_session/ship_spec.json
+```
+
+Esperado: os quatro slugs válidos das escolhas **corrigidas**, e nenhum vestígio de `picanha`.
+Passou em 2026-09-01 com `plasma` / `homing_missiles` / `cyberpunk_gold` / `branco_gelido`.
+
 - [ ] **21.4 — O arquivo grava as quatro chaves**
 
 ```bash
@@ -1780,6 +1799,7 @@ pgrep -fl agy         # vazio
 | 21.1 | Seletor de setas, não digitação | | |
 | 21.2 | Toda opção descrita e à mostra | | |
 | 21.3 | Grill-me até a 1ª chamada MCP | | ____ s (orçamento pré-MCP) |
+| 21.3c | Duas inválidas numa reperguntada só | | |
 | 21.4 | Quatro chaves gravadas | | |
 | 21.6 | Cor muda, geometria não | | |
 | 22.1 | Plasma + EMP alcançável | | |

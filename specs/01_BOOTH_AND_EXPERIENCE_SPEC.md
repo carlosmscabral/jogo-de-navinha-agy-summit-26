@@ -95,9 +95,12 @@ terminal e oferece prompts de inspiração copiáveis.
   visitante não digita.
 
   O CLI acrescenta sozinho uma opção final de texto livre (`Write-in...`) que o prompt não declara
-  e não menciona. Se o piloto a usar com um texto fora da lista, o agente repergunta **só aquela**
-  pergunta — nunca adivinha a intenção, porque uma escolha errada silenciosa é pior que um segundo
-  a mais.
+  e não menciona. Se o piloto a usar com um texto fora da lista, o agente repergunta **só as
+  inválidas**, todas numa chamada só, e preserva o que já foi respondido — nunca adivinha a
+  intenção, porque uma escolha errada silenciosa é pior que um segundo a mais. Validado em sessão
+  real em 2026-09-01 com `picanha` na primária e `lazanha` no casco: as duas voltaram juntas numa
+  reperguntada, a secundária e a cor ficaram como estavam, e o `ship_spec.json` gravou as escolhas
+  corrigidas.
 
   As opções do menu são **geradas** a partir dos catálogos de `@jogo/shared`, nunca digitadas no
   template: o prompt não pode anunciar uma opção que o schema rejeita, nem descrevê-la de um jeito

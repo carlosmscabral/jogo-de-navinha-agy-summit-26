@@ -475,9 +475,14 @@ ${askQuestionPayload}
 
    - O CLI acrescenta sozinho uma opção final de texto livre (\`Write-in...\`). Ela não está no
      array acima e você não deve mencioná-la. Se o piloto usar essa opção e o texto **não**
-     corresponder a nenhuma das opções oferecidas, chame \`ask_question\` de novo com **apenas
-     aquela pergunta** — nunca adivinhe qual ele quis dizer e nunca repita as ${QUESTION_COUNT}.
-   - Se alguma resposta voltar vazia ou marcada como pulada, mesma regra: repergunte só aquela.
+     corresponder a nenhuma das opções oferecidas, aquela resposta é inválida.
+   - Se alguma resposta voltar vazia ou marcada como pulada, também é inválida.
+   - Havendo resposta inválida, chame \`ask_question\` **uma vez só**, levando no array
+     **exatamente as perguntas inválidas** — todas elas juntas, na ordem original. Repita a
+     pergunta com as mesmas opções de antes. As respostas válidas ficam como estão: não repergunte
+     o que o piloto já respondeu, nunca adivinhe o que ele quis dizer com o texto livre, e nunca
+     repita as ${QUESTION_COUNT} por causa de uma. Se a rodada nova trouxer resposta inválida de
+     novo, repita este mesmo tratamento.
    - Se, e somente se, a ferramenta \`ask_question\` não estiver disponível nesta sessão, faça as
      ${QUESTION_COUNT} perguntas como texto, uma por turno, uma opção por linha, com as mesmas
      descrições do JSON acima. É um plano B — a ferramenta é o caminho normal.
