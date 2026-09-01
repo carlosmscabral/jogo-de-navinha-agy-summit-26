@@ -100,7 +100,20 @@ terminal e oferece prompts de inspiração copiáveis.
   intenção, porque uma escolha errada silenciosa é pior que um segundo a mais. Validado em sessão
   real em 2026-09-01 com `picanha` na primária e `lazanha` no casco: as duas voltaram juntas numa
   reperguntada, a secundária e a cor ficaram como estavam, e o `ship_spec.json` gravou as escolhas
-  corrigidas.
+  corrigidas. Quatro inválidas de uma vez reperguntam as quatro, e texto livre que **acerta** a
+  opção é aceito com folga — `Plasma`, `EMP`, `Rosa Choque` e o rótulo inteiro com descrição
+  passaram todos.
+
+  **O Esc é o buraco conhecido, e a mitigação é parcial por escolha.** Ele cancela o turno do agente
+  **sem encerrar a sessão**: o seletor some e sobra o prompt do `agy` aberto, num terminal público.
+  O daemon não enxerga isso — ele só lê `mcp_audit.log` e `ship_spec.json` —, então quem recupera é
+  o próprio `AGENTS.md`, com uma regra que manda reemitir `ask_question` diante de qualquer mensagem
+  que não seja resposta do seletor, preservando as respostas já válidas. Isso cobre o caso comum, o
+  do reflexo; **não** cobre quem quer explorar o prompt aberto de propósito. A rede final continua
+  sendo o orçamento pré-MCP de 135s, que expira e entrega o preset de emergência. Uma restrição de
+  verdade exigiria `agy --sandbox`, ainda não adotada porque o `agy` grava o `ship_spec.json` via
+  heredoc de shell quando o `Create(...)` falha, e restringir o terminal mataria esse caminho em
+  silêncio.
 
   As opções do menu são **geradas** a partir dos catálogos de `@jogo/shared`, nunca digitadas no
   template: o prompt não pode anunciar uma opção que o schema rejeita, nem descrevê-la de um jeito

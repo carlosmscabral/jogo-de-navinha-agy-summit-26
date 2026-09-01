@@ -1596,6 +1596,44 @@ jq '.build_metadata.fast_grill_me_choices' /tmp/booth_session/ship_spec.json
 Esperado: os quatro slugs válidos das escolhas **corrigidas**, e nenhum vestígio de `picanha`.
 Passou em 2026-09-01 com `plasma` / `homing_missiles` / `cyberpunk_gold` / `branco_gelido`.
 
+- [ ] **21.3d — As quatro inválidas voltam as quatro**
+
+Sessão nova. Use `Write-in...` nas **quatro** perguntas, com o mesmo texto absurdo em todas
+(`lerolero` serve).
+
+Esperado: uma reperguntada com as **quatro** perguntas, `Question 1/4` a `4/4`. Este é o caso em que
+duas regras do prompt se encostam — "leve exatamente as perguntas inválidas, todas juntas" contra
+"nunca repita as 4 por causa de uma" — e o certo é reperguntar as quatro, porque não há *uma*
+causando o repique. Passou em 2026-09-01.
+
+- [ ] **21.3e — Texto livre que acerta a opção é aceito**
+
+Sessão nova. Responda as quatro por `Write-in...`, cada uma numa forma diferente do rótulo:
+`Plasma` (só o slug), `EMP` (rótulo abreviado), o **rótulo inteiro com a descrição** colado do
+seletor, e `Rosa Choque` (rótulo exato).
+
+Esperado: as quatro aceitas de primeira, **sem nenhuma reperguntada**. Um piloto que digita a
+resposta certa e mesmo assim é reperguntado conclui que o estande está quebrado — é uma falha pior
+que a do texto absurdo, que ao menos é culpa dele. Passou em 2026-09-01.
+
+- [ ] **21.3f — Esc não deixa o piloto preso**
+
+Sessão nova. Com o seletor na tela, aperte **Esc**.
+
+Esperado, em duas partes. Primeiro o fato conhecido: o Esc **cancela o turno sem encerrar a
+sessão** — o seletor some e sobra o prompt do `agy` aberto. Isso é comportamento do CLI e não tem
+conserto do nosso lado. Depois, a recuperação: digite qualquer coisa que não seja uma resposta
+(`oi`, `?`, `o que eu faço`) e o agente tem de **reemitir o seletor imediatamente**, com as
+perguntas que ainda faltam e sem uma palavra de conversa, saudação ou desculpa. As respostas já
+dadas não podem reaparecer.
+
+Se em vez disso ele conversar, se apresentar, ou perguntar se você quer continuar, a regra de
+recuperação do `AGENTS.md` não pegou — anote no Bloco 24.
+
+Teste também a variante de abandono: aperte Esc e **não digite nada**. Esperado: nada acontece por
+até 135s e então o daemon entrega o preset de emergência (é o orçamento pré-MCP, armado uma vez no
+início da sessão e nunca rearmado). A tela 1 deve mostrar o aviso de nave de preset, não travar.
+
 - [ ] **21.4 — O arquivo grava as quatro chaves**
 
 ```bash
@@ -1800,6 +1838,9 @@ pgrep -fl agy         # vazio
 | 21.2 | Toda opção descrita e à mostra | | |
 | 21.3 | Grill-me até a 1ª chamada MCP | | ____ s (orçamento pré-MCP) |
 | 21.3c | Duas inválidas numa reperguntada só | | |
+| 21.3d | Quatro inválidas voltam as quatro | | |
+| 21.3e | Texto livre certo é aceito de primeira | | |
+| 21.3f | Esc: o seletor volta sozinho | | |
 | 21.4 | Quatro chaves gravadas | | |
 | 21.6 | Cor muda, geometria não | | |
 | 22.1 | Plasma + EMP alcançável | | |
