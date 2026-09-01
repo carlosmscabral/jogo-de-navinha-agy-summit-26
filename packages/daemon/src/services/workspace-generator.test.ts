@@ -123,21 +123,48 @@ describe('WorkspaceGeneratorService — GEMINI.md', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  // Até 2026-08-30 as quatro perguntas vinham num turno só e o piloto respondia quatro dígitos de
-  // uma vez. Ninguém errava, mas ninguém escolhia informado: só a secundária tinha descrição,
-  // porque só ela cabia. Uma pergunta por turno compra espaço para descrever cada opção.
-  it('Fast-Grill-Me (PASSO 1) faz uma pergunta por turno, com um cartão numerado por etapa', () => {
+  // O PASSO 1 embute o argumento literal da chamada de `ask_question`. Como o bloco é o único
+  // cercado por ```json no prompt inteiro, o teste consegue parseá-lo de verdade em vez de casar
+  // regex — e um JSON que não parseia aqui é uma chamada que morre no estande.
+  function grillMePayload(md: string): {
+    questions: { question: string; options: string[]; is_multi_select: boolean }[];
+  } {
+    const fence = md.match(/```json\n([\s\S]*?)\n```/);
+    assert.ok(fence, 'bloco JSON do ask_question ausente do PASSO 1');
+    return JSON.parse(fence[1]);
+  }
+
+  // Até 2026-08-31 o agente escrevia as quatro perguntas como texto e o piloto digitava o número.
+  // Agora quem desenha é o CLI: `ask_question` numera as opções, mostra o cursor `>` que anda com
+  // as setas e caminha `Question 1/4` a `4/4` sozinho. Uma chamada só, com as quatro perguntas no
+  // array, troca quatro idas e voltas ao modelo por uma — é o maior ganho de SLA disponível aqui.
+  it('Fast-Grill-Me (PASSO 1) faz as quatro perguntas numa única chamada de ask_question', () => {
     const dir = generate();
     const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
 
-    assert.match(md, /\*\*uma por turno\*\*/);
-    assert.match(md, /\*\*pare e espere\*\*/);
-    for (let n = 1; n <= 4; n++) {
-      assert.match(md, new RegExp(`PERGUNTA ${n}/4 — `), `cartão da pergunta ${n} ausente`);
+    assert.match(md, /\*\*uma única chamada\*\* da\s+ferramenta `ask_question`/);
+    assert.match(md, /\*\*ÚNICA\*\* do turno/);
+    assert.match(md, /\*\*pare de gerar\s+imediatamente\*\*/);
+
+    const { questions } = grillMePayload(md);
+    assert.equal(questions.length, 4, 'a chamada tem que levar as quatro perguntas de uma vez');
+    for (const q of questions) {
+      assert.equal(q.is_multi_select, false, `'${q.question}' deixou de ser seleção única`);
+      assert.ok(q.options.length >= 2, `'${q.question}' com menos de duas opções`);
+      // O CLI numera sozinho: uma opção pré-numerada aqui renderiza como "1. 1) Laser".
+      for (const opt of q.options) {
+        assert.doesNotMatch(opt, /^\s*\d+[).\-]/, `opção pré-numerada: '${opt}'`);
+      }
+      // A ferramenta acrescenta o write-in por conta própria; declará-lo duplicaria a opção.
+      assert.ok(
+        !q.options.some((o) => /write-in|outra|nenhuma/i.test(o)),
+        `'${q.question}' declara uma opção que o CLI já acrescenta`
+      );
     }
 
-    // O formato antigo não pode sobreviver em lugar nenhum do prompt: as duas instruções são
+    // O formato antigo não pode sobreviver em lugar nenhum do prompt: as instruções seriam
     // contraditórias, e um agente que encontrasse as duas escolheria a errada metade das vezes.
+    assert.doesNotMatch(md, /PERGUNTA \d\/4/);
     assert.doesNotMatch(md, /de uma vez só, em UM único/);
     assert.doesNotMatch(md, /\[1\] Canhão primário:/);
 
@@ -146,21 +173,29 @@ describe('WorkspaceGeneratorService — GEMINI.md', () => {
 
   // Cada opção precisa dizer o que ela faz no jogo — é o pedido inteiro desta mudança. As frases
   // saem dos catálogos, então o teste cobra a presença de uma descrição por opção, não o texto.
-  it('descreve cada arma e cada formato de casco na própria linha da opção', () => {
+  // A cor fica de fora de propósito: o rótulo já é a descrição.
+  it('descreve cada arma e cada formato de casco na própria opção do seletor', () => {
     const dir = generate();
     const md = fs.readFileSync(path.join(dir, 'GEMINI.md'), 'utf8');
-    const passo1 = md.slice(md.indexOf('PERGUNTA 1/4'), md.indexOf('PERGUNTA 4/4'));
+    const [primaria, secundaria, casco, cor] = grillMePayload(md).questions;
+
+    const described = (q: { options: string[] }, label: string) =>
+      q.options.some((o) => new RegExp(`^${label} — \\S`).test(o));
 
     for (const label of Object.values(PRIMARY_WEAPON_LABELS)) {
-      assert.match(passo1, new RegExp(`\\d\\) ${label} — \\S`), `primária '${label}' sem descrição`);
+      assert.ok(described(primaria, label), `primária '${label}' sem descrição`);
     }
     for (const key of GRILL_ME_SECONDARY_ORDER) {
-      const label = SECONDARY_WEAPON_LABELS[key];
-      assert.match(passo1, new RegExp(`\\d\\) ${label} — \\S`), `secundária '${key}' sem descrição`);
+      assert.ok(
+        described(secundaria, SECONDARY_WEAPON_LABELS[key]),
+        `secundária '${key}' sem descrição`
+      );
     }
     for (const key of VISUAL_THEME_ORDER) {
-      const label = VISUAL_THEMES[key].label;
-      assert.match(passo1, new RegExp(`\\d\\) ${label} — \\S`), `tema '${key}' sem descrição`);
+      assert.ok(described(casco, VISUAL_THEMES[key].label), `tema '${key}' sem descrição`);
+    }
+    for (const opt of cor.options) {
+      assert.doesNotMatch(opt, / — /, `a cor '${opt}' ganhou descrição e custa SLA à toa`);
     }
 
     fs.rmSync(dir, { recursive: true, force: true });
@@ -202,7 +237,7 @@ describe('WorkspaceGeneratorService — GEMINI.md', () => {
     assert.ok(md.includes(BOOTH_KICKOFF_PROMPT), 'a frase de abertura do estande não aparece');
     assert.match(md, /sem saudação/);
     assert.match(md, /sem chamar nenhuma ferramenta\s+MCP antes delas/);
-    assert.match(md, /é a `PERGUNTA 1\/4`, sozinha/);
+    assert.match(md, /é o seletor da\s+`Question 1\/4`, sozinho/);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 

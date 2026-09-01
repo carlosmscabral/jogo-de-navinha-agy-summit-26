@@ -58,6 +58,15 @@ modelo simplesmente não gravar o arquivo, a estação fica parada até que algu
 > ser ignorada. O Bloco 21.3 do [plano de teste manual](./12_MANUAL_TEST_PLAN_MAC.md) cronometra
 > essa janela; é ele que confirma ou derruba os 135s.
 
+> **Nota de 2026-09-01 — os 135s ficaram folgados de propósito.** No dia seguinte o Fast-Grill-Me
+> passou de quatro turnos de texto para **uma única chamada** de `ask_question` (§ Fast Grill-Me da
+> [Spec 01](./01_BOOTH_AND_EXPERIENCE_SPEC.md)): o CLI caminha entre as quatro perguntas localmente,
+> então as quatro idas e voltas ao modelo viraram uma. A parte do orçamento que era latência do
+> Gemini praticamente sumiu; o que resta é tempo de leitura humana, que não mudou. Os números **não
+> foram reduzidos junto** — reduzir agora seria trocar uma estimativa por outra. O Bloco 21.3 mede,
+> e só depois da medição vale mexer. Se a medição vier bem abaixo, o pré-MCP é o primeiro candidato
+> a voltar, e o teto tem de acompanhar para a invariante continuar de pé.
+
 Ao disparar:
 
 1. Encerra o grupo de processos do `agy` — ver [Spec 03](./03_AGY_HARNESS_AND_INTEGRATION_SPEC.md) §6.2.

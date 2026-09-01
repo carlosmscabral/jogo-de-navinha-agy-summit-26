@@ -594,7 +594,7 @@ self-service da experiência `agy`. Se aparecer um botão desses, é regressão.
 
 - [ ] **5.12 — A forja acontece de verdade**
 
-No Terminal 3, o `agy` conversa com você (Fast-Grill-Me: quatro perguntas, uma por turno). Na Tela 1, os
+No Terminal 3, o `agy` conversa com você (Fast-Grill-Me: quatro perguntas num seletor de setas). Na Tela 1, os
 badges de MCP acendem ao vivo conforme as ferramentas são chamadas.
 
 - [ ] **5.13 — `/agents` e `/mcp` listam só o desta sessão**
@@ -1504,54 +1504,78 @@ por isso.
 
 - [ ] **20.6 — O agente começa pelo PASSO 1, sem enrolação**
 
-Esperado: a primeira resposta do `agy` é a `PERGUNTA 1/4`, **sozinha**. Não pode haver saudação,
-resumo do protocolo, pergunta sobre o que o piloto quer, anúncio de quantas perguntas vêm pela
-frente, nem chamada de ferramenta MCP antes dela.
+Esperado: a primeira coisa na tela é o seletor da `Question 1/4`, **sozinho**. Não pode haver
+saudação, resumo do protocolo, pergunta sobre o que o piloto quer, anúncio de quantas perguntas vêm
+pela frente, nem chamada de ferramenta MCP antes dele.
 
 ---
 
 ## Bloco 21 — Grill-me de 4 perguntas, caminho feliz
 
-- [ ] **21.1 — Uma pergunta por turno, nunca duas**
+- [ ] **21.1 — O grill-me é um seletor, não um texto para digitar**
 
-Esperado: o `agy` mostra `PERGUNTA 1/4`, para e espera. As perguntas 2, 3 e 4 **não** podem
-aparecer antes de você responder a anterior. Entre a sua resposta e o próximo cartão não pode
-haver comentário, elogio nem repetição da escolha — só o cartão seguinte.
+Esperado: o `agy` chama a ferramenta `ask_question` e o CLI desenha o widget de seleção — cabeçalho
+`Question 1/4`, opções numeradas por ele, cursor `>` na primeira e a linha
+`[Use arrow keys to navigate, Enter to select]`.
+
+**Ande com a seta para baixo e confirme com Enter.** O cursor tem que se mover. Se em vez do widget
+aparecer texto corrido pedindo que você digite um número, o agente caiu no plano B do PASSO 1 (o
+caminho para quando `ask_question` não existe) — anote no Bloco 24, porque é a feature inteira que
+falhou, ainda que a sessão siga funcionando.
+
+O agente **não** pode escrever nada antes nem depois da chamada — nem saudação, nem comentário
+sobre a escolha entre uma pergunta e outra.
 
 - [ ] **21.2 — Cada opção vem descrita, e todas as opções estão à mostra**
 
-Confira, cartão por cartão. As três primeiras perguntas têm uma linha por opção no formato
-`n) Rótulo — descrição`; a quarta lista só os rótulos.
+Confira, pergunta por pergunta. As três primeiras trazem `Rótulo — descrição` em cada opção; a
+quarta lista só os rótulos. A numeração é do CLI: não pode haver número duplicado (`1. 1) Laser`).
 
-- `PERGUNTA 1/4` tem **3** opções descritas: Laser Contínuo, Canhão de Plasma, Vulcan em Leque
-- `PERGUNTA 2/4` tem **2** opções descritas: Mísseis Teleguiados e Pulso EMP — e o EMP diz que
+- `Question 1/4` tem **3** opções descritas: Laser Contínuo, Canhão de Plasma, Vulcan em Leque
+- `Question 2/4` tem **2** opções descritas: Mísseis Teleguiados e Pulso EMP — e o EMP diz que
   **não fere o boss**
-- `PERGUNTA 3/4` tem **3** temas, cada um com a forma do casco descrita
-- `PERGUNTA 4/4` tem **6** cores nomeadas (Rosa Choque, Ciano Elétrico, Verde Ácido, Vermelho
+- `Question 3/4` tem **3** temas, cada um com a forma do casco descrita
+- `Question 4/4` tem **6** cores nomeadas (Rosa Choque, Ciano Elétrico, Verde Ácido, Vermelho
   Sangue, Dourado Royal, Branco Gélido)
 
-`Sem armamento secundário` **não** pode aparecer.
+`Sem armamento secundário` **não** pode aparecer. As descrições longas podem quebrar em duas linhas
+— isso é esperado; o que não pode é vir **truncada**, com a frase cortada no fim da linha.
 
-- [ ] **21.3 — Quatro respostas, uma de cada vez**
+O CLI acrescenta sozinho uma última opção `Write-in...` em cada pergunta. Ela é dele, não nossa:
+confira que ela aparece **uma vez só** por pergunta (se aparecer duas, o prompt está declarando uma
+opção que o CLI já dá de graça).
 
-Responda `1`, depois `1`, depois `1`, depois `2` (Laser + Mísseis + Synthwave + Ciano Elétrico),
-esperando o cartão seguinte a cada vez.
+- [ ] **21.3 — As quatro perguntas vêm de uma chamada só**
 
-Esperado: depois da quarta resposta o agente vai **direto** ao PASSO 2 (chamadas MCP), sem
-resumir as escolhas e sem perguntar se pode começar.
+Percorra as quatro com as setas: Laser Contínuo → Mísseis Teleguiados → Synthwave 80s → Ciano
+Elétrico.
 
-> **Cronometre este bloco.** Da `PERGUNTA 1/4` até a primeira chamada MCP aparecer na Tela 1. Esse
+Esperado: o cabeçalho caminha `Question 1/4`, `2/4`, `3/4`, `4/4` **sem pausa de processamento
+entre elas** — não há ida e volta ao modelo no meio, o CLI resolve localmente. Depois da quarta o
+agente vai **direto** ao PASSO 2 (chamadas MCP), sem resumir as escolhas e sem perguntar se pode
+começar.
+
+> **Cronometre este bloco.** Da `Question 1/4` até a primeira chamada MCP aparecer na Tela 1. Esse
 > intervalo tem que caber em `AGY_PRE_MCP_SILENCE_TIMEOUT_MS` (`daemon/src/index.ts`), que é um
 > orçamento total de sessão-até-primeira-ferramenta, **não** um relógio de silêncio: ele é armado
-> uma vez e nunca rearmado. Quatro turnos consomem o mesmo orçamento que um. Anote o tempo no
-> Bloco 24 mesmo se passar — o fallback disparando aqui é o risco central desta mudança.
+> uma vez e nunca rearmado.
+>
+> O valor atual (135s) foi calibrado para o formato anterior, de quatro turnos de texto com uma ida
+> e volta ao modelo em cada. Com uma chamada só, a latência do Gemini quase some do orçamento e
+> sobra tempo de leitura humana. **Espera-se folga grande.** Anote o número mesmo assim: é ele que
+> autoriza (ou não) baixar o pré-MCP e o teto rígido depois, conforme a nota de 2026-09-01 da
+> [Spec 06](./06_RELIABILITY_FAILOVER_AND_SECURITY_SPEC.md) §1.1.
 
-- [ ] **21.3b — Responder pelo nome funciona igual**
+- [ ] **21.3b — O `Write-in...` não deixa passar escolha inválida**
 
-Numa sessão nova, responda a `PERGUNTA 1/4` com `Canhão de Plasma` em vez de `2`.
+Numa sessão nova, na `Question 1/4` escolha `Write-in...` e digite `um canhão de fótons`.
 
-Esperado: o agente aceita e segue. Responder algo fora da lista (ex.: `7`) deve repetir **só**
-aquela pergunta, sem reiniciar o grill-me.
+Esperado: o agente **repergunta só aquela pergunta**, com o mesmo widget e as mesmas três opções.
+Não pode adivinhar qual você quis dizer, não pode reiniciar o grill-me do zero e não pode seguir em
+frente com a escolha em branco.
+
+Repita escolhendo `Write-in...` e digitando `Canhão de Plasma` — texto que **corresponde** a uma
+opção. Aí sim ele deve aceitar e seguir.
 
 - [ ] **21.4 — O arquivo grava as quatro chaves**
 
@@ -1580,8 +1604,8 @@ paleta padrão de outro tema.
 
 - [ ] **21.6 — Segunda sessão: só a cor muda**
 
-Reinicie (`Ctrl+Shift+F12` na tela 1), refaça o fluxo e responda `1`, `1`, `1`, `4` — **mesmo** tema
-Synthwave, cor Vermelho Sangue.
+Reinicie (`Ctrl+Shift+F12` na tela 1), refaça o fluxo e selecione Laser + Mísseis + Synthwave +
+Vermelho Sangue — **mesmo** tema da sessão anterior, cor diferente.
 
 Esperado: a **geometria** do casco continua reconhecivelmente Synthwave; só a paleta muda. Se a
 silhueta mudar radicalmente, o `aesthetic-designer` está deixando a cor governar a estrutura —
@@ -1595,8 +1619,7 @@ O ponto do bloco: `emp_burst` nunca foi escolhível por um visitante até esta e
 
 - [ ] **22.1 — Plasma + EMP**
 
-Nova sessão. Responda `2`, `2`, `3`, `5` (Plasma + EMP + Cyberpunk Gold + Dourado Royal), uma
-resposta por cartão.
+Nova sessão. Selecione Plasma + EMP + Cyberpunk Gold + Dourado Royal.
 
 ```bash
 jq '.weapons, .build_metadata.fast_grill_me_choices' /tmp/booth_session/ship_spec.json
@@ -1623,12 +1646,13 @@ persona está fraco — anote no Bloco 24.
 
 - [ ] **22.4 — Laser + EMP, só para confirmar que o par é livre**
 
-Nova sessão, responda `1`, `2`, `2`, `1`. Esperado: `laser` + `emp_burst` gravados. Não precisa jogar.
+Nova sessão, selecione Laser + EMP + Dark Void Stealth + Rosa Choque. Esperado: `laser` +
+`emp_burst` gravados. Não precisa jogar.
 
 - [ ] **22.5 — Um MCP só, para exercitar a fórmula-base**
 
 Nova sessão; nos sliders **desmarque** `weapons-arsenal`, deixando só `hull-propulsion`; escolha
-`systems-engineer`. Responda `3`, `1`, `2`, `3` (Vulcan + Mísseis).
+`systems-engineer`. Selecione Vulcan + Mísseis + Dark Void Stealth + Verde Ácido.
 
 **Não procure `weapons` no arquivo.** Com `weapons-arsenal` desmarcado o contrato autoriza o agente
 a omitir o bloco inteiro, e o daemon **não reescreve** o `ship_spec.json`: `applyBaselineForUnselectedMcps`
@@ -1728,9 +1752,9 @@ atrai → registro → briefing → sliders → o terminal abre já perguntando 
 **Alvo ≤ 2m30s, teto 3m00s** (descontando os 90s de partida, que são fixos).
 
 A abertura automática do terminal deve *encurtar* a hesitação na tela do AGY. As quatro perguntas
-sequenciais não podem comer esse ganho. **Se estourar o teto:** cortar a `PERGUNTA 4/4` de cor — o
+sequenciais não podem comer esse ganho. **Se estourar o teto:** cortar a `Question 4/4` de cor — o
 `accent_color` volta a ser o `signature_accent` do tema via backfill do `normalizeSpec`, que já
-existe, então é remover um cartão do prompt e nada mais.
+existe, então é tirar uma entrada do array `questions` e nada mais.
 
 > **Compare com o tempo anotado em 21.3.** São dois orçamentos diferentes e o menor não é o do
 > SLA: a jornada tem 3m00s de teto, mas a fase entre a abertura da sessão e a primeira chamada MCP
@@ -1753,7 +1777,7 @@ pgrep -fl agy         # vazio
 | 20.2 | Terminal começa sozinho | | |
 | 20.5 | Clipboard entre telas (contingência) | | |
 | 20.6 | Agente começa no PASSO 1 | | |
-| 21.1 | Uma pergunta por turno | | |
+| 21.1 | Seletor de setas, não digitação | | |
 | 21.2 | Toda opção descrita e à mostra | | |
 | 21.3 | Grill-me até a 1ª chamada MCP | | ____ s (orçamento pré-MCP) |
 | 21.4 | Quatro chaves gravadas | | |
