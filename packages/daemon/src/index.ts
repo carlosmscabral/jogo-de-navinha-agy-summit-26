@@ -12,6 +12,7 @@ import { FileWatcherService } from './services/file-watcher.js';
 import { moderateRemotely } from './services/remote-moderation.js';
 import { startModeration, type PendingModeration } from './services/pending-moderation.js';
 import { CloudSyncService } from './services/cloud-sync.js';
+import { CatalogSyncService } from './services/catalog-sync.js';
 import { parseEnvFile, findShadowedKeys, buildShadowWarning } from './services/env-precedence.js';
 import { resolveStationId, buildStationIdWarning } from './services/station-id.js';
 import { validateCallsign, placeholderCallsign, selectFallbackPreset, EnergySliders, ShipSpecification } from '@jogo/shared';
@@ -227,6 +228,20 @@ const cloudSync = new CloudSyncService(sqliteBuffer, {
   token: getCloudApiToken
 });
 cloudSync.start(30_000);
+
+// Fase "dois estandes" — o caminho INVERSO: o que a nuvem sabe voltando para o estande. Sem este
+// worker, cada Mac casa nomes de empresa contra a própria lista e a mesma empresa vira dois
+// documentos em `company_rankings` — de forma silenciosa, porque grafias diferentes resolvem com
+// confiança alta dos dois lados e nada é marcado para revisão. Ver catalog-sync.ts.
+//
+// `BOOTH_CATALOG_ALLOW_MASS_REMOVAL=1` é o escape para uma poda grande e intencional do catálogo.
+// Fora dele, um `PUT` com a lista truncada não consegue esvaziar as duas estações de uma vez.
+const catalogSync = new CatalogSyncService(sqliteBuffer, {
+  base: CLOUD_API_BASE,
+  token: getCloudApiToken,
+  allowMassRemoval: process.env.BOOTH_CATALOG_ALLOW_MASS_REMOVAL === '1'
+});
+catalogSync.start(Number(process.env.BOOTH_CATALOG_SYNC_INTERVAL_MS) || undefined);
 
 let currentSessionMetadata: any = null;
 
@@ -545,6 +560,16 @@ app.post('/api/matches', async (req, res) => {
 
 app.get('/api/sync/status', (_req, res) => {
   res.json(cloudSync.status());
+});
+
+/**
+ * Rota IRMÃ de `/api/sync/status`, não uma extensão dela: aquela responde "a fila de SAÍDA está
+ * drenando?" e o formato do payload está documentado em `specs/14_INSTALLATION_GUIDE.md` e no
+ * plano de teste manual. Esta responde "o que a nuvem mandou para cá chegou?" — versão de
+ * catálogo aplicada, cursor de aliases e o último erro de cada pull, separadamente.
+ */
+app.get('/api/catalog/status', (_req, res) => {
+  res.json(catalogSync.status());
 });
 
 app.post('/api/session/reset', (req, res) => {

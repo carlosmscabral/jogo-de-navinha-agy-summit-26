@@ -408,14 +408,22 @@ if (process.env.CARDGEN_ENABLED === '1') {
     res.status(200).json({ companies, version, source });
   });
 
+  /**
+   * `GET /v1/aliases?since=<ISO 8601>&limit=<n>` — paginado desde que ganhou um consumidor de
+   * verdade (o worker do daemon). A resposta traz `next_since` e `has_more` para o cliente não
+   * reimplementar o cursor; `limit` é sanitizado dentro de `listAliasesSince` (clamp 1..1000).
+   */
   app.get('/v1/aliases', async (req: Request, res: Response) => {
     const since = typeof req.query.since === 'string' ? req.query.since : '';
     if (!since || Number.isNaN(Date.parse(since))) {
       res.status(400).json({ error: 'query param "since" must be an ISO 8601 date' });
       return;
     }
-    const aliases = await listAliasesSince(db, since);
-    res.status(200).json({ aliases });
+    const rawLimit = typeof req.query.limit === 'string' ? Number(req.query.limit) : NaN;
+    const page = await listAliasesSince(db, since, Number.isFinite(rawLimit) ? rawLimit : undefined);
+    // `aliases` no topo, como antes: a forma antiga da resposta continua válida para qualquer
+    // leitor que só olhe esse campo. Os dois campos novos são aditivos.
+    res.status(200).json(page);
   });
 
   // --- Estáticos do admin-app (Tarefa C7, Passo 5 do brief) ---

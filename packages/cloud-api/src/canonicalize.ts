@@ -289,21 +289,86 @@ export async function runCanonicalizationSweep(
   }
 }
 
-/** `GET /v1/aliases?since=<iso>` — aliases resolvidos depois de `sinceIso`, mais antigos primeiro. */
-export async function listAliasesSince(db: Firestore, sinceIso: string): Promise<ResolvedAlias[]> {
+/** Página default de `GET /v1/aliases`. Grande o bastante para o primeiro boot não levar dez ticks. */
+export const ALIASES_DEFAULT_LIMIT = 500;
+/** Teto duro. Um `?limit=100000` não pode transformar uma rota de estande em varredura da coleção. */
+export const ALIASES_MAX_LIMIT = 1000;
+
+export interface AliasPage {
+  aliases: ResolvedAlias[];
+  /**
+   * Cursor para a próxima chamada — o `resolved_at` do último alias desta página, ou o próprio
+   * `since` quando a página veio vazia. Vem do servidor de propósito: o daemon não deveria
+   * reimplementar (e errar) a regra de avanço do cursor.
+   */
+  next_since: string;
+  /** `true` quando ainda há aliases além desta página. O cliente chama de novo com `next_since`. */
+  has_more: boolean;
+}
+
+/**
+ * `GET /v1/aliases?since=<iso>&limit=<n>` — aliases resolvidos a partir de `sinceIso`, mais
+ * antigos primeiro, paginado.
+ *
+ * Três mudanças em relação à primeira versão, todas exigidas por passar a existir um cliente de
+ * verdade (o worker de sincronização do daemon, que antes não existia — o endpoint era servidor
+ * sem consumidor):
+ *
+ * 1. **`.limit()`**. Sem ele, o primeiro boot de uma estação puxava a coleção inteira numa
+ *    resposta só. Com dois estandes e um evento inteiro de aliases acumulados, isso é uma
+ *    resposta que cresce sem teto no pior momento possível (o boot da manhã).
+ * 2. **Cursor no servidor** (`next_since`/`has_more`), para o daemon não ter que deduzir se
+ *    ainda falta página nem de onde continuar.
+ * 3. **Guarda de tipo em `resolved_at`**. Era `data.resolved_at.toDate()` direto: um único
+ *    documento com o campo ausente ou de outro tipo derrubava a rota inteira com 500, para
+ *    sempre, para as duas estações. Documento estranho agora é pulado e logado.
+ *
+ * O `>=` (e não `>`) faz o último alias da página anterior voltar na próxima chamada. É
+ * deliberado: reprocessar um alias é idempotente no merge do daemon, e a alternativa (`>`)
+ * perderia silenciosamente aliases gravados no mesmo milissegundo do cursor.
+ */
+export async function listAliasesSince(
+  db: Firestore,
+  sinceIso: string,
+  limit: number = ALIASES_DEFAULT_LIMIT
+): Promise<AliasPage> {
+  const pageSize = Math.max(1, Math.min(ALIASES_MAX_LIMIT, Math.floor(limit) || ALIASES_DEFAULT_LIMIT));
   const since = new Date(sinceIso);
+
+  // +1 para descobrir se há mais sem uma segunda consulta.
   const snap = await db
     .collection('company_aliases')
     .where('resolved_at', '>=', since)
     .orderBy('resolved_at', 'asc')
+    .limit(pageSize + 1)
     .get();
 
-  return snap.docs.map((d) => {
-    const data = d.data() as { raw: string; canonical: string; resolved_at: FirebaseFirestore.Timestamp };
-    return {
+  const hasMore = snap.docs.length > pageSize;
+  const page = hasMore ? snap.docs.slice(0, pageSize) : snap.docs;
+
+  const aliases: ResolvedAlias[] = [];
+  for (const d of page) {
+    const data = d.data() as Partial<{ raw: string; canonical: string; resolved_at: unknown }>;
+    const resolvedAt = data.resolved_at;
+    if (
+      typeof data.raw !== 'string' ||
+      typeof data.canonical !== 'string' ||
+      !resolvedAt ||
+      typeof (resolvedAt as { toDate?: unknown }).toDate !== 'function'
+    ) {
+      console.warn(`[canonicalize] company_aliases/${d.id} tem forma inesperada — pulando.`);
+      continue;
+    }
+    aliases.push({
       raw: data.raw,
       canonical: data.canonical,
-      resolved_at: data.resolved_at.toDate().toISOString()
-    };
-  });
+      resolved_at: (resolvedAt as FirebaseFirestore.Timestamp).toDate().toISOString()
+    });
+  }
+
+  return {
+    aliases,
+    next_since: aliases.length > 0 ? aliases[aliases.length - 1].resolved_at : sinceIso,
+    has_more: hasMore
+  };
 }

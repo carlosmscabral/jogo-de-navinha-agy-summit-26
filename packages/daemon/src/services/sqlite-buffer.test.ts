@@ -347,3 +347,275 @@ describe('moderação do campo empresa', () => {
     buffer.close();
   });
 });
+
+/**
+ * Espelhamento do catálogo vindo da nuvem (Fase 3a).
+ *
+ * Estas travas são a diferença entre "o painel de admin controla as duas estações" e "um clique
+ * errado no painel derruba as duas estações". Merecem teste próprio porque o modo de falha delas
+ * é assimétrico: quando funcionam ninguém percebe, e quando não funcionam o estande abre com o
+ * autocomplete vazio e cada visitante vira uma linha nova em `company_rankings`.
+ */
+function bufferComCatalogo(companies: string[]): { buffer: SQLiteBufferService; cleanup: () => void } {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'booth-cat-'));
+  const file = path.join(dir, 'companies.json');
+  fs.writeFileSync(file, JSON.stringify({ companies }));
+  const anterior = process.env.BOOTH_COMPANIES_FILE;
+  process.env.BOOTH_COMPANIES_FILE = file;
+  const buffer = new SQLiteBufferService(path.join(dir, 'booth.sqlite'));
+  return {
+    buffer,
+    cleanup: () => {
+      buffer.close();
+      if (anterior === undefined) delete process.env.BOOTH_COMPANIES_FILE;
+      else process.env.BOOTH_COMPANIES_FILE = anterior;
+    }
+  };
+}
+
+describe('espelhamento do catálogo da nuvem', () => {
+  it('espelha exatamente: insere o que falta e remove o que sumiu', () => {
+    const { buffer, cleanup } = bufferComCatalogo(['Google', 'Nubank', 'Itaú', 'Globo']);
+
+    const result = buffer.applyCanonicalCatalog(['Google', 'Nubank', 'Itaú', 'Embraer']);
+
+    assert.equal(result.applied, true);
+    assert.deepEqual(result.added, ['Embraer']);
+    assert.deepEqual(result.removed, ['Globo']);
+    assert.deepEqual(buffer.getCanonicalList(), ['Embraer', 'Google', 'Itaú', 'Nubank']);
+    cleanup();
+  });
+
+  it('NUNCA aplica catálogo vazio, nem com a env de escape ligada', () => {
+    const { buffer, cleanup } = bufferComCatalogo(['Google', 'Nubank']);
+
+    for (const opts of [{}, { allowMassRemoval: true, maxRemovalRatio: 1 }]) {
+      const result = buffer.applyCanonicalCatalog([], opts);
+      assert.equal(result.applied, false);
+      assert.match(result.refusedReason ?? '', /vazio/);
+    }
+    assert.deepEqual(buffer.getCanonicalList(), ['Google', 'Nubank'], 'o estande fica com o que tinha');
+    cleanup();
+  });
+
+  it('recusa remoção em massa sem a env de escape e aplica com ela', () => {
+    const { buffer, cleanup } = bufferComCatalogo(['A', 'B', 'C', 'D', 'E']);
+
+    // 4 de 5 sumiriam: 80%, muito acima dos 30% de default.
+    const recusado = buffer.applyCanonicalCatalog(['A']);
+    assert.equal(recusado.applied, false);
+    assert.match(recusado.refusedReason ?? '', /BOOTH_CATALOG_ALLOW_MASS_REMOVAL/);
+    assert.equal(buffer.getCanonicalList().length, 5, 'recusa não pode aplicar nem as adições');
+
+    const forcado = buffer.applyCanonicalCatalog(['A'], { allowMassRemoval: true });
+    assert.equal(forcado.applied, true);
+    assert.deepEqual(buffer.getCanonicalList(), ['A']);
+    cleanup();
+  });
+
+  it('aplica remoção dentro do limiar sem precisar de escape', () => {
+    const { buffer, cleanup } = bufferComCatalogo(['A', 'B', 'C', 'D', 'E']);
+
+    const result = buffer.applyCanonicalCatalog(['A', 'B', 'C', 'D']); // 1 de 5 = 20%
+
+    assert.equal(result.applied, true);
+    assert.deepEqual(result.removed, ['E']);
+    cleanup();
+  });
+
+  it('additiveOnly só adiciona, mesmo com empresas fora da lista recebida', () => {
+    // O caso: a nuvem respondeu `version: 0`, isto é, está servindo a própria semente de disco.
+    const { buffer, cleanup } = bufferComCatalogo(['Cadastrada No Mac', 'Google']);
+
+    const result = buffer.applyCanonicalCatalog(['Google', 'Nubank'], { additiveOnly: true });
+
+    assert.deepEqual(result.added, ['Nubank']);
+    assert.deepEqual(result.removed, []);
+    assert.ok(buffer.getCanonicalList().includes('Cadastrada No Mac'));
+    cleanup();
+  });
+
+  it('remover uma empresa NÃO apaga os aliases já aprendidos que apontavam para ela', () => {
+    const { buffer, cleanup } = bufferComCatalogo(['Google', 'Nubank', 'Itaú', 'Globo']);
+    assert.equal(buffer.resolveCompany('globo comunicação').canonical, 'Globo');
+
+    buffer.applyCanonicalCatalog(['Google', 'Nubank', 'Itaú']);
+
+    assert.ok(!buffer.getCanonicalList().includes('Globo'), 'saiu do catálogo');
+    assert.equal(
+      buffer.resolveCompany('globo comunicação').canonical,
+      'Globo',
+      'quem já jogou continua no mesmo ranking — o histórico do evento não é reescrito no meio dele'
+    );
+    cleanup();
+  });
+
+  it('é idempotente: reaplicar a mesma lista não mexe em nada', () => {
+    const { buffer, cleanup } = bufferComCatalogo(['Google', 'Nubank']);
+
+    const result = buffer.applyCanonicalCatalog(['Google', 'Nubank']);
+
+    assert.equal(result.applied, true);
+    assert.deepEqual(result.added, []);
+    assert.deepEqual(result.removed, []);
+    cleanup();
+  });
+
+  it('ignora entradas em branco e duplicadas vindas da nuvem', () => {
+    const { buffer, cleanup } = bufferComCatalogo(['Google']);
+
+    const result = buffer.applyCanonicalCatalog(['Google', 'Nubank', 'Nubank', '   ', '']);
+
+    assert.deepEqual(result.added, ['Nubank']);
+    assert.deepEqual(buffer.getCanonicalList(), ['Google', 'Nubank']);
+    cleanup();
+  });
+});
+
+describe('merge de aliases da nuvem', () => {
+  it('respeita a precedência override > cloud > local', () => {
+    const buffer = new SQLiteBufferService(tempDb());
+
+    buffer.cacheAlias('acme', 'Palpite Local', 'local');
+    buffer.cacheAlias('acme', 'Acme Corp', 'cloud', '2026-09-01T10:00:00.000Z');
+    assert.equal(buffer.getAlias('acme')?.canonical, 'Acme Corp', 'a nuvem corrige o palpite fuzzy local');
+
+    buffer.cacheAlias('acme', 'Palpite Local De Novo', 'local');
+    assert.equal(buffer.getAlias('acme')?.canonical, 'Acme Corp', 'e o local não pode desfazer a correção');
+
+    buffer.cacheAlias('acme', 'Independente', 'override');
+    assert.equal(buffer.getAlias('acme')?.canonical, 'Independente');
+
+    buffer.cacheAlias('acme', 'Acme Corp', 'cloud', '2026-09-02T10:00:00.000Z');
+    assert.equal(
+      buffer.getAlias('acme')?.canonical,
+      'Independente',
+      'sem isto, o pull ressuscita no telão um nome que o filtro de profanidade bloqueou'
+    );
+    buffer.close();
+  });
+
+  it('entre dois cloud, ganha o resolved_at mais recente', () => {
+    const buffer = new SQLiteBufferService(tempDb());
+
+    buffer.cacheAlias('acme', 'Versão Nova', 'cloud', '2026-09-02T10:00:00.000Z');
+    buffer.cacheAlias('acme', 'Versão Velha', 'cloud', '2026-09-01T10:00:00.000Z');
+
+    assert.equal(buffer.getAlias('acme')?.canonical, 'Versão Nova', 'página fora de ordem não pode regredir');
+    buffer.close();
+  });
+
+  it('normaliza o raw para minúsculas — a nuvem manda o texto como o visitante digitou', () => {
+    const buffer = new SQLiteBufferService(tempDb());
+
+    buffer.mergeCloudAliases([
+      { raw: 'ACME CORP LTDA', canonical: 'Acme', resolved_at: '2026-09-01T10:00:00.000Z' }
+    ]);
+
+    assert.equal(buffer.getAlias('acme corp ltda')?.canonical, 'Acme');
+    assert.equal(
+      buffer.resolveCompany('Acme Corp Ltda').canonical,
+      'Acme',
+      'sem o lowercase o cache nunca acertaria e o alias da nuvem seria inútil'
+    );
+    buffer.close();
+  });
+
+  it('descarta aliases inválidos ou ofensivos sem derrubar a página inteira', () => {
+    const buffer = new SQLiteBufferService(tempDb());
+
+    const result = buffer.mergeCloudAliases([
+      { raw: 'bom', canonical: 'Empresa Boa', resolved_at: '2026-09-01T10:00:00.000Z' },
+      { raw: '', canonical: 'Sem Raw', resolved_at: '2026-09-01T10:00:00.000Z' },
+      { raw: 'sem canonical', canonical: '   ', resolved_at: '2026-09-01T10:00:00.000Z' },
+      { raw: 'ofensivo', canonical: 'PORRA LTDA', resolved_at: '2026-09-01T10:00:00.000Z' }
+    ]);
+
+    assert.equal(result.applied, 1);
+    assert.equal(result.skipped, 3);
+    assert.equal(buffer.getAlias('bom')?.canonical, 'Empresa Boa');
+    assert.equal(buffer.getAlias('ofensivo'), null);
+    buffer.close();
+  });
+
+  it('aceita resolved_at ausente ou ilegível sem descartar o alias', () => {
+    const buffer = new SQLiteBufferService(tempDb());
+
+    const result = buffer.mergeCloudAliases([
+      { raw: 'sem data', canonical: 'Empresa', resolved_at: 'não é data' }
+    ]);
+
+    assert.equal(result.applied, 1);
+    assert.equal(buffer.getAlias('sem data')?.source, 'cloud');
+    assert.ok(buffer.getAlias('sem data')?.resolved_at, 'o merge carimba a hora local no lugar');
+    buffer.close();
+  });
+
+  it('marca a procedência de quem resolve localmente', () => {
+    const buffer = new SQLiteBufferService(tempDb());
+
+    buffer.resolveCompany('Gooogle Brasil');
+    assert.equal(buffer.getAlias('gooogle brasil')?.source, 'local');
+
+    buffer.resolveCompany('PORRA LTDA');
+    assert.equal(buffer.getAlias('porra ltda')?.source, 'override', 'o bloqueio de profanidade é override');
+    buffer.close();
+  });
+});
+
+describe('auto-cura do schema de aliases e metadados', () => {
+  it('adiciona source/resolved_at a um banco antigo sem perder os aliases já aprendidos', () => {
+    const dbPath = tempDb();
+
+    // Banco criado antes da Fase 3: `company_aliases` sem procedência, e sem `booth_metadata`.
+    const raw = new Database(dbPath);
+    raw.exec(`
+      CREATE TABLE company_aliases (
+        raw_input TEXT PRIMARY KEY,
+        canonical_name TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      INSERT INTO company_aliases (raw_input, canonical_name, created_at)
+        VALUES ('velho', 'Empresa Antiga', '2026-08-01T00:00:00.000Z');
+    `);
+    raw.close();
+
+    const db = new SQLiteBufferService(dbPath);
+
+    const alias = db.getAlias('velho');
+    assert.equal(alias?.canonical, 'Empresa Antiga', 'o aprendizado anterior não pode ser perdido na migração');
+    assert.equal(alias?.source, 'local', 'linha antiga é um palpite local — é isso que ela sempre foi');
+    assert.equal(alias?.resolved_at, null);
+
+    // E a linha antiga tem que poder ser corrigida pela nuvem, que é o ponto da migração.
+    db.mergeCloudAliases([{ raw: 'velho', canonical: 'Empresa Correta', resolved_at: '2026-09-01T00:00:00.000Z' }]);
+    assert.equal(db.getAlias('velho')?.canonical, 'Empresa Correta');
+    db.close();
+  });
+
+  it('booth_metadata guarda e sobrescreve chaves, e devolve null para chave ausente', () => {
+    const db = new SQLiteBufferService(tempDb());
+
+    assert.equal(db.getMetadata('catalog_version'), null);
+    db.setMetadata('catalog_version', '3');
+    assert.equal(db.getMetadata('catalog_version'), '3');
+    db.setMetadata('catalog_version', '4');
+    assert.equal(db.getMetadata('catalog_version'), '4');
+    db.close();
+  });
+
+  it('metadados sobrevivem a um reinício do daemon', () => {
+    const dbPath = tempDb();
+    const primeiro = new SQLiteBufferService(dbPath);
+    primeiro.setMetadata('alias_cursor', '2026-09-01T10:00:00.000Z');
+    primeiro.close();
+
+    const segundo = new SQLiteBufferService(dbPath);
+    assert.equal(
+      segundo.getMetadata('alias_cursor'),
+      '2026-09-01T10:00:00.000Z',
+      'perder o cursor faria cada reinício repuxar a coleção inteira'
+    );
+    segundo.close();
+  });
+});

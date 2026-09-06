@@ -2,7 +2,13 @@ import Database from 'better-sqlite3';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MatchRecord, calculateSimilarity, resolveCompanyFromCatalog, validateCallsign } from '@jogo/shared';
+import {
+  MatchRecord,
+  calculateSimilarity,
+  isValidFirestoreDocId,
+  resolveCompanyFromCatalog,
+  validateCallsign
+} from '@jogo/shared';
 
 // dist/services/ -> dist/ -> raiz do pacote daemon (mesmo cálculo de SQLiteBufferService.defaultDbPath)
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -51,6 +57,29 @@ export interface CompanyMatch {
   raw: string;
   canonical: string;
   confidence: number;
+}
+
+/**
+ * De onde veio um alias, e portanto quem ganha quando dois discordam.
+ *
+ * - `local`: resolução desta máquina (catálogo + fuzzy). O palpite mais fraco.
+ * - `cloud`: veio de `GET /v1/aliases` — saída do Vertex contra o catálogo curado, e às vezes
+ *   uma correção humana feita no painel de admin. Vence o local, e é isso que faz as duas
+ *   estações convergirem para a mesma grafia.
+ * - `override`: decisão desta máquina que não pode ser desfeita pela nuvem, hoje só o bloqueio
+ *   por profanidade. Se a nuvem pudesse vencer aqui, um nome ofensivo voltaria ao telão.
+ */
+export type AliasSource = 'local' | 'cloud' | 'override';
+
+const ALIAS_SOURCE_RANK: Record<AliasSource, number> = { local: 0, cloud: 1, override: 2 };
+
+/** Resultado de espelhar o catálogo da nuvem no SQLite. Serve ao log e ao `/api/catalog/status`. */
+export interface CatalogApplyResult {
+  applied: boolean;
+  added: string[];
+  removed: string[];
+  /** Preenchido quando `applied` é falso: por que a aplicação foi RECUSADA. */
+  refusedReason?: string;
 }
 
 export interface LeaderboardData {
@@ -123,7 +152,19 @@ export class SQLiteBufferService {
       CREATE TABLE IF NOT EXISTS company_aliases (
         raw_input TEXT PRIMARY KEY,
         canonical_name TEXT NOT NULL,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        source TEXT NOT NULL DEFAULT 'local',
+        resolved_at TEXT
+      );
+
+      -- Chave/valor genérico do estande: cursor do pull de aliases, versão do catálogo
+      -- aplicada. Uma tabela genérica em vez de uma por propósito porque o daemon já tem um
+      -- SQLite com caminho de migração e um segundo mecanismo de persistência seria mais uma
+      -- coisa para o operador ter que lembrar de resetar.
+      CREATE TABLE IF NOT EXISTS booth_metadata (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL
       );
 
       CREATE TABLE IF NOT EXISTS local_matches (
@@ -165,6 +206,15 @@ export class SQLiteBufferService {
       { name: 'needs_company_review', ddl: 'INTEGER DEFAULT 0' },
       { name: 'station_id', ddl: 'TEXT' },
       { name: 'played_at', ddl: 'TEXT' }
+    ]);
+
+    // `company_aliases` ganhou procedência quando os aliases passaram a vir também da nuvem.
+    // Linha antiga fica com `source = 'local'` (o default da coluna), que é exatamente o que
+    // ela é: um palpite local. Isso importa para o merge — um alias da nuvem PODE sobrescrever
+    // um palpite local, e é essa sobrescrita que faz as duas estações convergirem.
+    this.ensureColumns('company_aliases', [
+      { name: 'source', ddl: "TEXT NOT NULL DEFAULT 'local'" },
+      { name: 'resolved_at', ddl: 'TEXT' }
     ]);
   }
 
@@ -265,6 +315,145 @@ export class SQLiteBufferService {
     return (stmt.all() as { name: string }[]).map((r) => r.name);
   }
 
+  // -------------------------------------------------------------------------
+  // booth_metadata — estado do worker de sincronização (Fase 3)
+  // -------------------------------------------------------------------------
+
+  getMetadata(key: string): string | null {
+    const row = this.db.prepare('SELECT value FROM booth_metadata WHERE key = ?').get(key) as
+      | { value: string }
+      | undefined;
+    return row?.value ?? null;
+  }
+
+  setMetadata(key: string, value: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO booth_metadata (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+      )
+      .run(key, value, new Date().toISOString());
+  }
+
+  /**
+   * Espelha EXATAMENTE o catálogo vindo da nuvem: insere o que falta e remove o que sumiu,
+   * numa transação só.
+   *
+   * Espelhar (em vez de só somar) foi decisão consciente: é o que dá ao painel de admin poder
+   * real sobre as duas estações — remover uma empresa digitada errado tem que sumir dos dois
+   * Macs, não ficar para sempre no autocomplete de um deles. O preço é que um clique errado no
+   * painel degrada as duas estações de uma vez, e é por isso que as travas abaixo existem no
+   * CLIENTE, e não só no servidor: o daemon não pode confiar que a validação do outro lado
+   * rodou (um `PUT` direto no Firestore, um script, uma versão antiga da API).
+   *
+   * Trava 1 — **catálogo vazio nunca é aplicado**. Sem catálogo, toda empresa cai no fallback e
+   * `company_rankings` racha em uma entrada por grafia digitada.
+   * Trava 2 — **remoção em massa é recusada** acima de `maxRemovalRatio` (default 30%), a menos
+   * que `allowMassRemoval` esteja ligado. O caso real é banal: um `PUT` com a lista truncada, ou
+   * um operador que apagou linhas sem querer, 40 minutos antes de abrir o estande.
+   *
+   * O que NÃO acontece: remover uma empresa **não** apaga os aliases já aprendidos que apontam
+   * para ela. Resoluções passadas seguem estáveis e só as novas caem no fallback — reescrever o
+   * histórico no meio do evento seria pior que manter um nome fora do catálogo vivo no cache.
+   */
+  applyCanonicalCatalog(
+    companies: string[],
+    opts: { allowMassRemoval?: boolean; maxRemovalRatio?: number; additiveOnly?: boolean } = {}
+  ): CatalogApplyResult {
+    const desired = [...new Set(companies.filter((c) => typeof c === 'string' && c.trim().length > 0))];
+
+    if (desired.length === 0) {
+      return {
+        applied: false,
+        added: [],
+        removed: [],
+        refusedReason: 'catálogo vazio — recusado sempre, sem exceção nem env de escape'
+      };
+    }
+
+    const current = this.getCanonicalList();
+    const desiredSet = new Set(desired);
+    const currentSet = new Set(current);
+    const added = desired.filter((c) => !currentSet.has(c));
+    // `additiveOnly` existe para um caso específico: a nuvem respondeu com `version: 0`, isto é,
+    // o painel nunca gravou o catálogo e o que veio é a semente de disco do container. Espelhar
+    // (remover) contra um fallback não é espelhar a fonte de verdade — seria deixar a imagem do
+    // container, congelada no build, apagar empresas cadastradas nesta máquina.
+    const removed = opts.additiveOnly ? [] : current.filter((c) => !desiredSet.has(c));
+
+    if (added.length === 0 && removed.length === 0) {
+      return { applied: true, added: [], removed: [] };
+    }
+
+    const maxRatio = opts.maxRemovalRatio ?? 0.3;
+    if (
+      !opts.allowMassRemoval &&
+      current.length > 0 &&
+      removed.length / current.length > maxRatio
+    ) {
+      return {
+        applied: false,
+        added: [],
+        removed: [],
+        refusedReason:
+          `remoção em massa recusada: ${removed.length} de ${current.length} empresas sumiriam ` +
+          `(acima de ${Math.round(maxRatio * 100)}%). Se for intencional, suba o daemon com ` +
+          'BOOTH_CATALOG_ALLOW_MASS_REMOVAL=1.'
+      };
+    }
+
+    const insert = this.db.prepare('INSERT OR IGNORE INTO canonical_companies (name) VALUES (?)');
+    const remove = this.db.prepare('DELETE FROM canonical_companies WHERE name = ?');
+    const apply = this.db.transaction(() => {
+      for (const name of added) insert.run(name);
+      for (const name of removed) remove.run(name);
+    });
+    apply();
+
+    return { applied: true, added, removed };
+  }
+
+  /**
+   * Aplica uma página de aliases vinda de `GET /v1/aliases`, um por um, pela precedência de
+   * `cacheAlias`. Devolve o que entrou e o que foi descartado, para o worker logar.
+   *
+   * Confiar MAIS no remoto não é confiar cegamente: o `canonical` da nuvem ainda passa pelo
+   * mesmo filtro de ID de documento e de profanidade que o caminho local, porque o telão
+   * exibe esse texto e uma correção no painel também é digitada por um humano.
+   */
+  mergeCloudAliases(aliases: { raw: string; canonical: string; resolved_at: string }[]): {
+    applied: number;
+    skipped: number;
+  } {
+    let applied = 0;
+    let skipped = 0;
+
+    const run = this.db.transaction(() => {
+      for (const a of aliases) {
+        const raw = (a?.raw ?? '').trim();
+        const canonical = (a?.canonical ?? '').trim();
+        if (!raw || !canonical || !isValidFirestoreDocId(canonical)) {
+          skipped++;
+          continue;
+        }
+        const check = validateCallsign(canonical);
+        if (!check.isValid && check.reasonCode === 'profanity') {
+          console.warn(`[SQLiteBuffer] alias da nuvem "${raw}" -> "${canonical}" barrado pelo filtro local.`);
+          skipped++;
+          continue;
+        }
+        const resolvedAt = a.resolved_at && !Number.isNaN(Date.parse(a.resolved_at))
+          ? new Date(a.resolved_at).toISOString()
+          : new Date().toISOString();
+        this.cacheAlias(raw, canonical, 'cloud', resolvedAt);
+        applied++;
+      }
+    });
+    run();
+
+    return { applied, skipped };
+  }
+
   searchCompanies(query: string): string[] {
     const q = (query || '').trim();
     const catalog = this.getCanonicalList();
@@ -321,23 +510,86 @@ export class SQLiteBufferService {
     if (resolution.matchedBy === 'fallback') {
       const check = validateCallsign(resolution.canonical);
       if (!check.isValid && check.reasonCode === 'profanity') {
-        this.cacheAlias(raw, 'Independente');
+        // 'override', não 'local': este bloqueio precisa VENCER um alias vindo da nuvem.
+        // Sem essa precedência, o pull ressuscitaria o nome ofensivo no telão.
+        this.cacheAlias(raw, 'Independente', 'override');
         // Override deliberado, não incerteza: confiança 1.0.
         return { raw, canonical: 'Independente', confidence: 1.0 };
       }
     }
 
     // 3. Cache the resolved alias
-    this.cacheAlias(raw, resolution.canonical);
+    this.cacheAlias(raw, resolution.canonical, 'local');
     return { raw, canonical: resolution.canonical, confidence: resolution.confidence };
   }
 
-  private cacheAlias(raw: string, canonical: string): void {
+  /**
+   * Grava um alias respeitando a precedência entre as fontes: `override` > `cloud` > `local`,
+   * e entre dois `cloud` ganha o `resolved_at` mais recente.
+   *
+   * Era um `INSERT OR REPLACE` puro, e isso bastava enquanto a única fonte era esta máquina.
+   * Com o pull da nuvem existem três, e as duas escolhas erradas são simétricas: um merge
+   * ingênuo ou atropela o bloqueio local de profanidade, ou é atropelado por um palpite fuzzy
+   * local que a nuvem já corrigiu contra o catálogo curado.
+   *
+   * A PK é sempre `raw.toLowerCase()` — o `raw` que vem da nuvem é o `company_raw` digitado
+   * pelo visitante, sem lowercase. Normalizar aqui, num lugar só, é o que faz o cache acertar.
+   */
+  cacheAlias(
+    raw: string,
+    canonical: string,
+    source: AliasSource = 'local',
+    resolvedAt: string = new Date().toISOString()
+  ): void {
     const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO company_aliases (raw_input, canonical_name, created_at)
-      VALUES (?, ?, ?)
+      INSERT INTO company_aliases (raw_input, canonical_name, created_at, source, resolved_at)
+      VALUES (@raw, @canonical, @now, @source, @resolvedAt)
+      ON CONFLICT(raw_input) DO UPDATE SET
+        canonical_name = excluded.canonical_name,
+        created_at = excluded.created_at,
+        source = excluded.source,
+        resolved_at = excluded.resolved_at
+      WHERE @rank > (
+        CASE COALESCE(company_aliases.source, 'local')
+          WHEN 'override' THEN 2
+          WHEN 'cloud' THEN 1
+          ELSE 0
+        END
+      )
+      OR (
+        @rank = (
+          CASE COALESCE(company_aliases.source, 'local')
+            WHEN 'override' THEN 2
+            WHEN 'cloud' THEN 1
+            ELSE 0
+          END
+        )
+        AND (company_aliases.resolved_at IS NULL OR excluded.resolved_at >= company_aliases.resolved_at)
+      )
     `);
-    stmt.run(raw.toLowerCase(), canonical, new Date().toISOString());
+    stmt.run({
+      raw: raw.toLowerCase(),
+      canonical,
+      now: new Date().toISOString(),
+      source,
+      resolvedAt,
+      rank: ALIAS_SOURCE_RANK[source]
+    });
+  }
+
+  /** Só para teste e diagnóstico: a resolução normal passa por `resolveCompany`. */
+  getAlias(raw: string): { canonical: string; source: AliasSource; resolved_at: string | null } | null {
+    const row = this.db
+      .prepare('SELECT canonical_name, source, resolved_at FROM company_aliases WHERE raw_input = ?')
+      .get(raw.toLowerCase()) as
+      | { canonical_name: string; source: string | null; resolved_at: string | null }
+      | undefined;
+    if (!row) return null;
+    return {
+      canonical: row.canonical_name,
+      source: (row.source as AliasSource) ?? 'local',
+      resolved_at: row.resolved_at
+    };
   }
 
   saveMatch(match: MatchRecord): void {

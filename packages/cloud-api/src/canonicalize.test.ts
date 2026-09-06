@@ -207,12 +207,87 @@ describe('listAliasesSince (Firestore emulator)', () => {
       JSON.stringify([{ match_id: 'm4', company_canonical: 'Google', confidence: 0.9 }]);
     await runCanonicalizationSweep(testDb, generate, CATALOG, 0.85);
 
-    const aliases = await listAliasesSince(testDb, before);
-    assert.equal(aliases.length, 1);
-    assert.equal(aliases[0].raw, 'gogle');
-    assert.equal(aliases[0].canonical, 'Google');
+    const page = await listAliasesSince(testDb, before);
+    assert.equal(page.aliases.length, 1);
+    assert.equal(page.aliases[0].raw, 'gogle');
+    assert.equal(page.aliases[0].canonical, 'Google');
+    assert.equal(page.has_more, false);
+    assert.equal(page.next_since, page.aliases[0].resolved_at, 'o cursor é o último alias da página');
 
     const future = new Date(Date.now() + 60_000).toISOString();
-    assert.deepEqual(await listAliasesSince(testDb, future), []);
+    const empty = await listAliasesSince(testDb, future);
+    assert.deepEqual(empty.aliases, []);
+    assert.equal(empty.has_more, false);
+    assert.equal(empty.next_since, future, 'página vazia devolve o próprio since — cursor não anda sozinho');
+  });
+
+  it('pagina: respeita o limite, sinaliza has_more e o cursor cobre tudo sem perder alias', async () => {
+    // O primeiro boot de uma estação nova puxa desde a epoch. Sem `.limit()` isso era a coleção
+    // inteira numa resposta só, no pior momento do dia (a abertura do estande).
+    for (let i = 0; i < 5; i++) {
+      await testDb.collection('company_aliases').add({
+        raw: `raw-${i}`,
+        canonical: `Empresa ${i}`,
+        // Timestamps distintos e crescentes: é o que o cursor usa para avançar.
+        resolved_at: new Date(Date.UTC(2026, 0, 1, 0, 0, i))
+      });
+    }
+
+    const vistos: string[] = [];
+    let since = new Date(0).toISOString();
+    let voltas = 0;
+    for (;;) {
+      const page = await listAliasesSince(testDb, since, 2);
+      assert.ok(page.aliases.length <= 2, 'o limite tem que ser respeitado');
+      for (const a of page.aliases) if (!vistos.includes(a.raw)) vistos.push(a.raw);
+      if (!page.has_more) break;
+      // Mesmo avanço que o daemon faz: repetir o último alias é idempotente, perder um não é.
+      since = page.next_since;
+      assert.ok(++voltas < 10, 'o cursor precisa avançar — laço infinito é falha');
+    }
+
+    assert.deepEqual(vistos, ['raw-0', 'raw-1', 'raw-2', 'raw-3', 'raw-4']);
+  });
+
+  it('clampa o limite: 0, negativo e absurdo não viram varredura da coleção nem página vazia', async () => {
+    for (let i = 0; i < 3; i++) {
+      await testDb.collection('company_aliases').add({
+        raw: `raw-${i}`,
+        canonical: `Empresa ${i}`,
+        resolved_at: new Date(Date.UTC(2026, 0, 1, 0, 0, i))
+      });
+    }
+    const epoch = new Date(0).toISOString();
+
+    assert.equal((await listAliasesSince(testDb, epoch, 0)).aliases.length, 3, '0 cai no default');
+    assert.equal((await listAliasesSince(testDb, epoch, -5)).aliases.length, 1, 'negativo vira 1');
+    assert.equal((await listAliasesSince(testDb, epoch, 10_000_000)).aliases.length, 3, 'clampado no teto');
+  });
+
+  it('um documento com resolved_at de outro tipo é PULADO, não derruba a rota', async () => {
+    // Era `data.resolved_at.toDate()` direto. Um único documento estranho — de um script, de uma
+    // escrita manual no console — transformava GET /v1/aliases em 500 permanente para as DUAS
+    // estações, e o sintoma seria "o estande parou de aprender", não "há um doc malformado".
+    await testDb.collection('company_aliases').add({
+      raw: 'bom',
+      canonical: 'Empresa Boa',
+      resolved_at: new Date(Date.UTC(2026, 0, 1, 0, 0, 1))
+    });
+    await testDb.collection('company_aliases').add({
+      raw: 'ruim',
+      canonical: 'Empresa Ruim',
+      resolved_at: '2026-01-01T00:00:02.000Z' // string, não Timestamp
+    });
+    await testDb.collection('company_aliases').add({
+      raw: 'sem canonical',
+      resolved_at: new Date(Date.UTC(2026, 0, 1, 0, 0, 3))
+    });
+
+    const page = await listAliasesSince(testDb, new Date(0).toISOString());
+    assert.deepEqual(
+      page.aliases.map((a) => a.raw),
+      ['bom'],
+      'o alias bom precisa chegar mesmo com lixo na coleção'
+    );
   });
 });
