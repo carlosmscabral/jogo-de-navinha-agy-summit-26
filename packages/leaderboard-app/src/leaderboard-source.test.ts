@@ -83,6 +83,39 @@ describe('mergeLeaderboardState', () => {
     expect(s.companyRankings[0].company_canonical).toBe('COMPANY_19');
   });
 
+  it('esconde as cascas de empresa sem pilotos', () => {
+    const rankings = [
+      makeRanking({ company_canonical: 'GOOGLE', total_score: 5000, pilots_count: 2 }),
+      // A casca que `correctMatchCompany` deixa: score zerado, mas o recorde individual sobrevive.
+      makeRanking({
+        company_canonical: 'GOGOLE',
+        total_score: 0,
+        pilots_count: 0,
+        top_individual_score: 4300
+      })
+    ];
+
+    const s = mergeLeaderboardState([], rankings);
+
+    expect(s.companyRankings.map((c) => c.company_canonical)).toEqual(['GOOGLE']);
+    expect(s.companyRankings[0].rank).toBe(1);
+  });
+
+  it('não deixa a casca abrir buraco na numeração dos ranks', () => {
+    const rankings = [
+      makeRanking({ company_canonical: 'A', total_score: 300 }),
+      makeRanking({ company_canonical: 'CASCA', total_score: 0, pilots_count: 0 }),
+      makeRanking({ company_canonical: 'B', total_score: 200 })
+    ];
+
+    const s = mergeLeaderboardState([], rankings);
+
+    expect(s.companyRankings.map((c) => [c.company_canonical, c.rank])).toEqual([
+      ['A', 1],
+      ['B', 2]
+    ]);
+  });
+
   it('ordena o ticker pelas partidas mais recentes', () => {
     const matches = [
       makeMatch({ match_id: 'old', created_at: '2026-01-01T00:00:00.000Z', final_score: 999 }),

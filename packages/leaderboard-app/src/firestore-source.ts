@@ -50,7 +50,13 @@ import {
   type QuerySnapshot,
   type DocumentData
 } from 'firebase/firestore';
-import { DATABASE_ID, field, type MatchDocument, type CompanyRankingDocument } from '@jogo/shared';
+import {
+  DATABASE_ID,
+  field,
+  hasActivePilots,
+  type MatchDocument,
+  type CompanyRankingDocument
+} from '@jogo/shared';
 import type { TopPilotEntry } from './components/HallOfFame.js';
 import type { CompanyRankEntry } from './components/CompanyDominance.js';
 import type { RecentMatchEntry } from './components/LiveTickerFeed.js';
@@ -229,7 +235,11 @@ export function mergeLeaderboardState(
     played_at: m.played_at
   }));
 
-  const companyRankings: CompanyRankEntry[] = [...rankings]
+  // Cascas de empresa (0 pilotos) nunca vão para a TV — ver `hasActivePilots`. Filtrar DEPOIS do
+  // `limit(TOP_COMPANIES_LIMIT)` da query é seguro porque toda casca tem `total_score` 0: ela
+  // ocupa o fim da ordenação por score, então jamais expulsa uma empresa real da janela lida.
+  const companyRankings: CompanyRankEntry[] = rankings
+    .filter(hasActivePilots)
     .sort((a, b) => b.total_score - a.total_score)
     .slice(0, TOP_COMPANIES_LIMIT)
     .map((r, i) => ({

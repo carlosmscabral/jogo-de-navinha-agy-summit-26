@@ -16,4 +16,5 @@ export * from './utils/rng.js';
 export * from './validator.js';
 export * from './utils/moderation.js';
 export * from './utils/company-normalizer.js';
+export * from './utils/company-rankings.js';
 export * from './config.js';
