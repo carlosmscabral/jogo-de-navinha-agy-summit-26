@@ -15,6 +15,7 @@ import {
   type RotationEvent,
   type RotationState
 } from './view-rotation.js';
+import { bindingForKey } from './operator-keys.js';
 
 const SOURCE_BADGE: Record<SourceStatus, { label: string; className: string }> = {
   cloud: { label: 'NUVEM', className: 'bg-[#10b981]/20 text-[#10b981] border-[#10b981]/40' },
@@ -71,32 +72,9 @@ export function App() {
    */
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      switch (e.key) {
-        case 'ArrowRight':
-        case 'ArrowDown':
-        case 'PageDown':
-        case ' ':
-          e.preventDefault();
-          dispatchRotation({ type: 'OPERATOR_NEXT' });
-          break;
-        case 'ArrowLeft':
-        case 'ArrowUp':
-        case 'PageUp':
-          e.preventDefault();
-          dispatchRotation({ type: 'OPERATOR_PREV' });
-          break;
-        // A saída explícita. Sem ela, quem terminou de apresentar só conseguia voltar ao placar
-        // esperando os 90 s da retenção correrem — uma eternidade com um visitante ao lado
-        // perguntando onde está o ranking dele.
-        case 'Escape':
-        case 'Home':
-        case 'Backspace':
-          e.preventDefault();
-          dispatchRotation({ type: 'FORCE_SCOREBOARD' });
-          break;
-        default:
-          dispatchRotation({ type: 'OPERATOR_ACTIVITY' });
-      }
+      const { event, preventDefault } = bindingForKey(e.key);
+      if (preventDefault) e.preventDefault();
+      dispatchRotation(event);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
