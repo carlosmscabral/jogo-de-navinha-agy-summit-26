@@ -2003,14 +2003,22 @@ Uma segunda passada com `--apply` tem de gravar **0** — é a prova da idempot�
 
 - [ ] **25.9 — Tabela de registro**
 
+Execução de 2026-09-06, contra `vibe-cabral` / `jogo-navinha`, revisão
+`jogo-navinha-cardgen-00001-998` (imagem de `5609018`). Partida de referência:
+`ead7e4f2-8389-4b16-a11e-67fd1bf0ddfc`.
+
 | # | Passo | Passou? | Observação |
 |---|-------|---------|------------|
 | 25.1 | Jornada não mudou de duração | | ____ min ____ s (comparar com 24.1) |
-| 25.1 | Cartão chegou depois do debrief | | ____ s até `ship_card_version: 1` |
-| 25.2 | Cartão é a nave do pré-voo | | |
-| 25.3 | Sem escudo: sem anel, mesmo enquadramento | | |
-| 25.4 | Uma invocação, sem laço | | |
-| 25.5 | Anular preserva o cartão | | |
-| 25.6 | Reentrega devolve 200 sem reescrever | | |
-| 25.7 | Preset: silhueta neutra com as cores certas | | |
-| 25.8 | Backfill em seco não escreve; `--apply` é idempotente | | ____ partidas |
+| 25.1 | Cartão chegou depois do debrief | ✅ | `ship_card_version: 1`, 757 bytes, gravado às 14:55:07 |
+| 25.2 | Cartão é a nave do pré-voo | ✅ | casco `#ffd700` com contorno `#ff6600`, anel de escudo presente; confere com a coluna Nave do painel |
+| 25.3 | Sem escudo: sem anel, mesmo enquadramento | ⚠️ parcial | renderizador provado: mesmo spec com `shield_capacity: 0` perde o `<circle>` (757 → 632 bytes) e mantém `viewBox` e casco byte-idênticos. Falta uma build sem escudo passando pelo **gatilho** ao vivo |
+| 25.4 | Uma invocação, sem laço | ✅ | uma linha `written`, sem cadeia. Reforçado pelo 25.8: 48 `update` em massa não acordaram o gatilho nenhuma vez |
+| 25.5 | Anular preserva o cartão | | exige o painel de admin |
+| 25.6 | Reentrega devolve 200 sem reescrever | ✅ | 200 + `up_to_date`, documento byte-idêntico (mesmo `updateTime`). As três falhas permanentes devolveram 204: sem `ce-subject`, coleção errada, documento inexistente |
+| 25.7 | Preset: silhueta neutra com as cores certas | ✅ | correlação perfeita sobre 49 partidas reais: **12/12** com `fallback_used: true` saíram na silhueta neutra com a paleta do preset, **37/37** forjadas saíram com geometria própria |
+| 25.8 | Backfill em seco não escreve; `--apply` é idempotente | ✅ | 49 varridas, 48 gravadas, segunda passada gravaria 0. Isenções de índice conferidas publicadas antes (`ship_card_svg` e `ship_spec_snapshot.visuals.svg_path_data`, ambas com 0 entradas) |
+
+**Brinde de verificação, fora do plano original:** o SVG renderizado localmente a partir do spec da
+partida saiu **byte-idêntico** ao que a nuvem gravou. A imagem no ar roda o mesmo renderizador de
+`@jogo/shared`, sem drift entre o que o teste local afirma e o que o estande vai produzir.
