@@ -1869,7 +1869,7 @@ read_match() {
 }
 ```
 
-- [ ] **25.1 — A jornada não muda de duração, e o cartão chega depois**
+- [x] **25.1 — A jornada não muda de duração, e o cartão chega depois**
 
 Jogue uma partida completa como visitante, com o cronômetro na mão, exatamente como no 24.1.
 
@@ -1887,7 +1887,7 @@ read_match <MATCH_ID> | jq '.fields.ship_card_version, (.fields.ship_card_svg.st
 `ship_card_version` = `1` e o SVG tem algumas centenas de bytes. **Um atraso aqui não é defeito** —
 o consumo é "bem depois do jogo jogado".
 
-- [ ] **25.2 — A nave do cartão é a nave do pré-voo**
+- [x] **25.2 — A nave do cartão é a nave do pré-voo**
 
 O caminho rápido é o painel de admin: `<URL do Cloud Run>/admin` → Partidas → busque a partida. A
 coluna **Nave**, a primeira da tabela, mostra a miniatura.
@@ -1902,7 +1902,7 @@ read_match <MATCH_ID> | jq -r '.fields.ship_card_svg.stringValue' > /tmp/nave.sv
 mesmo contorno — com o anel de escudo se a build tinha escudo. Fundo transparente, sem callsign,
 sem score, sem texto nenhum além do `<title>` com o nome do estilo (aparece como tooltip).
 
-- [ ] **25.3 — Build sem escudo: sem anel, mesmo enquadramento**
+- [x] **25.3 — Build sem escudo: sem anel, mesmo enquadramento**
 
 Repita numa partida cuja build tenha `shield_capacity == 0`. Duas condições, e as **duas** são
 necessárias:
@@ -1922,7 +1922,7 @@ read_match <MATCH_ID> | jq -r '.fields.ship_card_svg.stringValue' | grep -c '<ci
 tamanho e a mesma posição** do casco do 25.2. O `viewBox` é constante de propósito, para que uma
 galeria futura não tenha naves pulando de escala conforme tenham escudo ou não.
 
-- [ ] **25.4 — Nenhum laço de eventos**
+- [x] **25.4 — Nenhum laço de eventos**
 
 ```bash
 gcloud logging read \
@@ -1935,7 +1935,7 @@ reentregar, e isso é normal), a segunda tem de registrar `up_to_date` e não gr
 pode** existir é uma cadeia crescente — seria sinal de que a gravação de volta está disparando o
 próprio gatilho.
 
-- [ ] **25.5 — Anular a partida preserva o cartão**
+- [x] **25.5 — Anular a partida preserva o cartão**
 
 No painel de admin, anule a partida do 25.1 (botão "Anular").
 
@@ -1943,7 +1943,7 @@ No painel de admin, anule a partida do 25.1 (botão "Anular").
 `gcloud logging read` do 25.4 **não** ganha invocação nova — `patchMatch` grava com `update`, e o
 gatilho só escuta criação.
 
-- [ ] **25.6 — Reentrega manual é inofensiva**
+- [x] **25.6 — Reentrega manual é inofensiva**
 
 Simule o que o Eventarc faria numa reentrega:
 
@@ -1964,7 +1964,7 @@ reentregar.
 > sobe com `--no-allow-unauthenticated` e só a service account do gatilho o alcança. Conceder o
 > papel a si mesmo só para este passo é aceitável, mas **remova depois**.
 
-- [ ] **25.7 — Preset de emergência: silhueta neutra, cores do preset**
+- [x] **25.7 — Preset de emergência: silhueta neutra, cores do preset**
 
 Force o preset como no 23.6 (não digite nada e deixe estourar `AGY_PRE_MCP_SILENCE_TIMEOUT_MS`),
 jogue e sincronize.
@@ -1979,7 +1979,7 @@ hoje (`isDrawablePathData` / `usesForgedHull`) e desenham a nave procedural. O c
 mostrar os polígonos do preset seria mostrar ao consumidor futuro uma nave que o visitante **nunca
 viu na tela**. Confira lado a lado com a tela de pré-voo daquela sessão: têm de bater.
 
-- [ ] **25.8 — Backfill das partidas antigas, primeiro em seco**
+- [x] **25.8 — Backfill das partidas antigas, primeiro em seco**
 
 As partidas anteriores ao gatilho (todo o Gate M3, por exemplo) nunca receberão evento.
 
@@ -2001,7 +2001,7 @@ Uma segunda passada com `--apply` tem de gravar **0** — é a prova da idempot�
 > `firebase deploy --only firestore:...`), senão a escrita em massa gera índice de
 > `ship_card_svg` que a isenção apaga logo em seguida.
 
-- [ ] **25.9 — Tabela de registro**
+- [x] **25.9 — Tabela de registro**
 
 Execução de 2026-09-06, contra `vibe-cabral` / `jogo-navinha`, revisão
 `jogo-navinha-cardgen-00001-998` (imagem de `5609018`). Partidas de referência:
@@ -2015,7 +2015,7 @@ Execução de 2026-09-06, contra `vibe-cabral` / `jogo-navinha`, revisão
 | 25.2 | Cartão é a nave do pré-voo | ✅ | casco `#ffd700` com contorno `#ff6600`, anel de escudo presente; confere com a coluna Nave do painel |
 | 25.3 | Sem escudo: sem anel, mesmo enquadramento | ✅ | build com `Tecnologia` no mínimo e sem `cybernetics-shields` → `shield_capacity: 0`, **zero** `<circle>`, mesmo `viewBox` `-24 -24 176 176`, 411 bytes. Uma invocação, `written` |
 | 25.4 | Uma invocação, sem laço | ✅ | uma linha `written`, sem cadeia. Reforçado pelo 25.8: 48 `update` em massa não acordaram o gatilho nenhuma vez |
-| 25.5 | Anular preserva o cartão | | exige o painel de admin |
+| 25.5 | Anular preserva o cartão | ✅ | painel mostra a flag `ANULADA` na coluna própria e a miniatura da nave intacta ao lado. No documento: `voided: true`, SVG **byte-idêntico**, e o `updateTime` avançou (15:12:39) — a escrita ocorreu de fato e ainda assim **nenhuma** invocação nova do gatilho |
 | 25.6 | Reentrega devolve 200 sem reescrever | ✅ | 200 + `up_to_date`, documento byte-idêntico (mesmo `updateTime`). As três falhas permanentes devolveram 204: sem `ce-subject`, coleção errada, documento inexistente |
 | 25.7 | Preset: silhueta neutra com as cores certas | ✅ | correlação perfeita sobre 49 partidas reais: **12/12** com `fallback_used: true` saíram na silhueta neutra com a paleta do preset, **37/37** forjadas saíram com geometria própria |
 | 25.8 | Backfill em seco não escreve; `--apply` é idempotente | ✅ | 49 varridas, 48 gravadas, segunda passada gravaria 0. Isenções de índice conferidas publicadas antes (`ship_card_svg` e `ship_spec_snapshot.visuals.svg_path_data`, ambas com 0 entradas) |
