@@ -121,6 +121,18 @@ input[type='checkbox'] {
   font-size: 13px;
 }
 
+/* Botão que se parece com um link: usado no rótulo de estação da lista de partidas, onde a ação
+   é "filtrar por este valor" e um <button> com cara de botão em toda linha viraria ruído. */
+button.link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--gz-amber-solar);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .error {
   color: var(--gz-alert-red);
 }

@@ -159,6 +159,15 @@ export interface MatchCorrection {
 }
 
 /**
+ * Rótulo das partidas sem `station_id`: as ingeridas antes do campo existir, ou vindas de um
+ * daemon sem a env. Mora no shared porque é um valor **acordado entre as pontas**, não um detalhe
+ * de exibição: o filtro de estação do painel manda esta string de volta ao servidor, que compara
+ * com `m.station_id ?? UNKNOWN_STATION_LABEL` em `listMatches`. Duas cópias literais divergentes
+ * fariam o filtro "(sem station_id)" devolver zero linhas sem erro nenhum.
+ */
+export const UNKNOWN_STATION_LABEL = '(sem station_id)';
+
+/**
  * Corpo de `GET /v1/admin/health`. Mora aqui pelo mesmo motivo de `MatchCorrection` acima: era
  * uma cópia manual em `packages/admin-app/src/api.ts`, sem nenhuma ligação pelo compilador com
  * a interface de `packages/cloud-api/src/admin.ts` — as duas podiam divergir em silêncio até

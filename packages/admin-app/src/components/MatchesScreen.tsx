@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { MatchDocument } from '@jogo/shared';
+import { UNKNOWN_STATION_LABEL, type MatchDocument } from '@jogo/shared';
 import { fetchMatches, patchMatch as patchMatchApi, bulkUpdateMatches } from '../api.js';
 import { shipCardDataUri, shipCardLabel } from '../ship-card-preview.js';
 
@@ -14,6 +14,7 @@ function toEditable(m: MatchDocument): EditableFields {
 export function MatchesScreen() {
   const [q, setQ] = useState('');
   const [company, setCompany] = useState('');
+  const [station, setStation] = useState('');
   const [matches, setMatches] = useState<MatchDocument[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,11 +24,21 @@ export function MatchesScreen() {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [bulkBusy, setBulkBusy] = useState(false);
 
-  async function runSearch() {
+  /**
+   * `stationOverride` existe para o clique no rótulo de estação da tabela: `setStation` só vale
+   * no render seguinte, então buscar logo depois dele filtraria pela estação ANTERIOR.
+   */
+  async function runSearch(stationOverride?: string) {
+    const stationFilter = stationOverride ?? station;
     setLoading(true);
     setError(null);
     try {
-      const { matches: found } = await fetchMatches({ q: q || undefined, company: company || undefined, limit: 100 });
+      const { matches: found } = await fetchMatches({
+        q: q || undefined,
+        company: company || undefined,
+        station: stationFilter || undefined,
+        limit: 100
+      });
       setMatches(found);
       // Uma nova busca pode não conter mais os ids selecionados antes dela — evita uma
       // ação em lote "fantasma" sobre linhas que não estão mais na tela.
@@ -38,6 +49,12 @@ export function MatchesScreen() {
     } finally {
       setLoading(false);
     }
+  }
+
+  /** Clicar na estação de uma linha é o caminho normal: a tela de Saúde diz QUAL Mac investigar. */
+  function filterByStation(value: string) {
+    setStation(value);
+    void runSearch(value);
   }
 
   function toggleSelected(matchId: string) {
@@ -147,6 +164,11 @@ export function MatchesScreen() {
     }
   }
 
+  // Sugestões do datalist: as estações presentes no resultado atual. Sem chamada nova — a tela de
+  // Saúde é quem tem a lista canônica, e repetir aquela leitura aqui só para preencher um combo
+  // seria uma consulta a mais por busca.
+  const stationsNaBusca = Array.from(new Set(matches.map((m) => m.station_id ?? UNKNOWN_STATION_LABEL))).sort();
+
   return (
     <section>
       <h2>Partidas</h2>
@@ -158,10 +180,29 @@ export function MatchesScreen() {
           style={{ flex: 1 }}
         />
         <input placeholder="Filtrar empresa exata" value={company} onChange={(e) => setCompany(e.target.value)} />
+        <input
+          placeholder="Filtrar estação"
+          list="estacoes-conhecidas"
+          value={station}
+          onChange={(e) => setStation(e.target.value)}
+          title="station_id exato do Mac. Os valores da busca atual aparecem como sugestão."
+        />
+        <datalist id="estacoes-conhecidas">
+          {stationsNaBusca.map((s) => (
+            <option key={s} value={s} />
+          ))}
+        </datalist>
         <button onClick={() => void runSearch()} disabled={loading}>
           {loading ? 'Buscando...' : 'Buscar'}
         </button>
       </div>
+
+      {station && (
+        <p className="note">
+          Filtrando pela estação <strong>{station}</strong>.{' '}
+          <button onClick={() => filterByStation('')}>Mostrar todas as estações</button>
+        </p>
+      )}
 
       {error && <p className="error">{error}</p>}
 
@@ -210,6 +251,7 @@ export function MatchesScreen() {
             <th>Match ID</th>
             <th>Callsign</th>
             <th>Empresa</th>
+            <th>Estação</th>
             <th>Score</th>
             <th>Criada em</th>
             <th>Status</th>
@@ -260,6 +302,18 @@ export function MatchesScreen() {
                   ) : (
                     m.company_canonical
                   )}
+                </td>
+                <td>
+                  {/* Não editável: `station_id` é injetado pelo daemon no `POST /api/matches` e
+                      sobrescreve o que veio do navegador — deixar corrigir aqui reabriria a porta
+                      de atribuir a partida de um Mac ao outro. Clicar filtra. */}
+                  <button
+                    className="link"
+                    onClick={() => filterByStation(m.station_id ?? UNKNOWN_STATION_LABEL)}
+                    title="Ver só as partidas desta estação"
+                  >
+                    {m.station_id ?? UNKNOWN_STATION_LABEL}
+                  </button>
                 </td>
                 <td>
                   {isEditing ? (

@@ -2207,11 +2207,28 @@ espera a fila drenar. Essas partidas chegam ao Firestore **minutos** depois de t
 `created_at` é sobrescrito com a hora de **ingestão** — sem `played_at`, elas ocupariam o topo de
 "recentes" e poderiam disparar uma celebração de recorde velho.
 
-No telão, olhe o ticker de partidas recentes logo depois que o Bloco 5 fechar.
+**Olhe o `LIVE FEED`, não o ranking.** O ranking do telão ordena por score, e `ENSAIOOFF1`/`OFF2`
+(1500 e 1600) ficariam no fim dele de qualquer jeito — ver as duas lá embaixo não prova nada sobre
+`played_at`. Quem ordena por hora é o ticker (`LiveTickerFeed`), e é ele que mostra o `[HH:MM]` de
+cada partida.
 
-**Critério:** as duas partidas de `ENSAIOOFF` aparecem na posição correspondente a **quando foram
-jogadas** (isto é, atrás das partidas que os blocos seguintes produziram enquanto B estava offline),
-não empilhadas no topo. E **nenhuma celebração de recorde** foi disparada pela drenagem.
+**O discriminador aqui é o relógio, não a posição.** Achado de 2026-09-06: a fila do estande B
+drenou **antes** de os Blocos 6 e 7 postarem, então naquela execução `created_at` e `played_at`
+davam a mesma ordem — a posição no ticker concordaria com as duas hipóteses e não separaria nada.
+O que separa é o horário exibido, porque `created_at` foi sobrescrito na ingestão e `played_at` não.
+
+**Critério, em duas partes:**
+
+1. No `LIVE FEED`, o `[HH:MM]` de `ENSAIOOFF1`/`OFF2` é o de **quando foram jogadas** — anterior ao
+   `Criada em` que a tela de Partidas mostra para os mesmos `match_id`. Confirme os dois valores
+   lado a lado:
+   ```bash
+   curl -su ":$ADMIN_PANEL_PASSWORD" '<URL do Cloud Run>/v1/admin/matches?q=ENSAIOOFF&limit=10' \
+     | jq '.matches[] | {callsign, played_at, created_at}'
+   ```
+   `played_at` tem que ser **menor** que `created_at` nas duas (o Bloco 5 do script afirma isso no
+   dado; aqui se verifica que o número que chega à TV é o certo).
+2. **Nenhuma celebração de recorde** foi disparada pela drenagem.
 
 - [ ] **26.6 — Painel: "Atividade por estação" e o filtro por Mac**
 
@@ -2224,11 +2241,23 @@ ela aparece como uma seção **separada** da fila de sincronização. As duas re
 diferentes — "aquele Mac está produzindo partidas?" contra "a fila de saída daquele Mac está
 drenando?" — e a nota honesta de que a nuvem não enxerga a segunda continua na tela.
 
-Depois vá em **Partidas** e use o filtro por estação.
+Depois vá em **Partidas**. A tabela tem uma coluna **Estação** entre Empresa e Score, e o valor de
+cada linha é clicável: clicar filtra por aquela estação. Há também um campo **Filtrar estação** na
+barra de busca, com as estações da busca atual como sugestão.
 
-**Critério:** filtrando por `ensaio-booth-b`, **todas** as linhas mostram aquela estação, e as
-partidas de `ensaio-booth-a` somem. Sem filtro, as duas estações aparecem misturadas e cada linha
-diz de qual veio.
+**Critério:** sem filtro, as duas estações aparecem misturadas e cada linha diz de qual veio.
+Clicando em `ensaio-booth-b` (ou digitando no campo), **todas** as linhas passam a mostrar aquela
+estação e as de `ensaio-booth-a` somem; o aviso "Filtrando pela estação …" aparece com o botão
+**Mostrar todas as estações**, que desfaz.
+
+> Partidas anteriores ao campo aparecem como `(sem station_id)`, e filtrar por esse rótulo funciona
+> — o servidor casa contra `station_id ?? '(sem station_id)'`. Por isso a string mora em
+> `@jogo/shared` e não é digitada em cada lado: duas cópias divergentes fariam esse filtro devolver
+> zero linhas sem erro nenhum.
+>
+> A coluna **não** é editável, ao contrário de Callsign/Empresa/Score. `station_id` é injetado pelo
+> daemon no `POST /api/matches`, sobrescrevendo o que veio do navegador; deixar corrigir no painel
+> reabriria justamente a porta de atribuir a partida de um Mac ao outro.
 
 - [ ] **26.7 — Uma empresa cadastrada no painel chega aos dois autocompletes**
 
@@ -2275,9 +2304,9 @@ script são todas sobre convergência na nuvem e o mesmo código de daemon roda 
 | 26.1 | `reset:db` rodado nos dois Macs, `company_aliases` zerado | [ ] | |
 | 26.2 | Forja em branco com `agy` logado | [ ] | |
 | 26.3 | Duas celebrações em cada TV, nenhuma engolida | [ ] | |
-| 26.4 | Empate na mesma ordem nas duas TVs, estável em 3 refreshes | [ ] | |
-| 26.5 | Partidas drenadas não subiram ao topo do ticker | [ ] | |
-| 26.6 | Atividade por estação legível; filtro por Mac funciona | [ ] | |
+| 26.4 | Empate na mesma ordem nas duas TVs, estável em 3 refreshes | ✅ | `ENSAIOEMP1` antes de `ENSAIOEMP2`, estável em vários refreshes, simultâneos e alternando entre as duas janelas |
+| 26.5 | Partidas drenadas não subiram ao topo do ticker | [ ] | Primeira tentativa olhou o **ranking** (onde `ENSAIOOFF2`/`OFF1` ficam no fim só por terem score 1600/1500) — não discrimina. Refeito contra o `LIVE FEED` e o `played_at` do JSON |
+| 26.6 | Atividade por estação legível; filtro por Mac funciona | 🟡 | Saúde ✅: `ensaio-booth-b` 5 / `ensaio-booth-a` 3, com data legível. Partidas ❌ na primeira tentativa: **não havia coluna nem filtro de estação na tela** — o `?station=` já existia no `listMatches` desde a Fase 5, mas o `admin-app` nunca o expôs. Corrigido; refazer depois do redeploy |
 | 26.7 | Empresa nova no autocomplete dos dois estandes, mesma versão | [ ] | |
 | 26.8 | `station_id` distinto no boot dos dois Macs | [ ] | |
 | Fim | Partidas de ensaio apagadas e catálogo conferido | [ ] | |

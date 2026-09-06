@@ -57,6 +57,12 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 export interface ListMatchesQuery {
   q?: string;
   company?: string;
+  /**
+   * `station_id` exato. O servidor casa contra `m.station_id ?? UNKNOWN_STATION_LABEL`, então
+   * mandar o rótulo de "sem estação" filtra as partidas antigas — por isso a constante vem do
+   * `@jogo/shared` e não é digitada aqui.
+   */
+  station?: string;
   limit?: number;
 }
 
@@ -64,6 +70,7 @@ export function fetchMatches(query: ListMatchesQuery): Promise<{ matches: MatchD
   const params = new URLSearchParams();
   if (query.q) params.set('q', query.q);
   if (query.company) params.set('company', query.company);
+  if (query.station) params.set('station', query.station);
   if (query.limit) params.set('limit', String(query.limit));
   const qs = params.toString();
   return requestJson(`/v1/admin/matches${qs ? `?${qs}` : ''}`);

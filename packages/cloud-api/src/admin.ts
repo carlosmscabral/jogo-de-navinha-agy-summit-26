@@ -23,6 +23,7 @@
 import { FieldValue, type Firestore, type Query } from 'firebase-admin/firestore';
 import {
   SCHEMA_VERSION,
+  UNKNOWN_STATION_LABEL,
   field,
   type MatchDocument,
   type CompanyCatalogDocument,
@@ -563,8 +564,9 @@ export async function seedCompanyCatalogIfMissing(db: Firestore, companies: stri
 /** Janela de partidas (por `created_at`) usada para estimar a taxa de preset de emergência. */
 const HEALTH_SAMPLE_SIZE = 200;
 
-/** Rótulo das partidas ingeridas antes de `station_id` existir, ou vindas de um daemon sem env. */
-export const UNKNOWN_STATION_LABEL = '(sem station_id)';
+// `UNKNOWN_STATION_LABEL` mora em `@jogo/shared` (o painel manda esta mesma string de volta no
+// filtro de estação); reexportado aqui porque os testes e as rotas já o importam deste módulo.
+export { UNKNOWN_STATION_LABEL };
 
 /**
  * Agrupa a amostra de partidas por estação. Recebe os documentos já lidos — a leitura é a MESMA
