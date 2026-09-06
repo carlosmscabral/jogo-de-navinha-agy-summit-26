@@ -1904,7 +1904,15 @@ sem score, sem texto nenhum além do `<title>` com o nome do estilo (aparece com
 
 - [ ] **25.3 — Build sem escudo: sem anel, mesmo enquadramento**
 
-Repita numa partida cuja build tenha `shield_capacity == 0` (sliders com `defense` no mínimo).
+Repita numa partida cuja build tenha `shield_capacity == 0`. Duas condições, e as **duas** são
+necessárias:
+
+1. **`Tecnologia` no mínimo (10)** — é o slider `tech` que governa o escudo
+   (`baseline-ship-stats.ts:66`), não o `defense`, que governa `max_hp`. O arredondamento dá `0`
+   até `tech = 16`, mas deixe no mínimo para não depender disso.
+2. **Não selecionar "Cibernética & Escudos"** — é o único MCP que calibra `shield_capacity`
+   (`mcp-catalog.ts:121`) e o único que destrava sinergias, entre elas a `titan_fortress`, que
+   força `min_shield_capacity: 2` (`balance.ts:203`).
 
 ```bash
 read_match <MATCH_ID> | jq -r '.fields.ship_card_svg.stringValue' | grep -c '<circle'
