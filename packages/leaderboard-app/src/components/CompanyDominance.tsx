@@ -1,5 +1,6 @@
 import React from 'react';
 import { Building2, Users, Flame, Award, TrendingUp } from 'lucide-react';
+import { useAutoScroll } from '../use-auto-scroll.js';
 
 export interface CompanyRankEntry {
   rank: number;
@@ -11,9 +12,12 @@ export interface CompanyRankEntry {
 
 interface CompanyDominanceProps {
   companies: CompanyRankEntry[];
+  /** `false` enquanto a visão educativa está no ar: não há por que animar uma lista fora da tela. */
+  scrolling: boolean;
 }
 
-export function CompanyDominance({ companies }: CompanyDominanceProps) {
+export function CompanyDominance({ companies, scrolling }: CompanyDominanceProps) {
+  const listRef = useAutoScroll<HTMLDivElement>(scrolling);
   const maxScore = companies.length > 0 ? companies[0].total_score : 1;
 
   const getCompanyColor = (rank: number) => {
@@ -41,7 +45,7 @@ export function CompanyDominance({ companies }: CompanyDominanceProps) {
           </div>
           <div>
             <h2 className="text-lg font-black text-white tracking-wider uppercase font-sans">
-              BATALHA CORPORATIVA // TOP 5
+              BATALHA CORPORATIVA // TOP 15
             </h2>
             <p className="text-[11px] text-slate-400 font-mono">Pontuação total agregada por empresa</p>
           </div>
@@ -52,56 +56,60 @@ export function CompanyDominance({ companies }: CompanyDominanceProps) {
         </span>
       </div>
 
-      {/* Companies List */}
-      <div className="flex-1 space-y-3.5 flex flex-col justify-around">
-        {companies.slice(0, 5).map((comp) => {
-          const colors = getCompanyColor(comp.rank);
-          const percentage = Math.max(15, Math.round((comp.total_score / maxScore) * 100));
+      {/* Companies List — mesmo par pai/filho do hall da fama: o pai recorta, o filho rola.
+          O `justify-around` de antes distribuía a folga de 5 cards numa coluna sobrando; com 15
+          não há folga nenhuma, e ele brigaria com o `translateY` da rolagem. */}
+      <div className="flex-1 overflow-hidden">
+        <div ref={listRef} className="space-y-3.5 will-change-transform">
+          {companies.map((comp) => {
+            const colors = getCompanyColor(comp.rank);
+            const percentage = Math.max(15, Math.round((comp.total_score / maxScore) * 100));
 
-          return (
-            <div
-              key={comp.company_canonical}
-              className={`p-4 rounded-2xl bg-slate-900/60 border transition-all ${
-                comp.rank === 1 ? 'border-[#ff9e0b]/40 bg-[#ff9e0b]/5' : 'border-slate-800'
-              }`}
-            >
-              {/* Header Info */}
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2.5">
-                  <span className={`w-6 h-6 rounded-lg bg-slate-950 border border-slate-800 text-xs font-black font-mono flex items-center justify-center ${colors.text}`}>
-                    {comp.rank}
-                  </span>
-                  <span className="text-sm font-black text-white tracking-wide">
-                    {comp.company_canonical}
-                  </span>
-                  <span className="text-[10px] text-slate-400 flex items-center gap-1 font-mono">
-                    <Users className="w-3 h-3 text-slate-500" /> {comp.pilots_count} {comp.pilots_count === 1 ? 'piloto' : 'pilotos'}
-                  </span>
+            return (
+              <div
+                key={comp.company_canonical}
+                className={`p-4 rounded-2xl bg-slate-900/60 border transition-all ${
+                  comp.rank === 1 ? 'border-[#ff9e0b]/40 bg-[#ff9e0b]/5' : 'border-slate-800'
+                }`}
+              >
+                {/* Header Info */}
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2.5">
+                    <span className={`w-6 h-6 rounded-lg bg-slate-950 border border-slate-800 text-xs font-black font-mono flex items-center justify-center ${colors.text}`}>
+                      {comp.rank}
+                    </span>
+                    <span className="text-sm font-black text-white tracking-wide">
+                      {comp.company_canonical}
+                    </span>
+                    <span className="text-[10px] text-slate-400 flex items-center gap-1 font-mono">
+                      <Users className="w-3 h-3 text-slate-500" /> {comp.pilots_count} {comp.pilots_count === 1 ? 'piloto' : 'pilotos'}
+                    </span>
+                  </div>
+
+                  <div className="text-right font-mono">
+                    <span className={`text-sm font-black ${colors.text}`}>
+                      {comp.total_score.toLocaleString()} <span className="text-[10px] text-slate-400 font-normal">PTS</span>
+                    </span>
+                  </div>
                 </div>
 
-                <div className="text-right font-mono">
-                  <span className={`text-sm font-black ${colors.text}`}>
-                    {comp.total_score.toLocaleString()} <span className="text-[10px] text-slate-400 font-normal">PTS</span>
-                  </span>
+                {/* Progress Bar */}
+                <div className="w-full bg-slate-950 rounded-full h-3 overflow-hidden p-0.5 border border-slate-800">
+                  <div
+                    className={`bg-gradient-to-r ${colors.bar} h-full rounded-full transition-all duration-1000 shadow-sm`}
+                    style={{ width: `${percentage}%` }}
+                  />
+                </div>
+
+                {/* Footer Meta */}
+                <div className="flex justify-between text-[10px] text-slate-400 mt-1.5 font-mono">
+                  <span>Top Individual: <b className="text-slate-200">+{comp.top_individual_score.toLocaleString()}</b></span>
+                  <span>{percentage}% do líder</span>
                 </div>
               </div>
-
-              {/* Progress Bar */}
-              <div className="w-full bg-slate-950 rounded-full h-3 overflow-hidden p-0.5 border border-slate-800">
-                <div
-                  className={`bg-gradient-to-r ${colors.bar} h-full rounded-full transition-all duration-1000 shadow-sm`}
-                  style={{ width: `${percentage}%` }}
-                />
-              </div>
-
-              {/* Footer Meta */}
-              <div className="flex justify-between text-[10px] text-slate-400 mt-1.5 font-mono">
-                <span>Top Individual: <b className="text-slate-200">+{comp.top_individual_score.toLocaleString()}</b></span>
-                <span>{percentage}% do líder</span>
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );

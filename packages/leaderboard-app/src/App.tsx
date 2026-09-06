@@ -1,12 +1,19 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useReducer } from 'react';
 import { Trophy, Radio, Zap, Users, Flame, Shield, Globe, Terminal } from 'lucide-react';
 import { HallOfFame, TopPilotEntry } from './components/HallOfFame.js';
 import { CompanyDominance, CompanyRankEntry } from './components/CompanyDominance.js';
 import { LiveTickerFeed, RecentMatchEntry } from './components/LiveTickerFeed.js';
 import { RecordCelebrationModal } from './components/RecordCelebrationModal.js';
-import { AttractQrCode } from './components/AttractQrCode.js';
+import { AntigravityShowcase } from './components/AntigravityShowcase.js';
 import { subscribeToLeaderboard, LeaderboardState, SourceStatus } from './firestore-source.js';
 import { enqueueCelebration, isCelebrationWorthy, type Celebration } from './celebration-queue.js';
+import {
+  rotationReducer,
+  initialRotationState,
+  DEFAULT_ROTATION_CONFIG,
+  type RotationEvent,
+  type RotationState
+} from './view-rotation.js';
 
 const SOURCE_BADGE: Record<SourceStatus, { label: string; className: string }> = {
   cloud: { label: 'NUVEM', className: 'bg-[#10b981]/20 text-[#10b981] border-[#10b981]/40' },
@@ -32,12 +39,57 @@ export function App() {
   const [celebrations, setCelebrations] = useState<Celebration[]>([]);
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString());
 
-  // Clock Ticker
+  /**
+   * `useReducer`, e não `useState`, pela alternância placar ↔ painel do Antigravity: o efeito de
+   * assinatura roda com deps `[]` e precisa disparar `FORCE_SCOREBOARD` de dentro do `onNewMatch`.
+   * O `dispatch` do React é estável entre renders; um setter capturado naquele efeito enxergaria
+   * para sempre o estado do primeiro render.
+   */
+  const [rotation, dispatchRotation] = useReducer(
+    (s: RotationState, e: RotationEvent) => rotationReducer(s, e, DEFAULT_ROTATION_CONFIG),
+    DEFAULT_ROTATION_CONFIG,
+    initialRotationState
+  );
+  const noPlacar = rotation.view === 'scoreboard';
+
+  // Um único intervalo de 1 s move o relógio do cabeçalho E o cronômetro da alternância. Dois
+  // timers correndo em paralelo não trariam nada além de mais uma coisa para desalinhar.
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      dispatchRotation({ type: 'TICK', deltaMs: 1000 });
     }, 1000);
     return () => clearInterval(timer);
+  }, []);
+
+  /**
+   * O controle do apresentador. O estande usa um apontador que se anuncia como teclado, então
+   * "avançar slide" chega como seta ou espaço. Qualquer outra tecla só RENOVA a retenção — e só
+   * se o painel já estiver no ar (ver `OPERATOR_ACTIVITY` em `view-rotation.ts`): uma tecla
+   * esbarrada não pode tirar o placar do ar no meio do evento.
+   */
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      switch (e.key) {
+        case 'ArrowRight':
+        case 'ArrowDown':
+        case 'PageDown':
+        case ' ':
+          e.preventDefault();
+          dispatchRotation({ type: 'OPERATOR_NEXT' });
+          break;
+        case 'ArrowLeft':
+        case 'ArrowUp':
+        case 'PageUp':
+          e.preventDefault();
+          dispatchRotation({ type: 'OPERATOR_PREV' });
+          break;
+        default:
+          dispatchRotation({ type: 'OPERATOR_ACTIVITY' });
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
   const dismissCelebration = useCallback(() => {
@@ -54,6 +106,10 @@ export function App() {
       // em `LeaderboardHandlers.onNewMatch`. Aqui não se consulta mais nenhum estado do React.
       onNewMatch: (match, rank) => {
         if (!isCelebrationWorthy(rank)) return;
+        // Um pódio novo vence qualquer coisa que esteja no ar, inclusive a retenção manual do
+        // apresentador: celebrar por cima do painel institucional, ou pior, não celebrar, é
+        // perder exatamente o clímax que a experiência inteira existe para produzir.
+        dispatchRotation({ type: 'FORCE_SCOREBOARD' });
         setCelebrations((queue) => enqueueCelebration(queue, { match, rank }));
       }
     });
@@ -124,23 +180,27 @@ export function App() {
         </div>
       </header>
 
-      {/* Main Grid Content */}
-      <main className="flex-1 p-6 grid grid-cols-1 md:grid-cols-12 gap-6 overflow-hidden z-10">
-        {/* Left Column (7 Cols): Hall of Fame Top 10 Individual */}
-        <div className="md:col-span-7 h-full overflow-hidden">
-          <HallOfFame pilots={data.topPilots} />
-        </div>
+      {/* Main Content — duas visões alternando na MESMA caixa. Cabeçalho e ticker ficam montados
+          nos dois casos: é o que dá continuidade e mantém o LIVE FEED correndo o tempo todo. */}
+      {noPlacar ? (
+        <main className="flex-1 p-6 grid grid-cols-1 md:grid-cols-12 gap-6 overflow-hidden z-10">
+          {/* Left Column (7 Cols): Hall of Fame Top 20 Individual */}
+          <div className="md:col-span-7 h-full overflow-hidden">
+            <HallOfFame pilots={data.topPilots} scrolling={noPlacar} />
+          </div>
 
-        {/* Right Column (5 Cols): Company Dominance + QR Code Callout */}
-        <div className="md:col-span-5 flex flex-col gap-6 h-full overflow-hidden">
-          <div className="flex-1 overflow-hidden">
-            <CompanyDominance companies={data.companyRankings} />
+          {/* Right Column (5 Cols): Company Dominance. O antigo bloco "SUA VEZ DE PILOTAR" com o
+              QR desenhado à mão saiu daqui; a chamada para ação virou o fecho da terceira seção
+              do painel do Antigravity, onde ela é verdadeira. */}
+          <div className="md:col-span-5 h-full overflow-hidden">
+            <CompanyDominance companies={data.companyRankings} scrolling={noPlacar} />
           </div>
-          <div className="flex-shrink-0">
-            <AttractQrCode />
-          </div>
-        </div>
-      </main>
+        </main>
+      ) : (
+        <main className="flex-1 p-6 overflow-hidden z-10">
+          <AntigravityShowcase section={rotation.section} holdMs={rotation.holdMs} />
+        </main>
+      )}
 
       {/* Bottom Ticker Feed */}
       <footer className="z-20 flex-shrink-0">

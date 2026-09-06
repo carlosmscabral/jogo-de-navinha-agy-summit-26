@@ -1,5 +1,6 @@
 import React from 'react';
 import { Trophy, Crown, Medal, Flame, Zap, Shield, Sparkles } from 'lucide-react';
+import { useAutoScroll } from '../use-auto-scroll.js';
 
 export interface TopPilotEntry {
   rank: number;
@@ -15,9 +16,13 @@ export interface TopPilotEntry {
 
 interface HallOfFameProps {
   pilots: TopPilotEntry[];
+  /** `false` enquanto a visão educativa está no ar: não há por que animar uma lista fora da tela. */
+  scrolling: boolean;
 }
 
-export function HallOfFame({ pilots }: HallOfFameProps) {
+export function HallOfFame({ pilots, scrolling }: HallOfFameProps) {
+  const listRef = useAutoScroll<HTMLDivElement>(scrolling);
+
   const getRankBadge = (rank: number) => {
     if (rank === 1) {
       return (
@@ -57,7 +62,7 @@ export function HallOfFame({ pilots }: HallOfFameProps) {
           </div>
           <div>
             <h2 className="text-lg font-black text-white tracking-wider uppercase font-sans">
-              HALL DA FAMA // TOP 10 PILOTOS
+              HALL DA FAMA // TOP 20 PILOTOS
             </h2>
             <p className="text-[11px] text-slate-400 font-mono">Pontuações individuais mais altas do Summit</p>
           </div>
@@ -68,63 +73,67 @@ export function HallOfFame({ pilots }: HallOfFameProps) {
         </span>
       </div>
 
-      {/* Pilots List */}
-      <div className="flex-1 space-y-2.5 overflow-hidden">
-        {pilots.slice(0, 10).map((pilot) => {
-          const isTop1 = pilot.rank === 1;
-          const isTop3 = pilot.rank <= 3;
+      {/* Pilots List — o pai recorta, o filho é quem `useAutoScroll` desloca por `translateY`.
+          São 20 pilotos numa caixa que comporta ≈10: a lista rola sozinha, devagar, e volta ao
+          topo sem salto. Nenhuma medida tipográfica muda para caber mais. */}
+      <div className="flex-1 overflow-hidden">
+        <div ref={listRef} className="space-y-2.5 will-change-transform">
+          {pilots.map((pilot) => {
+            const isTop1 = pilot.rank === 1;
+            const isTop3 = pilot.rank <= 3;
 
-          return (
-            <div
-              key={pilot.match_id || pilot.rank}
-              className={`p-3.5 rounded-2xl transition-all flex items-center justify-between gap-3 ${
-                isTop1
-                  ? 'bg-gradient-to-r from-[#ff9e0b]/20 via-[#ff9e0b]/10 to-slate-950/80 border border-[#ff9e0b]/60 scale-[1.01]'
-                  : isTop3
-                  ? 'bg-gradient-to-r from-slate-800/40 to-slate-950/60 border border-slate-700/60'
-                  : 'bg-slate-950/40 border border-slate-800/80 hover:border-slate-700'
-              }`}
-            >
-              {/* Left: Rank & Callsign */}
-              <div className="flex items-center gap-3 min-w-0">
-                {getRankBadge(pilot.rank)}
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`text-sm font-black tracking-wide truncate ${
-                        isTop1 ? 'text-[#ff9e0b] text-glow-amber' : 'text-white'
-                      }`}
-                    >
-                      {pilot.callsign}
-                    </span>
-                    {isTop1 && (
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#ff9e0b]/20 text-[#ff9e0b] border border-[#ff9e0b]/40 uppercase tracking-wider font-mono">
-                        LÍDER
+            return (
+              <div
+                key={pilot.match_id || pilot.rank}
+                className={`p-3.5 rounded-2xl transition-all flex items-center justify-between gap-3 ${
+                  isTop1
+                    ? 'bg-gradient-to-r from-[#ff9e0b]/20 via-[#ff9e0b]/10 to-slate-950/80 border border-[#ff9e0b]/60 scale-[1.01]'
+                    : isTop3
+                    ? 'bg-gradient-to-r from-slate-800/40 to-slate-950/60 border border-slate-700/60'
+                    : 'bg-slate-950/40 border border-slate-800/80 hover:border-slate-700'
+                }`}
+              >
+                {/* Left: Rank & Callsign */}
+                <div className="flex items-center gap-3 min-w-0">
+                  {getRankBadge(pilot.rank)}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-sm font-black tracking-wide truncate ${
+                          isTop1 ? 'text-[#ff9e0b] text-glow-amber' : 'text-white'
+                        }`}
+                      >
+                        {pilot.callsign}
                       </span>
-                    )}
+                      {isTop1 && (
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#ff9e0b]/20 text-[#ff9e0b] border border-[#ff9e0b]/40 uppercase tracking-wider font-mono">
+                          LÍDER
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs text-slate-400 font-sans truncate block">
+                      {pilot.company_canonical}
+                    </span>
                   </div>
-                  <span className="text-xs text-slate-400 font-sans truncate block">
-                    {pilot.company_canonical}
-                  </span>
                 </div>
-              </div>
 
-              {/* Right: Score */}
-              <div className="text-right flex-shrink-0">
-                <div
-                  className={`text-base font-black font-mono tracking-tight ${
-                    isTop1 ? 'text-[#ff9e0b]' : isTop3 ? 'text-[#38bdf8]' : 'text-slate-200'
-                  }`}
-                >
-                  {pilot.final_score.toLocaleString()} <span className="text-[10px] text-slate-400 font-normal">PTS</span>
-                </div>
-                <div className="text-[9px] text-slate-500 font-mono">
-                  {new Date(pilot.played_at ?? pilot.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                {/* Right: Score */}
+                <div className="text-right flex-shrink-0">
+                  <div
+                    className={`text-base font-black font-mono tracking-tight ${
+                      isTop1 ? 'text-[#ff9e0b]' : isTop3 ? 'text-[#38bdf8]' : 'text-slate-200'
+                    }`}
+                  >
+                    {pilot.final_score.toLocaleString()} <span className="text-[10px] text-slate-400 font-normal">PTS</span>
+                  </div>
+                  <div className="text-[9px] text-slate-500 font-mono">
+                    {new Date(pilot.played_at ?? pilot.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );
