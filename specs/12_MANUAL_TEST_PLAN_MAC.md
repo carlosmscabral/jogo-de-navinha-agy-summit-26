@@ -2004,15 +2004,16 @@ Uma segunda passada com `--apply` tem de gravar **0** — é a prova da idempot�
 - [ ] **25.9 — Tabela de registro**
 
 Execução de 2026-09-06, contra `vibe-cabral` / `jogo-navinha`, revisão
-`jogo-navinha-cardgen-00001-998` (imagem de `5609018`). Partida de referência:
-`ead7e4f2-8389-4b16-a11e-67fd1bf0ddfc`.
+`jogo-navinha-cardgen-00001-998` (imagem de `5609018`). Partidas de referência:
+`ead7e4f2-8389-4b16-a11e-67fd1bf0ddfc` (com escudo) e
+`2d59afaa-09da-4bbd-bcfc-5067d50ca22d` (sem escudo).
 
 | # | Passo | Passou? | Observação |
 |---|-------|---------|------------|
-| 25.1 | Jornada não mudou de duração | | ____ min ____ s (comparar com 24.1) |
-| 25.1 | Cartão chegou depois do debrief | ✅ | `ship_card_version: 1`, 757 bytes, gravado às 14:55:07 |
+| 25.1 | Jornada não mudou de duração | ✅ | operador reportou a jornada igual à de sempre, com a geração do cartão **imperceptível** ao visitante. Não cronometrada ao segundo |
+| 25.1 | Cartão chegou depois do debrief | ✅ | com instância fria, alguns segundos; com instância quente, **1,55 s** de ponta a ponta (`createTime` 15:10:41,337 → `updateTime` 15:10:42,885) |
 | 25.2 | Cartão é a nave do pré-voo | ✅ | casco `#ffd700` com contorno `#ff6600`, anel de escudo presente; confere com a coluna Nave do painel |
-| 25.3 | Sem escudo: sem anel, mesmo enquadramento | ⚠️ parcial | renderizador provado: mesmo spec com `shield_capacity: 0` perde o `<circle>` (757 → 632 bytes) e mantém `viewBox` e casco byte-idênticos. Falta uma build sem escudo passando pelo **gatilho** ao vivo |
+| 25.3 | Sem escudo: sem anel, mesmo enquadramento | ✅ | build com `Tecnologia` no mínimo e sem `cybernetics-shields` → `shield_capacity: 0`, **zero** `<circle>`, mesmo `viewBox` `-24 -24 176 176`, 411 bytes. Uma invocação, `written` |
 | 25.4 | Uma invocação, sem laço | ✅ | uma linha `written`, sem cadeia. Reforçado pelo 25.8: 48 `update` em massa não acordaram o gatilho nenhuma vez |
 | 25.5 | Anular preserva o cartão | | exige o painel de admin |
 | 25.6 | Reentrega devolve 200 sem reescrever | ✅ | 200 + `up_to_date`, documento byte-idêntico (mesmo `updateTime`). As três falhas permanentes devolveram 204: sem `ce-subject`, coleção errada, documento inexistente |
