@@ -12,7 +12,7 @@
 #   ./scripts/deploy.sh --yes          # sem confirmação (CI, automação)
 #   ./scripts/deploy.sh --with-iap     # recusa com explicação — IAP no Cloud Run é por
 #                                      # serviço inteiro, e bloquearia a ingestão do estande
-#                                      # junto (ver Passo 9/9 abaixo, corrigido em 2026-08-24)
+#                                      # junto (ver Passo 11/11 abaixo, corrigido em 2026-08-24)
 #   PROJECT_ID=outro-projeto ./scripts/deploy.sh   # outro projeto GCP
 #
 # O serviço sobe com --allow-unauthenticated de propósito: as duas credenciais deste
@@ -29,6 +29,13 @@ SERVICE_ACCOUNT_NAME="${SERVICE_ACCOUNT_NAME:-jogo-navinha-api}"
 SERVICE_ACCOUNT_EMAIL="${SERVICE_ACCOUNT_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 BOOTH_TOKEN_SECRET="${BOOTH_TOKEN_SECRET:-booth-ingest-token}"
 ADMIN_PASSWORD_SECRET="${ADMIN_PASSWORD_SECRET:-admin-panel-password}"
+# Segundo serviço Cloud Run, MESMA imagem do primeiro, com CARDGEN_ENABLED=1 (Passo 9/11).
+# Nome e service account próprios porque 'vibe-cabral' é um sandbox compartilhado — nada aqui
+# pode reivindicar um recurso padrão do projeto.
+CARDGEN_SERVICE_NAME="${CARDGEN_SERVICE_NAME:-jogo-navinha-cardgen}"
+CARDGEN_SA_NAME="${CARDGEN_SA_NAME:-jogo-navinha-cardgen}"
+CARDGEN_SA_EMAIL="${CARDGEN_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+CARDGEN_TRIGGER_NAME="${CARDGEN_TRIGGER_NAME:-jogo-navinha-cardgen-trigger}"
 
 SKIP_CONFIRM=0
 WITH_IAP=0
@@ -65,7 +72,7 @@ command -v firebase >/dev/null 2>&1 || { echo "firebase (firebase-tools) não en
 gcloud config set project "$PROJECT_ID" >/dev/null
 
 echo ""
-echo "-- 1/10: Habilitando APIs necessárias (idempotente) --"
+echo "-- 1/11: Habilitando APIs necessárias (idempotente) --"
 gcloud services enable \
   firestore.googleapis.com \
   run.googleapis.com \
@@ -74,10 +81,12 @@ gcloud services enable \
   cloudbuild.googleapis.com \
   artifactregistry.googleapis.com \
   firebasehosting.googleapis.com \
+  eventarc.googleapis.com \
+  pubsub.googleapis.com \
   --project="$PROJECT_ID"
 
 echo ""
-echo "-- 2/10: Banco Firestore nomeado '$FIRESTORE_DATABASE' --"
+echo "-- 2/11: Banco Firestore nomeado '$FIRESTORE_DATABASE' --"
 if gcloud firestore databases describe --database="$FIRESTORE_DATABASE" --project="$PROJECT_ID" >/dev/null 2>&1; then
   echo "Já existe — não mexe no que já está lá (o (default) do projeto continua intocado)."
 else
@@ -90,13 +99,13 @@ else
 fi
 
 echo ""
-echo "-- 3/10: Regras e índices do Firestore --"
+echo "-- 3/11: Regras e índices do Firestore --"
 # --project sobrescreve .firebaserc — funciona mesmo sem esse arquivo existir localmente,
 # o que é o que torna este passo reproduzível para outro projeto sem editar nada versionado.
 firebase deploy --project="$PROJECT_ID" --only "firestore:$FIRESTORE_DATABASE"
 
 echo ""
-echo "-- 4/10: Service account do Cloud Run --"
+echo "-- 4/11: Service account do Cloud Run --"
 if gcloud iam service-accounts describe "$SERVICE_ACCOUNT_EMAIL" --project="$PROJECT_ID" >/dev/null 2>&1; then
   echo "Já existe: $SERVICE_ACCOUNT_EMAIL"
 else
@@ -116,7 +125,7 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --condition=None >/dev/null
 
 echo ""
-echo "-- 5/10: Segredos (Secret Manager) --"
+echo "-- 5/11: Segredos (Secret Manager) --"
 # Só cria se ainda não existir — nunca sobrescreve um segredo que o operador já configurou
 # (rotacionar é uma decisão separada, deliberada, não um efeito colateral de rodar este script
 # de novo). Gerados aqui, mostrados uma única vez: guarde-os, não há como reler o valor depois.
@@ -150,7 +159,7 @@ create_secret_if_missing "$BOOTH_TOKEN_SECRET"
 create_secret_if_missing "$ADMIN_PASSWORD_SECRET"
 
 echo ""
-echo "-- 6/10: App Web do Firebase (config do SDK cliente: telão e tela Rankings do admin-app) --"
+echo "-- 6/11: App Web do Firebase (config do SDK cliente: telão e tela Rankings do admin-app) --"
 # Achado ao vivo, 2026-08-24: a tela Rankings do admin-app lê `company_rankings` direto do
 # Firestore pelo SDK cliente (mesmo padrão do leaderboard-app, Tarefa C6/C7) — precisa de um
 # "app Web" registrado no projeto Firebase, um tipo de recurso que nenhum passo anterior cria.
@@ -200,7 +209,7 @@ export VITE_FIREBASE_MESSAGING_SENDER_ID="$(sdk_config_field messagingSenderId)"
 export VITE_FIREBASE_APP_ID="$(sdk_config_field appId)"
 
 echo ""
-echo "-- 7/10: Build local (shared, admin-app, leaderboard-app, vendorização do cloud-api) --"
+echo "-- 7/11: Build local (shared, admin-app, leaderboard-app, vendorização do cloud-api) --"
 # As VITE_FIREBASE_* exportadas acima precisam estar no ambiente ANTES dos builds do
 # admin-app e do leaderboard-app — o Vite grava esses valores no bundle nesse momento, não
 # depois. É por isso que o telão é construído AQUI e não por `npm run build` na raiz: só este
@@ -212,7 +221,7 @@ npm run build --workspace=packages/leaderboard-app
 npm run vendor --workspace=packages/cloud-api
 
 echo ""
-echo "-- 8/10: Deploy do Cloud Run --"
+echo "-- 8/11: Deploy do Cloud Run --"
 # CORRIGIDO ao vivo, 2026-08-24: era --no-allow-unauthenticated. Isso está ERRADO para esta
 # arquitetura — com o Cloud Run exigindo autenticação própria (IAM da plataforma), toda
 # requisição sem identidade Google é recusada com 403 ANTES de chegar ao código do serviço,
@@ -262,7 +271,94 @@ gcloud run deploy "$SERVICE_NAME" \
 SERVICE_URL="$(gcloud run services describe "$SERVICE_NAME" --region "$REGION" --project "$PROJECT_ID" --format='value(status.url)')"
 
 echo ""
-echo "-- 9/10: Hosting do telão --"
+echo "-- 9/11: Serviço 'cardgen' e o gatilho Eventarc (cartão SVG da nave) --"
+# O que este passo monta: a criação de um documento em matches/{match_id} dispara um gatilho
+# Eventarc que chama POST /internal/cardgen no serviço '$CARDGEN_SERVICE_NAME', que relê o
+# documento, renderiza o SVG da nave e grava de volta. NADA disto está no caminho síncrono de
+# POST /v1/matches — o estande considera a partida sincronizada sem esperar cartão nenhum.
+#
+# Mesma IMAGEM do serviço público, papel diferente: só a env var CARDGEN_ENABLED=1 separa os
+# dois, e é ela que faz o processo montar apenas /v1/health e /internal/cardgen (o painel e a
+# ingestão não existem lá — provado por packages/cloud-api/src/cardgen-routes.test.ts).
+# Reaproveitar a imagem exata do Passo 8, em vez de um segundo `--source`, evita um build do
+# Cloud Build inteiro e garante que "mesma imagem" seja literalmente verdade, não coincidência.
+CARDGEN_IMAGE="$(gcloud run services describe "$SERVICE_NAME" --region "$REGION" --project "$PROJECT_ID" --format='value(spec.template.spec.containers[0].image)')"
+if [ -z "$CARDGEN_IMAGE" ]; then
+  echo "ERRO: não consegui ler a imagem do serviço '$SERVICE_NAME' recém-publicado." >&2
+  echo "Sem ela não dá para publicar o cardgen com a MESMA imagem. Rode o Passo 8 de novo." >&2
+  exit 1
+fi
+
+# Service account PRÓPRIA, com um papel só: roles/datastore.user. Reusar a do serviço público
+# daria ao cardgen acesso ao Vertex AI e aos dois segredos, que ele não usa para nada.
+if gcloud iam service-accounts describe "$CARDGEN_SA_EMAIL" --project="$PROJECT_ID" >/dev/null 2>&1; then
+  echo "Service account já existe: $CARDGEN_SA_EMAIL"
+else
+  echo "Criando: $CARDGEN_SA_EMAIL"
+  gcloud iam service-accounts create "$CARDGEN_SA_NAME" \
+    --display-name="Jogo de Navinha — geração do cartão SVG da nave" \
+    --project="$PROJECT_ID"
+fi
+# datastore.user: ler a partida e gravar os dois campos do cartão.
+# eventarc.eventReceiver + run.invoker: a MESMA SA é a identidade do gatilho, e é ela que
+# chama o serviço — que sobe com --no-allow-unauthenticated, então sem run.invoker o gatilho
+# recebe 403 em toda entrega e o sintoma é "o cartão nunca aparece", sem erro visível.
+for role in roles/datastore.user roles/eventarc.eventReceiver roles/run.invoker; do
+  gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+    --member="serviceAccount:${CARDGEN_SA_EMAIL}" \
+    --role="$role" \
+    --condition=None >/dev/null
+done
+
+# Pré-requisito fácil de perder: o agente de serviço do Pub/Sub precisa poder cunhar tokens em
+# nome da SA acima para assinar as entregas. Sem isto, `eventarc triggers create` falha com uma
+# mensagem obscura sobre permissão do serviço, que não menciona nem o Pub/Sub nem este papel.
+PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountTokenCreator" \
+  --condition=None >/dev/null
+
+# --min-instances 0 e --cpu-throttling são o OPOSTO do Passo 8, pelo motivo oposto: lá um cold
+# start custa o codinome do visitante; aqui ninguém está esperando. O consumo do cartão é "bem
+# depois do jogo jogado", então ele pode chegar 5 segundos ou 5 minutos depois.
+# --no-allow-unauthenticated: só a SA do gatilho alcança este serviço.
+gcloud run deploy "$CARDGEN_SERVICE_NAME" \
+  --image "$CARDGEN_IMAGE" \
+  --region "$REGION" \
+  --project "$PROJECT_ID" \
+  --service-account "$CARDGEN_SA_EMAIL" \
+  --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID},CARDGEN_ENABLED=1" \
+  --min-instances 0 \
+  --cpu-throttling \
+  --no-allow-unauthenticated
+
+# O gatilho é criado uma vez e não muda: `describe || create` mantém a idempotência do resto do
+# script. Só 'created' — a gravação de volta é um `update`, que emite 'updated' e não reentra
+# aqui. Escutar 'written' fecharia um laço infinito de renderização.
+#
+# A localização do gatilho TEM de ser a do banco Firestore, e o banco nasce em $REGION no Passo
+# 2, então as duas batem por construção. Se o Eventarc recusar gatilhos de Firestore nesta
+# região, mova o gatilho (e só ele) para a região suportada mais próxima: o
+# --destination-run-region continua sendo o do serviço.
+if gcloud eventarc triggers describe "$CARDGEN_TRIGGER_NAME" --location="$REGION" --project="$PROJECT_ID" >/dev/null 2>&1; then
+  echo "Gatilho '$CARDGEN_TRIGGER_NAME' já existe."
+else
+  echo "Criando o gatilho '$CARDGEN_TRIGGER_NAME'..."
+  gcloud eventarc triggers create "$CARDGEN_TRIGGER_NAME" \
+    --location="$REGION" \
+    --destination-run-service="$CARDGEN_SERVICE_NAME" \
+    --destination-run-region="$REGION" \
+    --destination-run-path="/internal/cardgen" \
+    --event-filters="type=google.cloud.firestore.document.v1.created" \
+    --event-filters="database=$FIRESTORE_DATABASE" \
+    --event-filters-path-pattern="document=matches/{matchId}" \
+    --service-account="$CARDGEN_SA_EMAIL" \
+    --project="$PROJECT_ID"
+fi
+
+echo ""
+echo "-- 10/11: Hosting do telão --"
 # Decidido em 2026-08-24, no Gate M3: o telão vai para o Firebase Hosting, NÃO para dentro do
 # container do Cloud Run como o admin-app. Os dois motivos:
 #
@@ -296,7 +392,7 @@ firebase deploy --project="$PROJECT_ID" --only hosting
 HOSTING_URL="https://${HOSTING_SITE}.web.app"
 
 echo ""
-echo "-- 10/10: IAP --"
+echo "-- 11/11: IAP --"
 if [ "$WITH_IAP" -eq 1 ]; then
   echo "ERRO: --with-iap foi pedido, mas IAP no Cloud Run é POR SERVIÇO, não por rota."
   echo "Ligá-lo aqui bloquearia '/v1/matches' também — o estande, que só carrega o token"
@@ -323,7 +419,8 @@ echo ""
 echo "== Deploy concluído =="
 echo "URL do serviço: $SERVICE_URL"
 echo "Painel de admin: $SERVICE_URL/admin"
-# A linha "Hosting URL" que o próprio firebase imprimiu no Passo 9 é a autoritativa: este
+echo "Cartão da nave: serviço '$CARDGEN_SERVICE_NAME' (interno), gatilho '$CARDGEN_TRIGGER_NAME'"
+# A linha "Hosting URL" que o próprio firebase imprimiu no Passo 10 é a autoritativa: este
 # endereço é o do site padrão, e ele só difere se o ID '$PROJECT_ID' já estivesse tomado.
 echo "Telão (abrir na TV):  $HOSTING_URL"
 echo ""

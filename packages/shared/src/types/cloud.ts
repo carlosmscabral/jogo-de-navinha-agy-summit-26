@@ -48,6 +48,19 @@ export interface MatchDocument {
    * não para corrigir uma partida real.
    */
   voided?: boolean;
+  /**
+   * Cartão SVG autocontido da nave, gerado FORA do fluxo do jogo pelo serviço `cardgen`
+   * (Eventarc → Cloud Run) a partir de `ship_spec_snapshot`. Redundante por desenho: os dados
+   * de origem continuam aqui e o campo pode ser regerado a qualquer momento a partir deles.
+   * Existe para que um consumidor futuro — em qualquer linguagem, ou um painel de BI — mostre a
+   * nave sem importar código nosso nem conhecer o contrato do viewBox.
+   *
+   * Ausente até o `cardgen` rodar, e ausente para sempre se ele nunca rodar: nada no jogo, na
+   * ingestão ou no placar lê este campo.
+   */
+  ship_card_svg?: string;
+  /** `SHIP_CARD_VERSION` usada para gerar `ship_card_svg`. Ausente = nunca gerado. */
+  ship_card_version?: number;
 }
 
 /** Documento em /pilots/{pilot_id}. Spec 05 §4.2. */

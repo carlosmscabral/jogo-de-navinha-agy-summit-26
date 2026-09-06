@@ -1,4 +1,15 @@
 {
   "indexes": [],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {
+      "collectionGroup": "matches",
+      "fieldPath": "ship_card_svg",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "matches",
+      "fieldPath": "ship_spec_snapshot.visuals.svg_path_data",
+      "indexes": []
+    }
+  ]
 }

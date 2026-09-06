@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { MatchDocument } from '@jogo/shared';
 import { fetchMatches, patchMatch as patchMatchApi, bulkUpdateMatches } from '../api.js';
+import { shipCardDataUri, shipCardLabel } from '../ship-card-preview.js';
 
 const DELETE_CONFIRM_WORD = 'EXCLUIR';
 
@@ -205,6 +206,7 @@ export function MatchesScreen() {
                 aria-label="Selecionar todas"
               />
             </th>
+            <th>Nave</th>
             <th>Match ID</th>
             <th>Callsign</th>
             <th>Empresa</th>
@@ -217,6 +219,7 @@ export function MatchesScreen() {
         <tbody>
           {matches.map((m) => {
             const isEditing = editingId === m.match_id;
+            const cardUri = shipCardDataUri(m);
             return (
               <tr key={m.match_id}>
                 <td>
@@ -226,6 +229,16 @@ export function MatchesScreen() {
                     onChange={() => toggleSelected(m.match_id)}
                     aria-label={`Selecionar ${m.match_id}`}
                   />
+                </td>
+                <td>
+                  {/* Um `<img>` com data: URI, nunca o SVG inline — ver ship-card-preview.ts. */}
+                  {cardUri ? (
+                    <img src={cardUri} alt={shipCardLabel(m)} title={shipCardLabel(m)} className="ship-card-thumb" />
+                  ) : (
+                    <span className="note" title="O cartão é gerado na nuvem depois da ingestão; partidas antigas só ganham um com o backfill.">
+                      —
+                    </span>
+                  )}
                 </td>
                 <td>{m.match_id}</td>
                 <td>

@@ -4,6 +4,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import Database from 'better-sqlite3';
+import { renderShipCardSvg, type ShipVisuals } from '@jogo/shared';
 import { SQLiteBufferService, loadCompanyCatalog } from './sqlite-buffer.js';
 
 function tempDb(): string {
@@ -217,6 +218,84 @@ describe('auto-cura do schema pré-C8', () => {
       ship_spec_snapshot: { pilot: { callsign: 'FRESH' } } as any
     } as any));
     db.close();
+  });
+});
+
+/**
+ * O visual da nave atravessa este buffer como TEXTO: `saveMatch` faz `JSON.stringify` do spec
+ * inteiro numa coluna `ship_spec_json` e `getPendingMatches` o reidrata. Todos os testes acima
+ * gravam um `ship_spec_snapshot` de mentira (`{ pilot: { callsign } }`), então até aqui nada
+ * neste repositório provava que `visuals` sobrevive ao trajeto — e ele é a única fonte do cartão
+ * SVG que o `cardgen` desenha na nuvem. Um casco truncado ou uma cor perdida aqui só apareceria
+ * meses depois, num consumidor que já não tem como saber o que era para estar lá.
+ */
+describe('o visual da nave sobrevive ao buffer local', () => {
+  // Casco no formato que o agente de fato produz: só comandos de path, dentro do viewBox 0..128.
+  const FORGED_VISUALS: ShipVisuals = {
+    style_name: 'Interceptador "Aço & Cinza" <v2>',
+    primary_color: '#1a2b3c',
+    secondary_color: '#ff00aa',
+    engine_trail_color: '#00ffcc',
+    svg_path_data: 'M 64 8 C 80 40, 96 72, 88 118 L 40 118 C 32 72, 48 40, 64 8 Z'
+  };
+
+  function specWith(visuals: ShipVisuals) {
+    return {
+      pilot: { callsign: 'NOVA', pilot_id: 'pilot-abc' },
+      attributes: { shield_capacity: 3 },
+      visuals,
+      build_metadata: { fast_grill_me_choices: { visual_theme: 'cyberpunk', accent_color: 'ciano' } }
+    } as any;
+  }
+
+  function roundTrip(visuals: ShipVisuals) {
+    const db = new SQLiteBufferService(tempDb());
+    db.saveMatch({
+      match_id: 'm-visual',
+      pilot_id: 'pilot-abc',
+      callsign: 'NOVA',
+      company_canonical: 'Acme',
+      final_score: 1,
+      telemetry: {
+        duration_s: 10, enemies_killed: 1, boss_defeated: false, damage_taken: 0,
+        accuracy_pct: 50, shots_fired: 2, shots_hit: 1,
+        fallback_used: false, seed: 1, boss_ttk_s: null, boss_fight_min_fps: null,
+        boss_damage_dealt: 0, boss_phase_reached: null
+      },
+      ship_spec_snapshot: specWith(visuals),
+      created_at: new Date().toISOString()
+    } as any);
+    const pending = db.getPendingMatches();
+    db.close();
+    return pending[0].ship_spec_snapshot as any;
+  }
+
+  it('devolve `visuals` profundamente igual, campo por campo', () => {
+    const spec = roundTrip(FORGED_VISUALS);
+    assert.deepEqual(spec.visuals, FORGED_VISUALS);
+  });
+
+  it('não trunca nem reescreve o `svg_path_data` — a comparação é byte a byte', () => {
+    const spec = roundTrip(FORGED_VISUALS);
+    assert.equal(spec.visuals.svg_path_data, FORGED_VISUALS.svg_path_data);
+    assert.equal(spec.attributes.shield_capacity, 3, 'o escudo decide se o cartão tem anel');
+  });
+
+  it('o cartão desenhado do spec reidratado é idêntico ao desenhado do original', () => {
+    // É esta a asserção que fecha o ciclo: o `cardgen` não vê o spec original, só o que saiu
+    // deste buffer e foi ingerido. Se o SVG for o mesmo, o buffer não perdeu nada que importe.
+    assert.equal(
+      renderShipCardSvg(roundTrip(FORGED_VISUALS)),
+      renderShipCardSvg(specWith(FORGED_VISUALS))
+    );
+  });
+
+  it('preserva as escolhas de faceta do Fast-Grill-Me, que é o que torna a base pesquisável', () => {
+    const spec = roundTrip(FORGED_VISUALS);
+    assert.deepEqual(spec.build_metadata.fast_grill_me_choices, {
+      visual_theme: 'cyberpunk',
+      accent_color: 'ciano'
+    });
   });
 });
 

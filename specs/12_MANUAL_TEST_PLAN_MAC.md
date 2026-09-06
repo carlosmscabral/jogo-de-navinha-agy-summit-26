@@ -1849,3 +1849,160 @@ pgrep -fl agy         # vazio
 | 23.4 | Ausência de dica não rejeita | | |
 | 23.6 | Preset de emergência tem dica | | |
 | 24.1 | Tempo total medido | | ____ min ____ s |
+
+---
+
+## Bloco 25 — O cartão SVG da nave (nuvem, assíncrono)
+
+> **Pré-requisitos:** este bloco só roda contra o projeto real, depois de um `./scripts/deploy.sh`
+> que já inclua o passo 9/11 (serviço `jogo-navinha-cardgen` + gatilho Eventarc). Não há como
+> exercitá-lo com o emulador: o gatilho é infraestrutura de nuvem. Estimativa: 20 min.
+
+A entrega inteira se resume a uma promessa — **o cartão é desenhado fora do fluxo do jogo**. O 25.1
+é o passo que prova isso; os outros verificam o desenho e a ausência de laço. Ao longo do bloco,
+troque `<MATCH_ID>` pelo id da partida em teste e use este atalho para ler o documento:
+
+```bash
+read_match() {
+  curl -s -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+    "https://firestore.googleapis.com/v1/projects/vibe-cabral/databases/jogo-navinha/documents/matches/$1"
+}
+```
+
+- [ ] **25.1 — A jornada não muda de duração, e o cartão chega depois**
+
+Jogue uma partida completa como visitante, com o cronômetro na mão, exatamente como no 24.1.
+
+**Critério de SLA, o que importa de verdade:** o tempo total continua **≤ 2m30s (teto 3m00s)**,
+idêntico ao medido no 24.1 **antes** desta entrega. Nenhum segundo a mais. Se a jornada engordou,
+alguma coisa entrou no caminho síncrono e a entrega está errada — não é questão de ajuste fino.
+
+Só **depois** do debrief, com o visitante já fora do estande, comece a cronometrar o cartão:
+
+```bash
+read_match <MATCH_ID> | jq '.fields.ship_card_version, (.fields.ship_card_svg.stringValue | length)'
+```
+
+**Critério:** em segundos (dezenas, no pior caso, por causa do cold start com `--min-instances 0`),
+`ship_card_version` = `1` e o SVG tem algumas centenas de bytes. **Um atraso aqui não é defeito** —
+o consumo é "bem depois do jogo jogado".
+
+- [ ] **25.2 — A nave do cartão é a nave do pré-voo**
+
+O caminho rápido é o painel de admin: `<URL do Cloud Run>/admin` → Partidas → busque a partida. A
+coluna **Nave**, a primeira da tabela, mostra a miniatura.
+
+Para olhar em tamanho grande, salve e abra no navegador:
+
+```bash
+read_match <MATCH_ID> | jq -r '.fields.ship_card_svg.stringValue' > /tmp/nave.svg && open /tmp/nave.svg
+```
+
+**Critério:** é a **mesma nave** que o piloto viu no pré-voo — mesmo casco, mesma cor primária,
+mesmo contorno — com o anel de escudo se a build tinha escudo. Fundo transparente, sem callsign,
+sem score, sem texto nenhum além do `<title>` com o nome do estilo (aparece como tooltip).
+
+- [ ] **25.3 — Build sem escudo: sem anel, mesmo enquadramento**
+
+Repita numa partida cuja build tenha `shield_capacity == 0` (sliders com `defense` no mínimo).
+
+```bash
+read_match <MATCH_ID> | jq -r '.fields.ship_card_svg.stringValue' | grep -c '<circle'
+```
+
+**Critério:** `0` círculos, e — abrindo os dois SVGs lado a lado — o casco do 25.3 tem **o mesmo
+tamanho e a mesma posição** do casco do 25.2. O `viewBox` é constante de propósito, para que uma
+galeria futura não tenha naves pulando de escala conforme tenham escudo ou não.
+
+- [ ] **25.4 — Nenhum laço de eventos**
+
+```bash
+gcloud logging read \
+  'resource.type="cloud_run_revision" AND resource.labels.service_name="jogo-navinha-cardgen"' \
+  --project vibe-cabral --limit 50 --freshness 30m --format='value(timestamp,textPayload)'
+```
+
+**Critério:** **uma** invocação para a partida do 25.1. Se aparecerem duas (o Pub/Sub pode
+reentregar, e isso é normal), a segunda tem de registrar `up_to_date` e não gravar nada. O que **não
+pode** existir é uma cadeia crescente — seria sinal de que a gravação de volta está disparando o
+próprio gatilho.
+
+- [ ] **25.5 — Anular a partida preserva o cartão**
+
+No painel de admin, anule a partida do 25.1 (botão "Anular").
+
+**Critério:** a linha fica `ANULADA`, a miniatura da coluna Nave **continua lá**, e o
+`gcloud logging read` do 25.4 **não** ganha invocação nova — `patchMatch` grava com `update`, e o
+gatilho só escuta criação.
+
+- [ ] **25.6 — Reentrega manual é inofensiva**
+
+Simule o que o Eventarc faria numa reentrega:
+
+```bash
+CARDGEN_URL=$(gcloud run services describe jogo-navinha-cardgen \
+  --region southamerica-east1 --project vibe-cabral --format='value(status.url)')
+
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "$CARDGEN_URL/internal/cardgen" \
+  -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
+  -H "ce-subject: documents/matches/<MATCH_ID>"
+```
+
+**Critério:** `200`, e o documento **byte-idêntico** ao de antes (compare o `length` do 25.1). Sem o
+cabeçalho `ce-subject`, a mesma chamada devolve `204` — falha permanente, que o Eventarc não deve
+reentregar.
+
+> Se o `curl` devolver `403`, sua conta não tem `run.invoker` no serviço; é esperado — o serviço
+> sobe com `--no-allow-unauthenticated` e só a service account do gatilho o alcança. Conceder o
+> papel a si mesmo só para este passo é aceitável, mas **remova depois**.
+
+- [ ] **25.7 — Preset de emergência: silhueta neutra, cores do preset**
+
+Force o preset como no 23.6 (não digite nada e deixe estourar `AGY_PRE_MCP_SILENCE_TIMEOUT_MS`),
+jogue e sincronize.
+
+**Critério — e leia com atenção, porque a expectativa intuitiva está errada:** o cartão sai com a
+**silhueta neutra** (o triângulo padrão), pintada com as **cores do preset**. Não com a geometria do
+preset.
+
+Isso não é bug, é fidelidade: os `FALLBACK_PRESETS` trazem **marcação SVG** em `svg_path_data`
+(`<polygon .../>` e companhia), não comandos de path. O jogo e o pré-voo já recusam esse conteúdo
+hoje (`isDrawablePathData` / `usesForgedHull`) e desenham a nave procedural. O cartão faz o mesmo —
+mostrar os polígonos do preset seria mostrar ao consumidor futuro uma nave que o visitante **nunca
+viu na tela**. Confira lado a lado com a tela de pré-voo daquela sessão: têm de bater.
+
+- [ ] **25.8 — Backfill das partidas antigas, primeiro em seco**
+
+As partidas anteriores ao gatilho (todo o Gate M3, por exemplo) nunca receberão evento.
+
+```bash
+gcloud auth application-default login   # se ainda não tiver ADC
+npm run backfill:cards                  # dry-run: só conta
+```
+
+**Critério:** o resumo lista quantas partidas seriam gravadas e mostra o primeiro SVG gerado, **sem
+escrever nada** (rode duas vezes: os números têm de ser iguais). Depois:
+
+```bash
+npm run backfill:cards -- --apply
+```
+
+Uma segunda passada com `--apply` tem de gravar **0** — é a prova da idempotência.
+
+> Publique os índices **antes** do primeiro `--apply` (`deploy.sh` passo 3/11 já roda
+> `firebase deploy --only firestore:...`), senão a escrita em massa gera índice de
+> `ship_card_svg` que a isenção apaga logo em seguida.
+
+- [ ] **25.9 — Tabela de registro**
+
+| # | Passo | Passou? | Observação |
+|---|-------|---------|------------|
+| 25.1 | Jornada não mudou de duração | | ____ min ____ s (comparar com 24.1) |
+| 25.1 | Cartão chegou depois do debrief | | ____ s até `ship_card_version: 1` |
+| 25.2 | Cartão é a nave do pré-voo | | |
+| 25.3 | Sem escudo: sem anel, mesmo enquadramento | | |
+| 25.4 | Uma invocação, sem laço | | |
+| 25.5 | Anular preserva o cartão | | |
+| 25.6 | Reentrega devolve 200 sem reescrever | | |
+| 25.7 | Preset: silhueta neutra com as cores certas | | |
+| 25.8 | Backfill em seco não escreve; `--apply` é idempotente | | ____ partidas |

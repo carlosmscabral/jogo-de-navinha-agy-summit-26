@@ -103,6 +103,14 @@ input[type='checkbox'] {
   accent-color: var(--gz-amber-solar);
 }
 
+/* Miniatura do cartão da nave na lista de partidas. O SVG tem viewBox quadrado e fundo
+   transparente, então basta fixar o lado — nenhum recorte, nenhuma distorção. */
+.ship-card-thumb {
+  display: block;
+  width: 44px;
+  height: 44px;
+}
+
 .tag-voided {
   color: var(--gz-alert-red);
   font-weight: bold;

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Desfaz o que deploy.sh criou: Cloud Run, segredos, service account, e (só se pedido
+# Desfaz o que deploy.sh criou: Cloud Run (os dois serviços), o gatilho Eventarc do cartão da
+# nave, segredos, service accounts, e (só se pedido
 # explicitamente) o próprio banco Firestore. Existe para reproducibilidade — testar em
 # um projeto descartável, limpar, testar de novo — e para desmontar antes de mover o
 # provisionamento para outro projeto.
@@ -8,7 +9,7 @@
 # API não é uma operação que se desfaça sozinha.
 #
 # Uso:
-#   ./scripts/undeploy.sh                    # remove Cloud Run, segredos, service account
+#   ./scripts/undeploy.sh                    # remove Cloud Run, gatilho, segredos, service accounts
 #   ./scripts/undeploy.sh --delete-database  # também apaga o banco Firestore (destrutivo,
 #                                             # pede confirmação reforçada — ver abaixo)
 #   ./scripts/undeploy.sh --yes              # sem a confirmação inicial (mas o banco
@@ -28,6 +29,11 @@ SERVICE_ACCOUNT_NAME="${SERVICE_ACCOUNT_NAME:-jogo-navinha-api}"
 SERVICE_ACCOUNT_EMAIL="${SERVICE_ACCOUNT_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 BOOTH_TOKEN_SECRET="${BOOTH_TOKEN_SECRET:-booth-ingest-token}"
 ADMIN_PASSWORD_SECRET="${ADMIN_PASSWORD_SECRET:-admin-panel-password}"
+# Espelha os defaults do Passo 9/11 do deploy.sh.
+CARDGEN_SERVICE_NAME="${CARDGEN_SERVICE_NAME:-jogo-navinha-cardgen}"
+CARDGEN_SA_NAME="${CARDGEN_SA_NAME:-jogo-navinha-cardgen}"
+CARDGEN_SA_EMAIL="${CARDGEN_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+CARDGEN_TRIGGER_NAME="${CARDGEN_TRIGGER_NAME:-jogo-navinha-cardgen-trigger}"
 
 SKIP_CONFIRM=0
 DELETE_DATABASE=0
@@ -41,7 +47,8 @@ done
 
 echo "== Undeploy da Fase C =="
 echo "Projeto:  $PROJECT_ID"
-echo "Remove:   Cloud Run '$SERVICE_NAME', segredos '$BOOTH_TOKEN_SECRET'/'$ADMIN_PASSWORD_SECRET', service account '$SERVICE_ACCOUNT_EMAIL'"
+echo "Remove:   Cloud Run '$SERVICE_NAME' e '$CARDGEN_SERVICE_NAME', gatilho Eventarc '$CARDGEN_TRIGGER_NAME',"
+echo "          segredos '$BOOTH_TOKEN_SECRET'/'$ADMIN_PASSWORD_SECRET', service accounts '$SERVICE_ACCOUNT_EMAIL' e '$CARDGEN_SA_EMAIL'"
 echo "Despublica: só o site do telão nomeado em firebase.json — nunca o site padrão do projeto."
 if [ "$DELETE_DATABASE" -eq 1 ]; then
   echo "Remove também: o banco Firestore '$FIRESTORE_DATABASE' inteiro — TODOS OS DADOS."
@@ -62,9 +69,19 @@ command -v firebase >/dev/null 2>&1 || { echo "firebase (firebase-tools) não en
 gcloud config set project "$PROJECT_ID" >/dev/null
 
 echo ""
-echo "-- Removendo o serviço Cloud Run --"
-gcloud run services delete "$SERVICE_NAME" --region "$REGION" --project "$PROJECT_ID" --quiet \
+echo "-- Removendo o gatilho Eventarc do cartão da nave --"
+# ANTES do serviço, e a ordem importa: um gatilho órfão apontando para um serviço que já morreu
+# continua tentando entregar cada partida nova, falhando, e reentregando até o teto de retenção
+# do Pub/Sub — ruído de erro no projeto sem nada do outro lado para consertá-lo.
+gcloud eventarc triggers delete "$CARDGEN_TRIGGER_NAME" --location "$REGION" --project "$PROJECT_ID" --quiet \
   && echo "Removido." || echo "Já não existia, ou falhou (ver mensagem acima) — seguindo."
+
+echo ""
+echo "-- Removendo os serviços Cloud Run --"
+for service in "$SERVICE_NAME" "$CARDGEN_SERVICE_NAME"; do
+  gcloud run services delete "$service" --region "$REGION" --project "$PROJECT_ID" --quiet \
+    && echo "Removido: $service" || echo "Já não existia, ou falhou: $service — seguindo."
+done
 
 echo ""
 echo "-- Despublicando o telão (Firebase Hosting) --"
@@ -93,9 +110,11 @@ for secret in "$BOOTH_TOKEN_SECRET" "$ADMIN_PASSWORD_SECRET"; do
 done
 
 echo ""
-echo "-- Removendo a service account --"
-gcloud iam service-accounts delete "$SERVICE_ACCOUNT_EMAIL" --project "$PROJECT_ID" --quiet \
-  && echo "Removida." || echo "Já não existia, ou falhou — seguindo."
+echo "-- Removendo as service accounts --"
+for sa in "$SERVICE_ACCOUNT_EMAIL" "$CARDGEN_SA_EMAIL"; do
+  gcloud iam service-accounts delete "$sa" --project "$PROJECT_ID" --quiet \
+    && echo "Removida: $sa" || echo "Já não existia, ou falhou: $sa — seguindo."
+done
 
 echo ""
 if [ "$DELETE_DATABASE" -eq 1 ]; then

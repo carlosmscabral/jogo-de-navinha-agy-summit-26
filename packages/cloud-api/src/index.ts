@@ -11,6 +11,7 @@ import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { DATABASE_ID, type MatchDocument } from '@jogo/shared';
 import { isAuthorized } from './auth.js';
+import { generateShipCard, matchIdFromSubject } from './cardgen.js';
 import { isAdminAuthorized } from './admin-auth.js';
 import { ingestBatch } from './ingest.js';
 import {
@@ -105,234 +106,284 @@ app.get('/v1/health', (_req: Request, res: Response) => {
   res.status(200).json({ status: 'ok' });
 });
 
-// Tarefa C10 — senha do painel. Esta senha HTTP Basic (ver admin-auth.ts) é a ÚNICA camada de
-// autenticação do painel, tanto para as rotas abaixo quanto para o bloco estático de /admin mais
-// adiante neste arquivo. 401 com WWW-Authenticate para o navegador mostrar o prompt nativo.
+// --- Serviço `cardgen` (Tarefa 3): mesma imagem, papel diferente ---
+// O gatilho Eventarc de `matches/{matchId}` chama `POST /internal/cardgen` no serviço Cloud Run
+// `jogo-navinha-cardgen`, que roda ESTA imagem com `CARDGEN_ENABLED=1`. A flag é a única coisa
+// que separa os dois serviços, então ela também é a fronteira de segurança: ligada, este processo
+// monta APENAS `/v1/health` (acima) e `/internal/cardgen` — nada de `/v1/matches`, nada de
+// `/v1/admin/*`, nada do bundle estático do painel. O serviço `cardgen` sobe com
+// `--no-allow-unauthenticated` e só a service account do gatilho tem `run.invoker`, então nada
+// mais o alcança de qualquer forma; mas uma imagem que carrega o painel DESMONTADO é melhor que
+// uma que o carrega montado atrás de uma senha.
 //
-// NÃO há IAP nesta topologia, e não é por preferência: o IAP do Cloud Run protege o SERVIÇO
-// inteiro, não um caminho. Não existe configuração que exija identidade Google em /v1/admin/*
-// e ainda deixe /v1/matches acessível ao estande, que só tem um token Bearer, no mesmo serviço.
-// Verificado ao vivo no Gate M3 (2026-08-24): com `--no-allow-unauthenticated`, o IAM da própria
-// plataforma devolvia 403 antes de qualquer código nosso rodar, inclusive para requisições com a
-// senha correta. Uma segunda camada de identidade Google exigiria um serviço Cloud Run separado
-// só para o painel — questão de arquitetura em aberto, não flag de deploy. `deploy.sh --with-iap`
-// recusa com essa explicação. Ver packages/cloud-api/README.md, "Autenticação do painel de admin".
-function requireAdminAuth(req: Request, res: Response, next: NextFunction): void {
-  if (!isAdminAuthorized(req.header('authorization'), ADMIN_PANEL_PASSWORD)) {
-    res.status(401).set('WWW-Authenticate', 'Basic realm="admin"').json({ error: 'unauthorized' });
-    return;
-  }
-  next();
-}
-
-// Tarefa C7 — /v1/admin/*. Este bloco fica ANTES do middleware do token de ingestão (logo
-// abaixo) de propósito: o token de escopo único da Tarefa C3 vive na máquina do estande e
-// não pode abrir a porta administrativa — são privilégios diferentes. Em produção, o
-// Cloud Run serve /v1/admin/* atrás do Identity-Aware Proxy (configuração de deploy, ver
-// README, não código aqui). Sem IAP na frente (localmente, contra o emulador), estas rotas
-// dependiam só do IAP e ficavam sem nenhuma autenticação própria — por isso a Tarefa C10
-// acrescenta `requireAdminAuth` logo abaixo, cobrindo todo `/v1/admin/*` de uma vez via
-// `app.use`, antes de qualquer rota individual. Ver admin.ts para o resto do raciocínio de
-// autorização (não autenticação) destas rotas.
-app.use('/v1/admin', requireAdminAuth);
-
-app.get('/v1/admin/matches', async (req: Request, res: Response) => {
-  const q = typeof req.query.q === 'string' ? req.query.q : undefined;
-  const company = typeof req.query.company === 'string' ? req.query.company : undefined;
-  const limitParam = typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined;
-  const matches = await listMatches(db, {
-    q,
-    company,
-    limit: limitParam !== undefined && Number.isFinite(limitParam) ? limitParam : undefined
-  });
-  res.status(200).json({ matches });
-});
-
-app.patch('/v1/admin/matches/:matchId', async (req: Request, res: Response) => {
-  try {
-    await patchMatch(db, String(req.params.matchId), req.body as MatchCorrection);
-    res.status(200).json({ status: 'ok' });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(/not found/i.test(message) ? 404 : 400).json({ error: message });
-  }
-});
-
-// Tarefa C9 — ações em lote (anular ou apagar de verdade) para limpeza de dados de teste
-// no painel, sem travar o lote inteiro por causa de um `match_id` problemático. Mesmo
-// espírito de partial-failure de `POST /v1/matches` (`ingest.ts`) — ver `bulkPatchOrDelete`
-// em `admin.ts` para o loop item a item.
-app.post('/v1/admin/matches/bulk', async (req: Request, res: Response) => {
-  const body = req.body as { match_ids?: unknown; action?: unknown };
-  if (!Array.isArray(body?.match_ids) || body.match_ids.length === 0 || body.match_ids.some((id) => typeof id !== 'string')) {
-    res.status(400).json({ error: 'body must be { match_ids: string[]; action: "void" | "delete" }' });
-    return;
-  }
-  if (body.action !== 'void' && body.action !== 'delete') {
-    res.status(400).json({ error: 'action must be "void" or "delete"' });
-    return;
-  }
-  const result = await bulkPatchOrDelete(db, body.match_ids as string[], body.action);
-  res.status(200).json(result);
-});
-
-app.get('/v1/admin/companies', async (_req: Request, res: Response) => {
-  res.status(200).json(await getCompanyCatalog(db));
-});
-
-app.put('/v1/admin/companies', async (req: Request, res: Response) => {
-  const body = req.body as { companies?: unknown };
-  if (!Array.isArray(body?.companies) || body.companies.some((c) => typeof c !== 'string')) {
-    res.status(400).json({ error: 'body must be { companies: string[] }' });
-    return;
-  }
-  try {
-    await putCompanyCatalog(db, body.companies as string[]);
-    res.status(200).json({ status: 'ok' });
-  } catch (err) {
-    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
-  }
-});
-
-app.get('/v1/admin/health', async (_req: Request, res: Response) => {
-  res.status(200).json(await getHealthReport(db));
-});
-
-// Tudo em /v1/* a partir daqui exige o token de ingestão. Um servidor que sobe sem
-// BOOTH_INGEST_TOKEN configurado recusa tudo — ver auth.ts. /v1/admin/* já foi tratado
-// pelas rotas acima e nunca chega até aqui.
-app.use('/v1', (req: Request, res: Response, next: NextFunction) => {
-  if (!isAuthorized(req.header('authorization'), BOOTH_INGEST_TOKEN)) {
-    res.status(401).json({ error: 'unauthorized' });
-    return;
-  }
-  next();
-});
-
-app.post('/v1/matches', async (req: Request, res: Response) => {
-  const body = req.body as { matches?: unknown };
-  if (!Array.isArray(body?.matches)) {
-    res.status(400).json({ error: 'body must be { matches: MatchDocument[] }' });
-    return;
-  }
-  if (body.matches.length > MAX_BATCH_SIZE) {
-    res.status(400).json({ error: `batch exceeds the limit of ${MAX_BATCH_SIZE} matches` });
-    return;
-  }
-
-  const result = await ingestBatch(db, body.matches as MatchDocument[], triggerCanonicalizationSweep);
-  res.status(200).json(result);
-});
-
-/**
- * Gatilho da Tarefa C4, passado a `ingestBatch` — que o chama SEM `await` só quando alguma
- * partida do lote ficou marcada `needs_company_review`. `.catch` aqui é essencial: sem ele,
- * uma falha do Vertex nesta promise desanexada vira um `unhandledRejection` do processo
- * inteiro, não um erro de uma partida.
- */
-function triggerCanonicalizationSweep(dbRef: FirebaseFirestore.Firestore): void {
-  runCanonicalizationSweep(dbRef, canonicalizeWithVertex, COMPANY_CATALOG).catch((err) => {
-    console.error('[cloud-api] canonicalization sweep failed:', err);
-  });
-}
-
-app.post('/v1/moderate', async (req: Request, res: Response) => {
-  const body = req.body as { callsign?: unknown };
-  if (typeof body?.callsign !== 'string' || !body.callsign.trim()) {
-    res.status(400).json({ error: 'body must be { callsign: string }' });
-    return;
-  }
-  // A latência é o dado de operação que faltava no Gate M3: sem ela, um teto curto demais é
-  // indistinguível de um modelo que reprova todo mundo — os dois aparecem como `block`. Com o
-  // número no log do Cloud Run dá para ver, no meio do evento, se o teto acima ainda tem folga.
-  const startedAt = Date.now();
-  const result = await moderateCallsign(
-    body.callsign,
-    moderateWithVertex,
-    MODERATION_L2_TIMEOUT_MS,
-    // Só dispara quando o teto vence. Este log é o que responde, no meio do evento, se os
-    // estouros são teto curto ou chamada travada — sem ele os dois são a mesma linha.
-    (late) => {
-      void late.settle.then(({ ms, settled, detail }) => {
-        console.warn(
-          `[cloud-api] moderate: ESTOURO do teto (${late.timeoutMs}ms) em "${late.callsign}" — ` +
-          `a chamada abandonada terminou em ${ms}ms com "${settled}"${detail ? `: ${detail}` : ''}. ` +
-          'Se este número ficar logo acima do teto, o teto está curto; se for muito maior ou ' +
-          '"error", o problema é a chamada, e aumentar o teto não resolve.'
-        );
-      });
+// Nada disto está no caminho síncrono de `POST /v1/matches`: o estande considera a partida
+// sincronizada quando a ingestão responde, e o cartão chega depois, sem ninguém esperando.
+if (process.env.CARDGEN_ENABLED === '1') {
+  // O Eventarc/Pub/Sub REENTREGA qualquer resposta que não seja 2xx. Por isso só erro
+  // TRANSIENTE (Firestore fora do ar) devolve 500: tudo que é permanente — subject malformado,
+  // documento apagado entre o evento e a leitura, spec sem `visuals` — sai 204 e encerra a
+  // entrega, senão o evento fica girando para sempre sem chance de sucesso.
+  app.post('/internal/cardgen', async (req: Request, res: Response) => {
+    const matchId = matchIdFromSubject(req.header('ce-subject'));
+    if (!matchId) {
+      console.warn(
+        '[cardgen] ce-subject ausente ou fora do formato "documents/matches/{matchId}": ' +
+          `${JSON.stringify(req.header('ce-subject'))}. Cabeçalhos ce-*: ` +
+          JSON.stringify(
+            Object.fromEntries(
+              Object.entries(req.headers).filter(([k]) => k.startsWith('ce-'))
+            )
+          )
+      );
+      res.status(204).end();
+      return;
     }
-  );
-  console.log(
-    `[cloud-api] moderate: verdict=${result.verdict} em ${Date.now() - startedAt}ms ` +
-    `(teto ${MODERATION_L2_TIMEOUT_MS}ms)`
-  );
-  res.status(200).json(result);
-});
 
-app.post('/v1/canonicalize', async (req: Request, res: Response) => {
-  const body = req.body as { items?: unknown };
-  if (!Array.isArray(body?.items)) {
-    res.status(400).json({ error: 'body must be { items: Array<{match_id, company_raw, local_guess}> }' });
-    return;
-  }
-  const resolved = await resolveCompanies(
-    body.items as CanonicalizeRequestItem[],
-    canonicalizeWithVertex,
-    COMPANY_CATALOG
-  );
-  res.status(200).json({ resolved });
-});
-
-app.get('/v1/aliases', async (req: Request, res: Response) => {
-  const since = typeof req.query.since === 'string' ? req.query.since : '';
-  if (!since || Number.isNaN(Date.parse(since))) {
-    res.status(400).json({ error: 'query param "since" must be an ISO 8601 date' });
-    return;
-  }
-  const aliases = await listAliasesSince(db, since);
-  res.status(200).json({ aliases });
-});
-
-// --- Estáticos do admin-app (Tarefa C7, Passo 5 do brief) ---
-// "Servir o admin-app pelo MESMO container Cloud Run da API, sob /admin, atrás do IAP.
-// Um serviço a menos para provisionar, e o IAP protege a rota inteira de uma vez." O IAP em
-// si é configuração de deploy (ver README, seção de autenticação) — este bloco só serve os
-// estáticos já compilados, mesmo padrão de `packages/daemon/src/index.ts` para o player-app
-// (Spec 08 §5): `express.static` para os arquivos com hash (JS/CSS), e uma rota de fallback
-// de SPA para qualquer outra coisa sob `/admin` que não seja um arquivo estático conhecido.
-// A checagem por `/admin` explícito (não um catch-all de toda a origem) garante que isto
-// nunca compete com nenhuma rota de `/v1/*` acima, em nenhuma ordem de registro.
-// Default funciona sem nenhuma variável de ambiente em dev local (monorepo: dist/ está em
-// packages/cloud-api/dist, então '../../admin-app/dist' é packages/admin-app/dist). No
-// container Docker o Dockerfile define ADMIN_APP_DIST=/app/admin-app-dist explicitamente,
-// porque lá o build do admin-app chega vendorizado (vendor/admin-app-dist), não no mesmo
-// layout relativo do monorepo — ver Dockerfile e README ("vendor:admin-app").
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const adminAppDist = process.env.ADMIN_APP_DIST || path.resolve(__dirname, '../../admin-app/dist');
-
-const adminAppIndexHtml = path.join(adminAppDist, 'index.html');
-
-if (fs.existsSync(adminAppIndexHtml)) {
-  // Tarefa C10 — mesma senha de `/v1/admin/*` acima, aplicada ANTES do `express.static`:
-  // sem isto, o painel serviria o bundle HTML/JS/CSS sem senha nenhuma e só a API ficaria
-  // protegida. `requireAdminAuth` cobre este `app.use` e o fallback de SPA logo abaixo, já
-  // que ambos são registrados depois dele para o mesmo prefixo `/admin`.
-  app.use('/admin', requireAdminAuth);
-  app.use('/admin', express.static(adminAppDist));
-  // Fallback de SPA: qualquer coisa sob /admin que o `express.static` acima não achou como
-  // arquivo (isto é, qualquer coisa que não seja um asset com hash) devolve o mesmo
-  // index.html. `res.type(...).send(...)` em vez de `res.sendFile` — mais simples de
-  // raciocinar entre versões do Express do que a validação de caminho absoluto do `sendFile`.
-  app.get(/^\/admin(\/.*)?$/, (_req: Request, res: Response) => {
-    res.type('html').send(fs.readFileSync(adminAppIndexHtml, 'utf8'));
+    try {
+      const outcome = await generateShipCard(db, matchId);
+      if (outcome === 'written' || outcome === 'up_to_date') {
+        console.log(`[cardgen] ${matchId}: ${outcome}`);
+        res.status(200).json({ match_id: matchId, outcome });
+        return;
+      }
+      console.warn(`[cardgen] ${matchId}: ${outcome} — falha permanente, não reentregar.`);
+      res.status(204).end();
+    } catch (err) {
+      // Transiente por eliminação: as falhas permanentes já saíram acima. Queremos a retentativa.
+      console.error(`[cardgen] ${matchId}: falha ao gravar o cartão:`, err);
+      res.status(500).json({ error: 'cardgen failed' });
+    }
   });
-  console.log(`[cloud-api] Serving admin-app from ${adminAppDist}`);
 } else {
-  console.warn(
-    `[cloud-api] admin-app build not found at ${adminAppDist}. ` +
-      'Run "npm run build --workspace=packages/admin-app" before deploying.'
-  );
+  // Tarefa C10 — senha do painel. Esta senha HTTP Basic (ver admin-auth.ts) é a ÚNICA camada de
+  // autenticação do painel, tanto para as rotas abaixo quanto para o bloco estático de /admin mais
+  // adiante neste arquivo. 401 com WWW-Authenticate para o navegador mostrar o prompt nativo.
+  //
+  // NÃO há IAP nesta topologia, e não é por preferência: o IAP do Cloud Run protege o SERVIÇO
+  // inteiro, não um caminho. Não existe configuração que exija identidade Google em /v1/admin/*
+  // e ainda deixe /v1/matches acessível ao estande, que só tem um token Bearer, no mesmo serviço.
+  // Verificado ao vivo no Gate M3 (2026-08-24): com `--no-allow-unauthenticated`, o IAM da própria
+  // plataforma devolvia 403 antes de qualquer código nosso rodar, inclusive para requisições com a
+  // senha correta. Uma segunda camada de identidade Google exigiria um serviço Cloud Run separado
+  // só para o painel — questão de arquitetura em aberto, não flag de deploy. `deploy.sh --with-iap`
+  // recusa com essa explicação. Ver packages/cloud-api/README.md, "Autenticação do painel de admin".
+  function requireAdminAuth(req: Request, res: Response, next: NextFunction): void {
+    if (!isAdminAuthorized(req.header('authorization'), ADMIN_PANEL_PASSWORD)) {
+      res.status(401).set('WWW-Authenticate', 'Basic realm="admin"').json({ error: 'unauthorized' });
+      return;
+    }
+    next();
+  }
+
+  // Tarefa C7 — /v1/admin/*. Este bloco fica ANTES do middleware do token de ingestão (logo
+  // abaixo) de propósito: o token de escopo único da Tarefa C3 vive na máquina do estande e
+  // não pode abrir a porta administrativa — são privilégios diferentes. Em produção, o
+  // Cloud Run serve /v1/admin/* atrás do Identity-Aware Proxy (configuração de deploy, ver
+  // README, não código aqui). Sem IAP na frente (localmente, contra o emulador), estas rotas
+  // dependiam só do IAP e ficavam sem nenhuma autenticação própria — por isso a Tarefa C10
+  // acrescenta `requireAdminAuth` logo abaixo, cobrindo todo `/v1/admin/*` de uma vez via
+  // `app.use`, antes de qualquer rota individual. Ver admin.ts para o resto do raciocínio de
+  // autorização (não autenticação) destas rotas.
+  app.use('/v1/admin', requireAdminAuth);
+
+  app.get('/v1/admin/matches', async (req: Request, res: Response) => {
+    const q = typeof req.query.q === 'string' ? req.query.q : undefined;
+    const company = typeof req.query.company === 'string' ? req.query.company : undefined;
+    const limitParam = typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined;
+    const matches = await listMatches(db, {
+      q,
+      company,
+      limit: limitParam !== undefined && Number.isFinite(limitParam) ? limitParam : undefined
+    });
+    res.status(200).json({ matches });
+  });
+
+  app.patch('/v1/admin/matches/:matchId', async (req: Request, res: Response) => {
+    try {
+      await patchMatch(db, String(req.params.matchId), req.body as MatchCorrection);
+      res.status(200).json({ status: 'ok' });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(/not found/i.test(message) ? 404 : 400).json({ error: message });
+    }
+  });
+
+  // Tarefa C9 — ações em lote (anular ou apagar de verdade) para limpeza de dados de teste
+  // no painel, sem travar o lote inteiro por causa de um `match_id` problemático. Mesmo
+  // espírito de partial-failure de `POST /v1/matches` (`ingest.ts`) — ver `bulkPatchOrDelete`
+  // em `admin.ts` para o loop item a item.
+  app.post('/v1/admin/matches/bulk', async (req: Request, res: Response) => {
+    const body = req.body as { match_ids?: unknown; action?: unknown };
+    if (!Array.isArray(body?.match_ids) || body.match_ids.length === 0 || body.match_ids.some((id) => typeof id !== 'string')) {
+      res.status(400).json({ error: 'body must be { match_ids: string[]; action: "void" | "delete" }' });
+      return;
+    }
+    if (body.action !== 'void' && body.action !== 'delete') {
+      res.status(400).json({ error: 'action must be "void" or "delete"' });
+      return;
+    }
+    const result = await bulkPatchOrDelete(db, body.match_ids as string[], body.action);
+    res.status(200).json(result);
+  });
+
+  app.get('/v1/admin/companies', async (_req: Request, res: Response) => {
+    res.status(200).json(await getCompanyCatalog(db));
+  });
+
+  app.put('/v1/admin/companies', async (req: Request, res: Response) => {
+    const body = req.body as { companies?: unknown };
+    if (!Array.isArray(body?.companies) || body.companies.some((c) => typeof c !== 'string')) {
+      res.status(400).json({ error: 'body must be { companies: string[] }' });
+      return;
+    }
+    try {
+      await putCompanyCatalog(db, body.companies as string[]);
+      res.status(200).json({ status: 'ok' });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.get('/v1/admin/health', async (_req: Request, res: Response) => {
+    res.status(200).json(await getHealthReport(db));
+  });
+
+  // Tudo em /v1/* a partir daqui exige o token de ingestão. Um servidor que sobe sem
+  // BOOTH_INGEST_TOKEN configurado recusa tudo — ver auth.ts. /v1/admin/* já foi tratado
+  // pelas rotas acima e nunca chega até aqui.
+  app.use('/v1', (req: Request, res: Response, next: NextFunction) => {
+    if (!isAuthorized(req.header('authorization'), BOOTH_INGEST_TOKEN)) {
+      res.status(401).json({ error: 'unauthorized' });
+      return;
+    }
+    next();
+  });
+
+  app.post('/v1/matches', async (req: Request, res: Response) => {
+    const body = req.body as { matches?: unknown };
+    if (!Array.isArray(body?.matches)) {
+      res.status(400).json({ error: 'body must be { matches: MatchDocument[] }' });
+      return;
+    }
+    if (body.matches.length > MAX_BATCH_SIZE) {
+      res.status(400).json({ error: `batch exceeds the limit of ${MAX_BATCH_SIZE} matches` });
+      return;
+    }
+
+    const result = await ingestBatch(db, body.matches as MatchDocument[], triggerCanonicalizationSweep);
+    res.status(200).json(result);
+  });
+
+  /**
+   * Gatilho da Tarefa C4, passado a `ingestBatch` — que o chama SEM `await` só quando alguma
+   * partida do lote ficou marcada `needs_company_review`. `.catch` aqui é essencial: sem ele,
+   * uma falha do Vertex nesta promise desanexada vira um `unhandledRejection` do processo
+   * inteiro, não um erro de uma partida.
+   */
+  function triggerCanonicalizationSweep(dbRef: FirebaseFirestore.Firestore): void {
+    runCanonicalizationSweep(dbRef, canonicalizeWithVertex, COMPANY_CATALOG).catch((err) => {
+      console.error('[cloud-api] canonicalization sweep failed:', err);
+    });
+  }
+
+  app.post('/v1/moderate', async (req: Request, res: Response) => {
+    const body = req.body as { callsign?: unknown };
+    if (typeof body?.callsign !== 'string' || !body.callsign.trim()) {
+      res.status(400).json({ error: 'body must be { callsign: string }' });
+      return;
+    }
+    // A latência é o dado de operação que faltava no Gate M3: sem ela, um teto curto demais é
+    // indistinguível de um modelo que reprova todo mundo — os dois aparecem como `block`. Com o
+    // número no log do Cloud Run dá para ver, no meio do evento, se o teto acima ainda tem folga.
+    const startedAt = Date.now();
+    const result = await moderateCallsign(
+      body.callsign,
+      moderateWithVertex,
+      MODERATION_L2_TIMEOUT_MS,
+      // Só dispara quando o teto vence. Este log é o que responde, no meio do evento, se os
+      // estouros são teto curto ou chamada travada — sem ele os dois são a mesma linha.
+      (late) => {
+        void late.settle.then(({ ms, settled, detail }) => {
+          console.warn(
+            `[cloud-api] moderate: ESTOURO do teto (${late.timeoutMs}ms) em "${late.callsign}" — ` +
+            `a chamada abandonada terminou em ${ms}ms com "${settled}"${detail ? `: ${detail}` : ''}. ` +
+            'Se este número ficar logo acima do teto, o teto está curto; se for muito maior ou ' +
+            '"error", o problema é a chamada, e aumentar o teto não resolve.'
+          );
+        });
+      }
+    );
+    console.log(
+      `[cloud-api] moderate: verdict=${result.verdict} em ${Date.now() - startedAt}ms ` +
+      `(teto ${MODERATION_L2_TIMEOUT_MS}ms)`
+    );
+    res.status(200).json(result);
+  });
+
+  app.post('/v1/canonicalize', async (req: Request, res: Response) => {
+    const body = req.body as { items?: unknown };
+    if (!Array.isArray(body?.items)) {
+      res.status(400).json({ error: 'body must be { items: Array<{match_id, company_raw, local_guess}> }' });
+      return;
+    }
+    const resolved = await resolveCompanies(
+      body.items as CanonicalizeRequestItem[],
+      canonicalizeWithVertex,
+      COMPANY_CATALOG
+    );
+    res.status(200).json({ resolved });
+  });
+
+  app.get('/v1/aliases', async (req: Request, res: Response) => {
+    const since = typeof req.query.since === 'string' ? req.query.since : '';
+    if (!since || Number.isNaN(Date.parse(since))) {
+      res.status(400).json({ error: 'query param "since" must be an ISO 8601 date' });
+      return;
+    }
+    const aliases = await listAliasesSince(db, since);
+    res.status(200).json({ aliases });
+  });
+
+  // --- Estáticos do admin-app (Tarefa C7, Passo 5 do brief) ---
+  // "Servir o admin-app pelo MESMO container Cloud Run da API, sob /admin, atrás do IAP.
+  // Um serviço a menos para provisionar, e o IAP protege a rota inteira de uma vez." O IAP em
+  // si é configuração de deploy (ver README, seção de autenticação) — este bloco só serve os
+  // estáticos já compilados, mesmo padrão de `packages/daemon/src/index.ts` para o player-app
+  // (Spec 08 §5): `express.static` para os arquivos com hash (JS/CSS), e uma rota de fallback
+  // de SPA para qualquer outra coisa sob `/admin` que não seja um arquivo estático conhecido.
+  // A checagem por `/admin` explícito (não um catch-all de toda a origem) garante que isto
+  // nunca compete com nenhuma rota de `/v1/*` acima, em nenhuma ordem de registro.
+  // Default funciona sem nenhuma variável de ambiente em dev local (monorepo: dist/ está em
+  // packages/cloud-api/dist, então '../../admin-app/dist' é packages/admin-app/dist). No
+  // container Docker o Dockerfile define ADMIN_APP_DIST=/app/admin-app-dist explicitamente,
+  // porque lá o build do admin-app chega vendorizado (vendor/admin-app-dist), não no mesmo
+  // layout relativo do monorepo — ver Dockerfile e README ("vendor:admin-app").
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const adminAppDist = process.env.ADMIN_APP_DIST || path.resolve(__dirname, '../../admin-app/dist');
+
+  const adminAppIndexHtml = path.join(adminAppDist, 'index.html');
+
+  if (fs.existsSync(adminAppIndexHtml)) {
+    // Tarefa C10 — mesma senha de `/v1/admin/*` acima, aplicada ANTES do `express.static`:
+    // sem isto, o painel serviria o bundle HTML/JS/CSS sem senha nenhuma e só a API ficaria
+    // protegida. `requireAdminAuth` cobre este `app.use` e o fallback de SPA logo abaixo, já
+    // que ambos são registrados depois dele para o mesmo prefixo `/admin`.
+    app.use('/admin', requireAdminAuth);
+    app.use('/admin', express.static(adminAppDist));
+    // Fallback de SPA: qualquer coisa sob /admin que o `express.static` acima não achou como
+    // arquivo (isto é, qualquer coisa que não seja um asset com hash) devolve o mesmo
+    // index.html. `res.type(...).send(...)` em vez de `res.sendFile` — mais simples de
+    // raciocinar entre versões do Express do que a validação de caminho absoluto do `sendFile`.
+    app.get(/^\/admin(\/.*)?$/, (_req: Request, res: Response) => {
+      res.type('html').send(fs.readFileSync(adminAppIndexHtml, 'utf8'));
+    });
+    console.log(`[cloud-api] Serving admin-app from ${adminAppDist}`);
+  } else {
+    console.warn(
+      `[cloud-api] admin-app build not found at ${adminAppDist}. ` +
+        'Run "npm run build --workspace=packages/admin-app" before deploying.'
+    );
+  }
 }
 
 /* c8 ignore start -- bootstrap real de processo, não exercitado por teste unitário */
