@@ -15,6 +15,7 @@
     "build:admin": "npm run build:shared && npm run build --workspace=packages/admin-app",
     "build": "npm run build:shared && npm run build --workspace=packages/mcps && npm run build --workspace=packages/daemon && npm run build --workspace=packages/player-app && npm run build --workspace=packages/leaderboard-app && npm run build --workspace=packages/admin-app",
     "test": "npm run build:shared && npm run test --workspaces --if-present",
+    "test:cloud-api": "npm run build:shared && firebase emulators:exec --config firebase.emulator.json --project jogo-navinha-test --only firestore 'FIRESTORE_EMULATOR_HOST=127.0.0.1:8085 npm run test --workspace=packages/cloud-api'",
     "gen:schema": "npm run gen:schema --workspace=packages/shared",
     "sim:balance": "npm run build:shared && npm run start --workspace=packages/sim",
     "kill:daemon": "lsof -ti :3000 | xargs kill -9 2>/dev/null || true",

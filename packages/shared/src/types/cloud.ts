@@ -34,6 +34,26 @@ export interface MatchDocument {
   ship_spec_snapshot: ShipSpecification;
   /** ISO 8601 no cliente. O servidor sobrescreve com FieldValue.serverTimestamp(). */
   created_at: string;
+  /**
+   * Relógio do estande no momento em que a partida terminou, preservado porque
+   * `created_at` acima é sobrescrito pela hora de INGESTÃO. A distinção só aparece quando um
+   * booth fica offline e drena a fila depois: sem este campo, partidas de meia hora atrás
+   * entram no topo de "recentes" e podem disparar uma celebração de recorde velho. O telão
+   * ordena o ticker por aqui, com fallback para `created_at`.
+   *
+   * Opcional: partidas já no Firestore não têm, e o SQLite de um daemon atualizado pode ter
+   * partidas enfileiradas de antes desta mudança.
+   */
+  played_at?: string;
+  /**
+   * Qual estande produziu a partida. Injetado pelo daemon (nunca pelo navegador — valor vindo
+   * do cliente não é autenticado e permitiria atribuir dados de uma estação à outra), a partir
+   * de `BOOTH_STATION_ID` ou do hostname da máquina.
+   *
+   * Opcional pelo mesmo motivo de `played_at`: exigi-lo rejeitaria toda partida bufferizada
+   * antes do upgrade, e uma partida sem rótulo é melhor que uma partida perdida.
+   */
+  station_id?: string;
   /** Marcado quando a canonicalização por modelo ainda não rodou (Spec 05 §3.2). */
   needs_company_review?: boolean;
   /**

@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { SQLiteBufferService } from './services/sqlite-buffer.js';
 import { WorkspaceGeneratorService } from './services/workspace-generator.js';
@@ -12,6 +13,7 @@ import { moderateRemotely } from './services/remote-moderation.js';
 import { startModeration, type PendingModeration } from './services/pending-moderation.js';
 import { CloudSyncService } from './services/cloud-sync.js';
 import { parseEnvFile, findShadowedKeys, buildShadowWarning } from './services/env-precedence.js';
+import { resolveStationId, buildStationIdWarning } from './services/station-id.js';
 import { validateCallsign, placeholderCallsign, selectFallbackPreset, EnergySliders, ShipSpecification } from '@jogo/shared';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -27,6 +29,13 @@ const wss = new WebSocketServer({ server, path: '/events' });
 
 const sqliteBuffer = new SQLiteBufferService();
 const fileWatcher = new FileWatcherService();
+
+// Qual dos dois estandes é este. Resolvido uma vez no boot (não por requisição): o valor não
+// muda enquanto o processo vive, e ler a env a cada partida só criaria a chance de um estande
+// trocar de identidade no meio do evento. Ver `services/station-id.ts` para por que isto nunca
+// aborta o boot e nunca aceita o valor do navegador.
+const stationResolution = resolveStationId(process.env, () => os.hostname());
+const STATION_ID = stationResolution.stationId;
 
 const activeClients = new Set<WebSocket>();
 
@@ -495,6 +504,17 @@ app.post('/api/matches', async (req, res) => {
     matchRecord.callsign = await pendingModeration.final;
   }
 
+  // Mesma lógica de autoridade do callsign logo acima, por um motivo mais direto: `station_id`
+  // vindo do navegador é não autenticado, e um POST à mão poderia carimbar as partidas de um
+  // estande com o nome do outro — justamente o dado que o painel de Saúde usa para dizer qual
+  // dos dois Macs parou de produzir. O daemon sabe em qual máquina está rodando; a página, não.
+  matchRecord.station_id = STATION_ID;
+
+  // Relógio do estande, preservado antes que a nuvem sobrescreva `created_at` com a hora de
+  // ingestão. Só diverge quando o booth esteve offline e drenou a fila depois — que é
+  // exatamente o caso em que o telão precisa saber a diferença.
+  matchRecord.played_at = matchRecord.created_at;
+
   try {
     sqliteBuffer.saveMatch(matchRecord);
   } catch (err) {
@@ -624,6 +644,13 @@ const PORT = Number(process.env.PORT) || 3000;
 server.listen(PORT, () => {
   console.log(`[Local Bridge Daemon] Running at http://localhost:${PORT}`);
   console.log(`[Local Bridge Daemon] Workspace session path: ${sessionDir}`);
+  console.log(`[Local Bridge Daemon] Estação: ${STATION_ID} (origem: ${stationResolution.source})`);
+
+  // Com dois estandes contra o mesmo placar, "qual Mac é este" deixou de ser detalhe. Sempre
+  // logado acima; o aviso abaixo só aparece quando a identidade NÃO veio de configuração
+  // explícita — ver `services/station-id.ts`.
+  const stationWarning = buildStationIdWarning(stationResolution);
+  if (stationWarning) console.warn(stationWarning);
 
   // `npm start` passa `--env-file-if-exists=.env`, resolvido a partir do CWD -- o mesmo caminho
   // que se lê aqui. Ver `services/env-precedence.ts` para por que este aviso existe.

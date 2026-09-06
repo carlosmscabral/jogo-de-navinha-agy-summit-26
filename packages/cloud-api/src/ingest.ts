@@ -51,6 +51,22 @@ function validate(m: MatchDocument): string | null {
   if (!isValidFirestoreDocId(m.company_canonical)) {
     return `company_canonical is not a valid Firestore document ID: ${JSON.stringify(m.company_canonical)}`;
   }
+  // `station_id` é OPCIONAL de propósito, e esta checagem só roda quando ele está presente.
+  // Tornar obrigatório rejeitaria toda partida que já estava enfileirada no SQLite de um
+  // estande antes do upgrade — perder partidas reais para ganhar um campo de observabilidade
+  // é a troca errada. Quando presente, precisa ser utilizável como chave de agrupamento no
+  // painel de Saúde: string curta, sem caractere de controle (que quebraria o log do terminal).
+  if (m.station_id !== undefined) {
+    if (typeof m.station_id !== 'string' || m.station_id.length === 0 || m.station_id.length > 64) {
+      return `station_id must be a non-empty string of at most 64 chars: ${JSON.stringify(m.station_id)}`;
+    }
+    if (/[\u0000-\u001f\u007f]/.test(m.station_id)) {
+      return 'station_id contains control characters';
+    }
+  }
+  if (m.played_at !== undefined && (typeof m.played_at !== 'string' || Number.isNaN(Date.parse(m.played_at)))) {
+    return `played_at must be an ISO 8601 string: ${JSON.stringify(m.played_at)}`;
+  }
   return null;
 }
 

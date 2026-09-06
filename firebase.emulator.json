@@ -1,0 +1,14 @@
+{
+  "_comment": "Config de emulador SÓ para rodar os testes do cloud-api. Idêntica a firebase.json exceto pela porta do Firestore: 8085 em vez de 8080. Motivo: 8080 é a porta padrão do emulador E a porta padrão de um monte de outra coisa (code-server, por exemplo). Quando algo já está escutando nela, o emulador não sobe, o Admin SDK dos testes fala com o processo errado, e o resultado são 20+ falhas com cara de bug real em ingest/admin/canonicalize — um falso negativo caro de diagnosticar. Uso: npm run test:cloud-api na raiz.",
+  "firestore": [
+    {
+      "database": "jogo-navinha",
+      "rules": "firestore.rules",
+      "indexes": "firestore.indexes.json"
+    }
+  ],
+  "emulators": {
+    "firestore": { "port": 8085 },
+    "ui": { "enabled": false }
+  }
+}

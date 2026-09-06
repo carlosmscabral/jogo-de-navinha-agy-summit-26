@@ -180,6 +180,17 @@ export interface MatchRecord {
   /** true quando `company_confidence < 0.80` -- fila de revisão manual do staff (Spec 11 §4.11). */
   needs_company_review?: boolean;
   created_at: string;
+  /**
+   * Estande de origem, injetado pelo daemon em `POST /api/matches` (sobrescrevendo o que
+   * vier do navegador). Opcional: partidas enfileiradas antes do upgrade não têm.
+   * Ver `MatchDocument.station_id` em `cloud.ts`.
+   */
+  station_id?: string;
+  /**
+   * Cópia de `created_at` feita no estande, que sobrevive à sobrescrita da hora de ingestão
+   * feita pela nuvem. Ver `MatchDocument.played_at` em `cloud.ts`.
+   */
+  played_at?: string;
 }
 
 export interface CompanyRanking {

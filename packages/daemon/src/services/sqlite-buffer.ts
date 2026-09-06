@@ -139,11 +139,13 @@ export class SQLiteBufferService {
         company_raw TEXT,
         company_confidence REAL,
         score_breakdown_json TEXT,
-        needs_company_review INTEGER DEFAULT 0
+        needs_company_review INTEGER DEFAULT 0,
+        station_id TEXT,
+        played_at TEXT
       );
     `);
 
-    this.migrateLocalMatchesSchema();
+    this.migrateSchema();
   }
 
   // Auto-cura para um banco pré-existente criado antes da Tarefa C8: `CREATE TABLE IF
@@ -151,21 +153,29 @@ export class SQLiteBufferService {
   // antigo, e sem isso todo saveMatch() falharia com "no such column" sem log nenhum
   // no daemon. ALTER TABLE ADD COLUMN é seguro em SQLite para colunas anuláveis: linhas
   // existentes recebem NULL, novas linhas populam normalmente.
-  private migrateLocalMatchesSchema(): void {
-    const columns = this.db.prepare('PRAGMA table_info(local_matches)').all() as { name: string }[];
-    const existing = new Set(columns.map((c) => c.name));
-
-    const requiredColumns: { name: string; ddl: string }[] = [
+  //
+  // Toda coluna acrescentada ao `CREATE TABLE` acima precisa aparecer aqui também. Esquecer
+  // significa que a máquina do desenvolvedor (banco novo, schema completo) funciona e o Mac do
+  // estande (banco com meses de partidas) quebra — a pior forma de descobrir isso é às 9h.
+  private migrateSchema(): void {
+    this.ensureColumns('local_matches', [
       { name: 'company_raw', ddl: 'TEXT' },
       { name: 'company_confidence', ddl: 'REAL' },
       { name: 'score_breakdown_json', ddl: 'TEXT' },
-      { name: 'needs_company_review', ddl: 'INTEGER DEFAULT 0' }
-    ];
+      { name: 'needs_company_review', ddl: 'INTEGER DEFAULT 0' },
+      { name: 'station_id', ddl: 'TEXT' },
+      { name: 'played_at', ddl: 'TEXT' }
+    ]);
+  }
 
-    for (const col of requiredColumns) {
+  private ensureColumns(table: string, required: { name: string; ddl: string }[]): void {
+    const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    const existing = new Set(columns.map((c) => c.name));
+
+    for (const col of required) {
       if (!existing.has(col.name)) {
-        console.warn(`[SQLiteBuffer] local_matches sem a coluna ${col.name} (schema pré-C8) — adicionando via ALTER TABLE.`);
-        this.db.exec(`ALTER TABLE local_matches ADD COLUMN ${col.name} ${col.ddl}`);
+        console.warn(`[SQLiteBuffer] ${table} sem a coluna ${col.name} — adicionando via ALTER TABLE.`);
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${col.name} ${col.ddl}`);
       }
     }
   }
@@ -350,8 +360,9 @@ export class SQLiteBufferService {
       INSERT OR REPLACE INTO local_matches (
         match_id, pilot_id, callsign, company_canonical, final_score,
         telemetry_json, ship_spec_json, synced_to_cloud, created_at,
-        company_raw, company_confidence, score_breakdown_json, needs_company_review
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
+        company_raw, company_confidence, score_breakdown_json, needs_company_review,
+        station_id, played_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -366,7 +377,9 @@ export class SQLiteBufferService {
       match.company_raw ?? null,
       match.company_confidence ?? null,
       match.score_breakdown ? JSON.stringify(match.score_breakdown) : null,
-      needsCompanyReview ? 1 : 0
+      needsCompanyReview ? 1 : 0,
+      match.station_id ?? null,
+      match.played_at ?? null
     );
   }
 
@@ -456,7 +469,13 @@ export class SQLiteBufferService {
       ship_spec_snapshot: JSON.parse(r.ship_spec_json),
       score_breakdown: r.score_breakdown_json ? JSON.parse(r.score_breakdown_json) : undefined,
       needs_company_review: r.needs_company_review === 1,
-      created_at: r.created_at
+      created_at: r.created_at,
+      // `?? undefined` e não `?? null`: uma partida gravada antes destas colunas existirem tem
+      // NULL aqui, e `station_id: null` no JSON enviado à nuvem seria rejeitado pela validação
+      // de `ingest.ts` (que aceita ausente, não aceita presente-e-não-string). Omitir é o que
+      // mantém as partidas pré-upgrade drenando.
+      station_id: r.station_id ?? undefined,
+      played_at: r.played_at ?? undefined
     }));
   }
 

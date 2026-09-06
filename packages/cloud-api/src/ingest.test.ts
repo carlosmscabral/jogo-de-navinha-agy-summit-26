@@ -120,4 +120,58 @@ describe('ingestBatch', () => {
       (testDb as any).runTransaction = realRunTransaction;
     }
   });
+
+  // --- station_id / played_at (dois estandes) ------------------------------------------
+  //
+  // O par de campos que diz de qual Mac veio cada partida e a que horas ela foi de fato
+  // jogada. Ambos OPCIONAIS, e este primeiro teste é a regressão que trava essa decisão:
+  // um estande atualizado no dia do evento tem partidas já enfileiradas no SQLite de antes
+  // da mudança. Se a ingestão passar a exigir os campos, essas partidas são rejeitadas em
+  // bloco — perder partidas reais de visitantes para ganhar um campo de observabilidade.
+  it('aceita partida SEM station_id — as que ficaram na fila antes do upgrade', async () => {
+    const r = await ingestBatch(testDb, [matchFixture({ match_id: 'sem-estacao', final_score: 1000 })]);
+    assert.deepEqual(r.accepted, ['sem-estacao']);
+    assert.equal(r.rejected.length, 0);
+
+    const doc = await testDb.collection('matches').doc('sem-estacao').get();
+    assert.equal(doc.data()!.station_id, undefined);
+  });
+
+  it('persiste station_id e played_at quando presentes', async () => {
+    const jogadaEm = '2026-09-06T13:45:00.000Z';
+    await ingestBatch(testDb, [
+      matchFixture({ match_id: 'com-estacao', station_id: 'booth-b', played_at: jogadaEm })
+    ]);
+
+    const doc = (await testDb.collection('matches').doc('com-estacao').get()).data()!;
+    assert.equal(doc.station_id, 'booth-b');
+    assert.equal(doc.played_at, jogadaEm);
+    // `created_at` continua sendo a hora de INGESTÃO, sobrescrita pelo servidor — é
+    // justamente por isso que `played_at` existe. Os dois não podem ser a mesma coisa.
+    assert.notEqual(doc.created_at, jogadaEm);
+  });
+
+  it('station_id inválido rejeita só a própria partida, preservando o resto do lote', async () => {
+    const r = await ingestBatch(testDb, [
+      matchFixture({ match_id: 'boa', final_score: 1000, station_id: 'booth-a' }),
+      matchFixture({ match_id: 'longa', final_score: 1000, station_id: 'x'.repeat(65) }),
+      matchFixture({ match_id: 'controle', final_score: 1000, station_id: 'booth\u0007a' }),
+      matchFixture({ match_id: 'numero', final_score: 1000, station_id: 7 as unknown as string }),
+      matchFixture({ match_id: 'vazia', final_score: 1000, station_id: '' })
+    ]);
+
+    assert.deepEqual(r.accepted, ['boa']);
+    assert.deepEqual(r.rejected.map((x) => x.match_id).sort(), ['controle', 'longa', 'numero', 'vazia']);
+    for (const rejeitada of r.rejected) assert.match(rejeitada.reason, /station_id/i);
+  });
+
+  it('played_at que não é data ISO é recusado, sem derrubar o lote', async () => {
+    const r = await ingestBatch(testDb, [
+      matchFixture({ match_id: 'ok-data', played_at: new Date().toISOString() }),
+      matchFixture({ match_id: 'data-ruim', played_at: 'ontem de tarde' })
+    ]);
+    assert.deepEqual(r.accepted, ['ok-data']);
+    assert.equal(r.rejected.length, 1);
+    assert.match(r.rejected[0].reason, /played_at/i);
+  });
 });
