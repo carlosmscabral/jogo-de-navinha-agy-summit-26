@@ -458,6 +458,7 @@ decisão deliberada, não efeito colateral de um script.
 | ≈20 falhas nos testes da `cloud-api`, `405` em `clearFirestore` | a porta 8080 está ocupada por outro processo | veja `packages/cloud-api/README.md`, "Testes locais" |
 | Uma falha em `packages/sim` no `npm test` | conhecida e esperada | §3.2 |
 | `gcloud eventarc triggers create` falha com mensagem obscura | falta `serviceAccountTokenCreator` no agente do Pub/Sub | o passo 9/11 concede; rode o deploy de novo |
+| `invalid value for trigger.event_data_content_type: ""` | `gcloud` antigo, sem o `--event-data-content-type` do passo 9/11 | atualize o repo; o deploy é idempotente e retoma direto no gatilho |
 
 ---
 

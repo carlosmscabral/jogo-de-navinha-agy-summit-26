@@ -341,6 +341,16 @@ gcloud run deploy "$CARDGEN_SERVICE_NAME" \
 # 2, então as duas batem por construção. Se o Eventarc recusar gatilhos de Firestore nesta
 # região, mova o gatilho (e só ele) para a região suportada mais próxima: o
 # --destination-run-region continua sendo o do serviço.
+#
+# --event-data-content-type é OBRIGATÓRIO aqui, apesar de o `gcloud ... --help` documentar
+# "application/json" como padrão. Achado ao vivo em 2026-09-06: sem a flag, o Eventarc recusa a
+# criação com `invalid value for trigger.event_data_content_type: "" is not supported by this
+# event type` — para eventos diretos do Firestore o campo não ganha default nenhum.
+# Qual dos dois valores não importa para NÓS: `/internal/cardgen` nunca lê o corpo da requisição
+# (packages/cloud-api/src/index.ts), só o cabeçalho `ce-subject`, e relê o documento no Firestore.
+# Escolhido "application/protobuf", que é a codificação nativa do evento e mantém o
+# `express.json()` global (index.ts:101) fora do caminho: nada de gastar CPU desserializando um
+# payload que ninguém consome, nem de arriscar um 400 do parser virar retentativa infinita.
 if gcloud eventarc triggers describe "$CARDGEN_TRIGGER_NAME" --location="$REGION" --project="$PROJECT_ID" >/dev/null 2>&1; then
   echo "Gatilho '$CARDGEN_TRIGGER_NAME' já existe."
 else
@@ -353,6 +363,7 @@ else
     --event-filters="type=google.cloud.firestore.document.v1.created" \
     --event-filters="database=$FIRESTORE_DATABASE" \
     --event-filters-path-pattern="document=matches/{matchId}" \
+    --event-data-content-type="application/protobuf" \
     --service-account="$CARDGEN_SA_EMAIL" \
     --project="$PROJECT_ID"
 fi
