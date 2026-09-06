@@ -2350,3 +2350,147 @@ script são todas sobre convergência na nuvem e o mesmo código de daemon roda 
 | 26.7 | Empresa nova no autocomplete dos dois estandes, mesma versão | ✅ | `Ensaio Empresa Tardia` apareceu nos dois na mesma `appliedVersion` 43 (26 empresas) e sumiu dos dois na 44 (de volta a 25), sempre com `state: ok`. Curiosidade sem consequência: o cadastro pulou 41 → **43**, dois incrementos para um "Salvar"; a remoção foi 43 → 44, um só. O espelhamento só depende de a versão mudar, não de quanto |
 | 26.8 | `station_id` distinto no boot dos dois Macs | [ ] | |
 | Fim | Partidas de ensaio apagadas e catálogo conferido | [ ] | Catálogo ✅: `Ensaio Empresa Tardia` já saiu no próprio 26.7 e os dois estandes voltaram a 25 empresas na versão 44. **Resíduo vivo em `vibe-cabral`**: as partidas `ENSAIO*` da 3ª execução, incluindo `ENSAIOREC1` (4300) e `ENSAIOREC2` (4400) — estas duas estão **acima do recorde real (4200)** e sequestrariam a celebração do primeiro visitante. Apagar pelo painel antes de abrir o estande |
+
+---
+
+## Bloco 27 — Telão v2: top 20 / top 15 rolando e a visão do Antigravity
+
+> **Pré-requisitos:** o telão v2 no ar (`packages/leaderboard-app`), **na TV do estande**, não na
+> tela do laptop — tudo que este bloco mede é geometria e legibilidade a 1080p, e um monitor de
+> desenvolvimento responde a pergunta errada. Ideal contra o Hosting (`https://jogo-navinha-telao.web.app`);
+> `npm run dev --workspace=packages/leaderboard-app` serve para ensaiar antes do deploy. Um teclado
+> ou apontador de apresentador ligado na máquina que serve a TV. Estimativa: 15 min, mais 15 de
+> espera no 27.9.
+>
+> Para os passos que precisam de placar cheio, ≥20 partidas já ingeridas — as de ensaio do Bloco 26
+> servem, desde que apagadas depois.
+
+O que mudou nesta entrega, e por que cada passo abaixo existe: o placar passou de 10 pilotos e 5
+empresas **fixos** para 20 e 15 **rolando** (`TOP_PILOTS_LIMIT` / `TOP_COMPANIES_LIMIT` em
+`firestore-source.ts`); o bloco "SUA VEZ DE PILOTAR", que tinha um QR **desenhado à mão** e não
+legível por celular nenhum, saiu; e a mesma tela agora alterna com um painel institucional sobre o
+Antigravity que o apresentador pode segurar com uma tecla.
+
+**A restrição que governa o bloco todo:** nada aqui se conserta diminuindo fonte, padding ou
+espaçamento. O telão é lido do fundo do estande. Se algo não couber, o número que se mexe é
+`pxPerSecond` em `DEFAULT_AUTO_SCROLL_CONFIG` (`auto-scroll.ts`) — nunca a tipografia.
+
+- [ ] **27.1 — Vinte pilotos e quinze empresas, todos legíveis do fundo do estande**
+
+Com ≥20 partidas no placar, fique de pé **onde o visitante fica**, não a um metro da TV, e acompanhe
+um ciclo completo de rolagem em cada painel.
+
+**Critério:** as **20** linhas de piloto e os **15** cards de empresa passam pela tela ao longo do
+ciclo — conte, não estime — e o **primeiro e o último item de cada painel são legíveis da distância
+de operação**. Os títulos dizem `HALL DA FAMA // TOP 20 PILOTOS` e `BATALHA CORPORATIVA // TOP 15`.
+
+> Se faltarem linhas, o problema não é a rolagem: é a fonte de dados. Confira quantas partidas o
+> `topPilots` está trazendo antes de mexer em qualquer coisa de layout — com menos de 20 partidas no
+> dia, 20 linhas simplesmente não existem para mostrar.
+
+- [ ] **27.2 — Cronometrar o vai-e-volta**
+
+Cronômetro na mão, do instante em que a lista **começa a descer** até ela voltar ao topo e ficar
+parada de novo.
+
+**Critério:** ≈**88 s**, dentro da fatia de 90 s do placar — a conta é
+`2 × holdMs + 2 × (transbordo / pxPerSecond)`, com `holdMs = 5 s` e `pxPerSecond = 20`. O que se
+verifica não é o número exato e sim que **cabe uma passagem completa por fatia**: se a lista for
+pega no meio do caminho toda vez que a tela vira, ninguém nunca vê o fim do ranking.
+
+Sobrou ou faltou muito? Ajuste **só** `pxPerSecond` em `DEFAULT_AUTO_SCROLL_CONFIG`
+(`packages/leaderboard-app/src/auto-scroll.ts`) e rode de novo. Mais rápido para caber, mais lento
+para ficar legível — é o único parafuso, e mexer nele não quebra nenhum teste (os de
+`auto-scroll.test.ts` passam a config explicitamente).
+
+- [ ] **27.3 — Placar cedo no evento: nada para rolar**
+
+Este é o caso das primeiras horas do estande, e é o mais fácil de esquecer. Com **3 ou 4 partidas**
+no placar (ou apontando o telão para uma base recém-limpa), olhe os dois painéis por um minuto.
+
+**Critério:** **nenhuma** rolagem, **nenhum** tremor de um pixel indo e voltando, nenhum salto ao
+fim de um ciclo invisível. As listas ficam paradas no topo. É o caminho `overflowPx <= 0` de
+`scrollOffsetAt`, e um telão que treme com quatro linhas na tela é a primeira coisa que um visitante
+nota.
+
+- [ ] **27.4 — O ciclo automático**
+
+Cronômetro de novo, sem tocar em nada. Comece a contar quando o placar aparecer.
+
+**Critério:** **1m30** de placar → o painel do Antigravity entra com fade → **3 seções de ≈20 s**
+(`AS SUPERFÍCIES` → `OS DIFERENCIAIS` → `COMO ADQUIRIR`, com os pontinhos de progresso andando) →
+volta sozinho ao placar. Total de 1m no painel. O `LIVE FEED` e o cabeçalho (relógio, contadores,
+selo `NUVEM`) **não piscam** na troca: eles ficam montados nas duas visões.
+
+- [ ] **27.5 — A retenção manual do apresentador**
+
+Durante o painel do Antigravity, aperte a **seta direita** uma vez.
+
+**Critério:** avança para a próxima seção **e** aparece no rodapé o selo
+`MODO APRESENTAÇÃO · placar em 1:30`, com a contagem caindo de segundo em segundo. A partir daí a
+rotação **para de avançar sozinha** — a seção fica no ar enquanto o apresentador quiser. Seta
+esquerda volta uma seção e **renova** a contagem para 1:30; qualquer outra tecla também renova, sem
+mudar de seção.
+
+> **Do placar, só as setas convocam o painel.** Aperte uma letra qualquer com o placar no ar: nada
+> deve acontecer. É deliberado — uma tecla esbarrada não pode tirar o ranking da TV no meio do
+> evento. Para sair do placar é preciso a intenção explícita de uma seta.
+
+- [ ] **27.6 — A volta sozinho (o passo que não pode ser pulado)**
+
+Com o selo `MODO APRESENTAÇÃO` no ar, **tire a mão do teclado** e espere.
+
+**Critério:** a contagem cai até `0:00` e o telão volta ao placar **sem nenhum clique**. Este é o
+único passo que prova a inatividade pedida: sem ele, "volta ao fluxo automático" é intenção, não
+comportamento. Um apresentador que larga o teclado e vai atender um visitante não pode deixar a TV
+congelada num slide institucional pelo resto do evento.
+
+> Depois da volta, o ciclo recomeça do zero: 1m30 de placar antes do próximo flip. E se ainda
+> restava seção pela metade quando a retenção expirou, **a seção corrente recomeça** em vez de
+> saltar — cortar no meio da frase de quem acabou de parar de falar seria pior.
+
+- [ ] **27.7 — Recorde top-3 durante a apresentação**
+
+Com o painel do Antigravity **segurado manualmente** (selo no ar), sincronize uma partida que entre
+no top 3. A partir de um estande de pé, ou:
+
+```bash
+npm run rehearse:two-booths -- --recordes
+```
+
+**Critério:** o telão **corta na hora** para o placar e celebra — o modal de recorde aparece, a
+retenção manual é descartada e o selo some. Depois dos 7 s do modal, o placar segue no ciclo normal.
+Não celebrar, ou celebrar por baixo do painel institucional, é perder exatamente o clímax que a
+experiência inteira existe para produzir. Apague as partidas de ensaio depois.
+
+- [ ] **27.8 — O ticker corre nas duas visões, e o QR falso não existe mais**
+
+**Critério, em duas partes:** (1) o `LIVE FEED` do rodapé continua correndo e atualizando **também**
+enquanto o painel do Antigravity está no ar; (2) **nenhum** canto da tela, em nenhuma das duas
+visões, mostra o bloco "SUA VEZ DE PILOTAR" nem a grade quadriculada que imitava um QR code. A
+chamada para ação sobreviveu no rodapé da seção `COMO ADQUIRIR` do painel — confira que ela está
+lá, e leia o texto das três seções procurando erro factual sobre o produto.
+
+- [ ] **27.9 — Quinze minutos sem tocar**
+
+Deixe o telão rodando 15 min, sem teclado, sem visitante. É a única forma de pegar deriva.
+
+**Critério:** a rolagem continua alinhada aos painéis (nenhuma lista deslocada para fora da caixa,
+nenhum card cortado no topo), o relógio do cabeçalho segue certo, a alternância continua no ritmo
+1m30/1m e a memória da aba não cresce sem parar (DevTools → Memory, ou o gerenciador de tarefas do
+Chrome: `Shift+Esc`). Cinco ciclos completos cabem nessa janela.
+
+- [ ] **27.10 — Tabela de registro**
+
+| # | Passo | Passou? | Observação |
+|---|-------|---------|------------|
+| 27.1 | 20 pilotos e 15 empresas, legíveis do fundo | [ ] | |
+| 27.2 | Vai-e-volta em ≈88 s, dentro da fatia de 90 s | [ ] | |
+| 27.3 | Placar com poucas partidas não rola nem treme | [ ] | |
+| 27.4 | Ciclo automático 1m30 / 1m com as 3 seções | [ ] | |
+| 27.5 | Seta segura o painel e mostra a contagem | [ ] | |
+| 27.6 | **Volta sozinho ao placar por inatividade** | [ ] | |
+| 27.7 | Recorde top-3 corta para o placar e celebra | [ ] | |
+| 27.8 | Ticker nas duas visões; nenhum QR falso na tela | [ ] | |
+| 27.9 | 15 min sem deriva de rolagem, relógio ou memória | [ ] | |
+| Fim | Partidas de ensaio do 27.7 apagadas | [ ] | |

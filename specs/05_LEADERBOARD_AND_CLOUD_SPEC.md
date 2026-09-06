@@ -427,12 +427,16 @@ Detalhamento completo do modelo de credenciais na
 ## 7. Placar da TV
 
 O app existe e está completo em termos de UI: `HallOfFame`, `CompanyDominance`, `LiveTickerFeed`,
-`RecordCelebrationModal` e `AttractQrCode`. O que muda é a fonte de dados.
+`RecordCelebrationModal` e `AntigravityShowcase`. O que muda é a fonte de dados.
 
-- **Top 10 individual:** posição, troféu, callsign, empresa canônica, pontuação.
-- **Top 5 corporativo:** barras neon proporcionais ao `total_score`.
-- **Ticker inferior:** últimos voos concluídos, em tempo real.
+- **Top 20 individual:** posição, troféu, callsign, empresa canônica, pontuação, com rolagem
+  vai-e-volta automática (`auto-scroll.ts`) — a lista não cabe na tela e nada encolhe para caber.
+- **Top 15 corporativo:** barras neon proporcionais ao `total_score`, com a mesma rolagem.
+- **Ticker inferior:** últimos voos concluídos, em tempo real, presente nas duas visões.
 - **Celebração de recorde:** animação em tela cheia ao entrar no Top 3 do dia.
+- **Segunda visão:** a cada 1m30 de placar, 1m de painel institucional do Antigravity (superfícies,
+  diferenciais, como adquirir), alternado por `view-rotation.ts`. O apresentador segura a visão com
+  as setas do teclado; 90 s de inatividade devolvem o placar sozinhos, e um pódio novo corta na hora.
 
 Mudanças necessárias:
 
