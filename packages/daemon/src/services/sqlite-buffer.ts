@@ -445,8 +445,9 @@ export class SQLiteBufferService {
         const resolvedAt = a.resolved_at && !Number.isNaN(Date.parse(a.resolved_at))
           ? new Date(a.resolved_at).toISOString()
           : new Date().toISOString();
-        this.cacheAlias(raw, canonical, 'cloud', resolvedAt);
-        applied++;
+        // Só conta o que mudou de verdade: a página sempre repete o alias da fronteira do
+        // cursor (ver `cacheAlias`), e contá-lo faria o worker relatar trabalho a cada tick.
+        applied += this.cacheAlias(raw, canonical, 'cloud', resolvedAt);
       }
     });
     run();
@@ -534,13 +535,21 @@ export class SQLiteBufferService {
    *
    * A PK é sempre `raw.toLowerCase()` — o `raw` que vem da nuvem é o `company_raw` digitado
    * pelo visitante, sem lowercase. Normalizar aqui, num lugar só, é o que faz o cache acertar.
+   *
+   * Devolve quantas linhas mudaram **de verdade** (0 ou 1). Reescrever uma linha idêntica não
+   * conta, e essa distinção não é cosmética: `GET /v1/aliases` usa `resolved_at >= since` e
+   * devolve o `resolved_at` do último item como próximo cursor, então o alias da fronteira volta
+   * em toda página — de propósito, para nunca perder um alias gravado no mesmo milissegundo.
+   * Sem esta guarda o worker "aplicava" o mesmo alias a cada tick para sempre: um `UPDATE`
+   * inútil no SQLite, `lastPageApplied` preso em 1 no `/api/catalog/status`, e o log do estande
+   * com centenas de linhas idênticas onde um pull de verdade deveria se destacar.
    */
   cacheAlias(
     raw: string,
     canonical: string,
     source: AliasSource = 'local',
     resolvedAt: string = new Date().toISOString()
-  ): void {
+  ): number {
     const stmt = this.db.prepare(`
       INSERT INTO company_aliases (raw_input, canonical_name, created_at, source, resolved_at)
       VALUES (@raw, @canonical, @now, @source, @resolvedAt)
@@ -549,32 +558,43 @@ export class SQLiteBufferService {
         created_at = excluded.created_at,
         source = excluded.source,
         resolved_at = excluded.resolved_at
-      WHERE @rank > (
-        CASE COALESCE(company_aliases.source, 'local')
-          WHEN 'override' THEN 2
-          WHEN 'cloud' THEN 1
-          ELSE 0
-        END
-      )
-      OR (
-        @rank = (
+      WHERE (
+        @rank > (
           CASE COALESCE(company_aliases.source, 'local')
             WHEN 'override' THEN 2
             WHEN 'cloud' THEN 1
             ELSE 0
           END
         )
-        AND (company_aliases.resolved_at IS NULL OR excluded.resolved_at >= company_aliases.resolved_at)
+        OR (
+          @rank = (
+            CASE COALESCE(company_aliases.source, 'local')
+              WHEN 'override' THEN 2
+              WHEN 'cloud' THEN 1
+              ELSE 0
+            END
+          )
+          AND (company_aliases.resolved_at IS NULL OR excluded.resolved_at >= company_aliases.resolved_at)
+        )
+      )
+      -- ...E algo precisa mudar de fato. A precedência acima decide QUEM pode escrever; esta
+      -- linha decide SE há o que escrever. A coluna created_at fica fora da comparação de
+      -- propósito: é a hora da gravação local, sempre diferente, e incluí-la faria toda
+      -- reescrita idêntica parecer novidade.
+      AND (
+        company_aliases.canonical_name <> excluded.canonical_name
+        OR COALESCE(company_aliases.source, 'local') <> excluded.source
+        OR COALESCE(company_aliases.resolved_at, '') <> excluded.resolved_at
       )
     `);
-    stmt.run({
+    return stmt.run({
       raw: raw.toLowerCase(),
       canonical,
       now: new Date().toISOString(),
       source,
       resolvedAt,
       rank: ALIAS_SOURCE_RANK[source]
-    });
+    }).changes;
   }
 
   /** Só para teste e diagnóstico: a resolução normal passa por `resolveCompany`. */

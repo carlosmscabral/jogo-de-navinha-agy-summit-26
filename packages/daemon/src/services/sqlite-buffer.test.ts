@@ -551,6 +551,37 @@ describe('merge de aliases da nuvem', () => {
     buffer.close();
   });
 
+  it('reaplicar a MESMA página não conta como trabalho — o alias da fronteira do cursor volta sempre', () => {
+    const buffer = new SQLiteBufferService(tempDb());
+    const pagina = [{ raw: 'bidu', canonical: 'Bidu Telecom', resolved_at: '2026-09-01T10:00:00.000Z' }];
+
+    assert.equal(buffer.mergeCloudAliases(pagina).applied, 1, 'a primeira vez é trabalho de verdade');
+
+    // `GET /v1/aliases` usa `resolved_at >= since` e devolve o último `resolved_at` como próximo
+    // cursor, então este item volta em toda página. Achado ao vivo em 2026-09-06: o log do
+    // estande tinha centenas de "1 aplicado(s)" idênticos e `lastPageApplied` ficava preso em 1,
+    // escondendo qualquer pull real. Repetir não pode mais contar.
+    for (let i = 0; i < 5; i++) {
+      assert.equal(buffer.mergeCloudAliases(pagina).applied, 0, `tick ${i + 1} não mudou nada`);
+    }
+
+    assert.equal(buffer.getAlias('bidu')?.canonical, 'Bidu Telecom', 'e o alias continua lá');
+    buffer.close();
+  });
+
+  it('uma correção de verdade no mesmo raw ainda conta', () => {
+    const buffer = new SQLiteBufferService(tempDb());
+
+    buffer.mergeCloudAliases([{ raw: 'bidu', canonical: 'Bidu Telecom', resolved_at: '2026-09-01T10:00:00.000Z' }]);
+    const depois = buffer.mergeCloudAliases([
+      { raw: 'bidu', canonical: 'Bidu Telecomunicacoes', resolved_at: '2026-09-01T11:00:00.000Z' }
+    ]);
+
+    assert.equal(depois.applied, 1, 'a guarda de no-op não pode engolir uma correção');
+    assert.equal(buffer.getAlias('bidu')?.canonical, 'Bidu Telecomunicacoes');
+    buffer.close();
+  });
+
   it('marca a procedência de quem resolve localmente', () => {
     const buffer = new SQLiteBufferService(tempDb());
 
