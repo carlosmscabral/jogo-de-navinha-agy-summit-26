@@ -2056,16 +2056,58 @@ O `--sem-limpeza` é o modo deste bloco: ele **deixa os dois estandes de pé** n
 as partidas de ensaio na nuvem, que é o cenário de que os passos seguintes precisam. Ctrl-C no fim
 derruba os dois daemons.
 
-**Critério:** o relatório fecha com `0 falhas` nos sete blocos. Eles cobrem, nesta ordem:
-divergência silenciosa de catálogo (dois rankings), convergência pelo pull (um ranking só, com a
-soma certa), remoção espelhada nos dois estandes, as travas contra catálogo vazio e poda em massa,
-buffer offline com `played_at`, `stationActivity` no `/v1/admin/health` e o cenário de empate.
+**Critério:** o relatório fecha com **`45/45 afirmações passaram`** nos sete blocos, que cobrem,
+nesta ordem: divergência silenciosa de catálogo (dois rankings), convergência pelo pull (um ranking
+só, com a soma certa), remoção espelhada nos dois estandes, as travas contra poda em massa e
+catálogo vazio, buffer offline com `played_at`, `stationActivity` no `/v1/admin/health` e o cenário
+de empate.
 
 > O catálogo de produção é salvo antes de qualquer alteração e **restaurado sempre**, inclusive se
 > um passo falhar no meio — a cópia fica em `/tmp/ensaio-dois-booths/catalogo-original.json`. As
 > empresas de ensaio começam com `Ensaio ` e os codinomes com `ENSAIO`. Com `--sem-limpeza` as
 > partidas **ficam**: o script imprime os `match_id` no fim, e você as apaga pelo painel (Partidas →
 > seleção em massa → Apagar) antes de abrir o estande.
+
+**Duas camadas contra catálogo vazio, e a de fora é a que age.** Vale saber qual é qual, porque a
+intuição erra: o `PUT` do painel recusa lista vazia com 400, e o daemon também tem uma trava — mas
+essa segunda **nunca dispara na prática**. Se alguém escrever `companies: []` direto no console do
+Firestore, `createCompanyCatalogProvider` cai na semente de disco embutida no container e ainda
+regrava o documento, então `GET /v1/companies` continua servindo a lista cheia e os estandes não
+chegam a ter o que recusar. A trava do daemon segue como defesa em profundidade (tem teste unitário
+em `catalog-sync.test.ts`) e só é alcançável apontando um estande para um servidor que devolva `[]`
+de verdade. A poda em massa é o oposto: o servidor **aceita** (só a lista vazia é barrada lá) e quem
+recusa são os dois daemons, acima de 30% de remoção num pull.
+
+**Se preferir subir os dois estandes à mão** (para depurar, ou para jogar de verdade nas duas
+janelas em vez de deixar o script postar as partidas), é um terminal por estande. O que separa um do
+outro são cinco variáveis — porta, `station_id`, banco, sessão e catálogo:
+
+```bash
+npm run build:shared && npm run build --workspace=packages/daemon
+
+# Terminal 1 — estande A
+cd packages/daemon
+PORT=3100 \
+BOOTH_STATION_ID=booth-a \
+BOOTH_DB_PATH=/tmp/estande-a/booth.db \
+BOOTH_SESSION_DIR=/tmp/estande-a/session \
+BOOTH_COMPANIES_FILE=/tmp/estande-a/companies.json \
+node dist/index.js
+
+# Terminal 2 — estande B (mesma coisa, só troque a/A por b/B e a porta para 3101)
+```
+
+`BOOTH_CLOUD_API_BASE` e `BOOTH_INGEST_TOKEN` saem de `packages/daemon/.env` normalmente. Copie
+`config/companies.json` para cada `BOOTH_COMPANIES_FILE` antes do primeiro boot. As duas telas do
+visitante ficam em `http://localhost:3100` e `http://localhost:3101`.
+
+> **Não use a 3000.** É onde mora o daemon do dia a dia, e derrubar a sessão de quem está
+> desenvolvendo é um jeito caro de descobrir uma colisão de porta. Se algo ficar preso:
+> `lsof -ti :3100 -ti :3101 | xargs kill -9`.
+>
+> **Bancos separados não são opcionais.** Dois daemons no mesmo `BOOTH_DB_PATH` compartilham cache
+> de aliases e catálogo, e o ensaio inteiro — que existe para provar que dois estandes convergem —
+> passaria por convergirem trivialmente, medindo nada.
 
 - [ ] **26.1 — O resíduo de alias, e por que os dois Macs precisam de banco zerado**
 
@@ -2199,9 +2241,15 @@ legível para quem não decorou os hostnames.
 
 - [ ] **26.9 — Tabela de registro**
 
+Execução parcial de 2026-09-06, contra `vibe-cabral` / `jogo-navinha`, revisão
+`jogo-navinha-api-00019-jjp` (cardgen `jogo-navinha-cardgen-00003-t84`), a partir da **máquina de
+desenvolvimento**, não do Mac do estande. O que isso cobre e o que não cobre: as afirmações do
+script são todas sobre convergência na nuvem e o mesmo código de daemon roda dos dois lados, então
+26.0 está fechado; o que **falta rodar no Mac** é tudo que depende de navegador, de TV e do `agy`.
+
 | # | Passo | Passou? | Observação |
 |---|-------|---------|------------|
-| 26.0 | Ensaio automatizado fechou com 0 falhas | [ ] | |
+| 26.0 | Ensaio automatizado fechou sem falhas | ✅ | **45/45** afirmações. O deploy semeou `companies/catalog` com 25 empresas — o documento **não existia** em produção, confirmando ao vivo o achado de que o editor de empresas do painel era um no-op |
 | 26.1 | `reset:db` rodado nos dois Macs, `company_aliases` zerado | [ ] | |
 | 26.2 | Forja em branco com `agy` logado | [ ] | |
 | 26.3 | Duas celebrações em cada TV, nenhuma engolida | [ ] | |

@@ -740,26 +740,30 @@ async function bloco4Travas(catalogoOriginal) {
   const depoisA = await tamanhoCatalogo(BOOTHS[0]);
   afirmar('e o catálogo local ficou intacto', depoisA === antesA, `${antesA} → ${depoisA} empresas`);
 
-  // Catálogo vazio escrito DIRETO no Firestore, burlando a trava do servidor. É o único jeito de
-  // exercitar a segunda camada. A espera é longa de propósito: `GET /v1/companies` serve de um
-  // cache de 60s (COMPANY_CATALOG_TTL_MS) que uma escrita fora do servidor não invalida.
+  // Catálogo vazio escrito DIRETO no Firestore, burlando a trava do `PUT`. Este é o cenário
+  // "alguém mexeu no console do Firestore", e o que ele exercita NÃO é a trava do daemon.
+  //
+  // ACHADO DO PRIMEIRO ENSAIO (2026-09-06). A afirmação original aqui era que os dois estandes
+  // iam marcar `state: 'refused'`, e ela falhou — mas o sistema estava certo e o teste errado.
+  // `createCompanyCatalogProvider` NUNCA serve lista vazia enquanto a semente de disco não for
+  // vazia (`company-catalog.ts`, ramo `companies.length === 0`): um documento vazio cai no
+  // `diskSeed` do container e ainda dispara `onSeedNeeded`, que regrava o documento. Ou seja, o
+  // catálogo vazio morre uma camada ANTES — `GET /v1/companies` continua servindo lista cheia e
+  // os estandes nunca chegam a ter o que recusar. A trava do daemon continua valendo como
+  // defesa em profundidade (e tem teste unitário próprio em `catalog-sync.test.ts`), só que ela
+  // só é alcançável apontando um estande para um servidor que de fato devolva `[]`.
+  //
+  // A espera passa dos 60s de propósito: `GET /v1/companies` serve de um cache
+  // (COMPANY_CATALOG_TTL_MS) que uma escrita fora do servidor não invalida, então antes disso a
+  // afirmação passaria pelo motivo errado.
   const versaoVazia = (await lerCatalogo()).version + 1;
   await escreverCatalogoDireto([], versaoVazia);
-  const recusouVazio = await esperarPor(
-    'os dois estandes recusarem o catálogo vazio (até 60s de cache + um tick)',
-    async () => {
-      const sA = await statusCatalogo(BOOTHS[0]);
-      const sB = await statusCatalogo(BOOTHS[1]);
-      const viuA = sA?.catalog?.state === 'refused' && /vazi/i.test(sA.catalog.lastError ?? '');
-      const viuB = sB?.catalog?.state === 'refused' && /vazi/i.test(sB.catalog.lastError ?? '');
-      return viuA && viuB ? { sA, sB } : null;
-    },
-    { timeoutMs: 120_000, intervaloMs: 5_000 }
-  );
+  await dormir(65_000);
+  const servido = await nuvem('/v1/companies');
   afirmar(
-    'os dois estandes RECUSARAM o catálogo vazio',
-    recusouVazio && recusouVazio.sA,
-    recusouVazio?.sA ? `A: ${recusouVazio.sA.catalog.lastError}` : 'não recusaram no prazo'
+    'catálogo vazio no Firestore NÃO é servido aos estandes — o disco do container assume',
+    servido.status === 200 && Array.isArray(servido.corpo?.companies) && servido.corpo.companies.length > 0,
+    `GET /v1/companies devolveu ${servido.corpo?.companies?.length ?? '?'} empresas depois da escrita vazia`
   );
   const depoisVazio = await tamanhoCatalogo(BOOTHS[0]);
   afirmar('e o catálogo local continuou intacto', depoisVazio === antesA, `${depoisVazio} empresas`);
