@@ -66,21 +66,21 @@ describe('mergeLeaderboardState', () => {
     expect(s.topPilots[2].rank).toBe(3);
   });
 
-  it('trunca o hall da fama em 10 e o corporativo em 5', () => {
-    const matches = Array.from({ length: 15 }, (_, i) =>
+  it('trunca o hall da fama em 20 e o corporativo em 15', () => {
+    const matches = Array.from({ length: 25 }, (_, i) =>
       makeMatch({ match_id: `m${i}`, final_score: i })
     );
-    const rankings = Array.from({ length: 8 }, (_, i) =>
+    const rankings = Array.from({ length: 20 }, (_, i) =>
       makeRanking({ company_canonical: `COMPANY_${i}`, total_score: i })
     );
 
     const s = mergeLeaderboardState(matches, rankings);
 
-    expect(s.topPilots).toHaveLength(10);
-    expect(s.companyRankings).toHaveLength(5);
+    expect(s.topPilots).toHaveLength(20);
+    expect(s.companyRankings).toHaveLength(15);
     // Highest scores/totals survive the truncation.
-    expect(s.topPilots[0].match_id).toBe('m14');
-    expect(s.companyRankings[0].company_canonical).toBe('COMPANY_7');
+    expect(s.topPilots[0].match_id).toBe('m24');
+    expect(s.companyRankings[0].company_canonical).toBe('COMPANY_19');
   });
 
   it('ordena o ticker pelas partidas mais recentes', () => {
@@ -766,18 +766,20 @@ describe('subscribeToLeaderboard (Firestore mockado)', () => {
     unsubscribe();
   });
 
-  it('devolve rank 0 para quem não entrou no top 10, em vez de celebrar por engano', () => {
+  it('devolve rank 0 para quem não entrou no hall da fama, em vez de celebrar por engano', () => {
     const onNewMatch = vi.fn();
     const unsubscribe = subscribeToLeaderboard({ onData: vi.fn(), onSourceChange: vi.fn(), onNewMatch });
 
-    const dezGrandes = Array.from({ length: 10 }, (_, i) => ({
+    // Precisam ser tantos quanto `TOP_PILOTS_LIMIT`: o rank 0 significa "ficou de fora da janela
+    // que a tela mostra", e a janela é de 20 desde que o telão passou a rolar.
+    const janelaCheia = Array.from({ length: 20 }, (_, i) => ({
       match_id: `top-${i}`,
       callsign: `T${i}`,
       company_canonical: 'ACME',
       final_score: 100_000 - i,
       created_at: '2026-01-01T09:00:00.000Z'
     }));
-    onSnapshotHandlers[SCORE_LISTENER].next(fakeMatchSnapshot(dezGrandes));
+    onSnapshotHandlers[SCORE_LISTENER].next(fakeMatchSnapshot(janelaCheia));
     onSnapshotHandlers[RECENCY_LISTENER].next(fakeMatchSnapshot([]));
 
     const modesta = {

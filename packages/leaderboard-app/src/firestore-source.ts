@@ -178,8 +178,17 @@ export interface LeaderboardHandlers {
 // Pure logic — no Firestore, no network, no timers.
 // ---------------------------------------------------------------------------
 
-const TOP_PILOTS_LIMIT = 10;
-const TOP_COMPANIES_LIMIT = 5;
+/**
+ * Cada constante serve a DOIS lugares: o `limit()` da consulta ao Firestore lá embaixo e o
+ * `slice()` de `mergeLeaderboardState`. Mudar aqui muda os dois — é de propósito, para não
+ * existir uma janela de consulta maior que o que a tela mostra (ou menor, que é pior).
+ *
+ * 20 e 15, e não 10 e 5, porque o telão passou a rolar suavemente em vez de mostrar uma página
+ * fixa (ver `auto-scroll.ts`). O custo é ≈20 documentos a mais por conexão, uma vez, e depois só
+ * os deltas do `onSnapshot`.
+ */
+const TOP_PILOTS_LIMIT = 20;
+const TOP_COMPANIES_LIMIT = 15;
 const RECENT_MATCHES_LIMIT = 12;
 
 /**
@@ -265,7 +274,7 @@ export interface AccurateCounts {
  * left untouched — it comes from the "top by score" query itself and is
  * exact regardless of collection size. `total_matches`/`total_pilots`, by
  * contrast, are what `mergeLeaderboardState` can only *estimate* from the
- * ≤22 documents its two windowed match queries see: once an event has more
+ * ≤32 documents its two windowed match queries see: once an event has more
  * matches than that, the windowed estimate stops reflecting reality and can
  * even move up and down as different matches enter/leave the windows — worse
  * than a stable, if briefly stale, exact number on a public display. Pure;
