@@ -59,6 +59,7 @@ permanece e ganhou um ID de defeito.
 | **[12 Plano de Teste Manual (Mac)](./12_MANUAL_TEST_PLAN_MAC.md)** | Roteiro passo a passo que fecha os gates M1 e M2 | Pendente de execução |
 | **[13 Chromebook & Crostini](./13_CHROMEBOOK_AND_CROSTINI_SPEC.md)** | O que muda se o hardware do estande for um Chromebook: bloqueadores, instalação e testes que só o hardware fecha | Nova; hardware não confirmado |
 | **[14 Guia de Instalação](./14_INSTALLATION_GUIDE.md)** | Do zero ao ar, local e em GCP: pré-requisitos, segredos, sincronia estande↔nuvem e conferências pós-instalação | Nova |
+| **[15 Runbook do Evento (2 estandes)](./15_EVENT_RUNBOOK_TWO_BOOTHS.md)** | Execução pura, sem explicação: montar os dois Macs, conferir o deploy, cadastrar as empresas na véspera, pre-flight diário, operação e a virada do dia 1 para o dia 2 | Nova |
 
 ---
 

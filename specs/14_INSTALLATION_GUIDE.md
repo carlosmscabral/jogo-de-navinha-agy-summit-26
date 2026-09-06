@@ -157,8 +157,13 @@ Em **modo local puro**, deixe `BOOTH_CLOUD_API_BASE` e `BOOTH_INGEST_TOKEN` vazi
 detecta a ausência e desliga nuvem e moderação de camada 2 sem erro — `/api/sync/status` mostra
 `"state": "disabled"`, que é o correto nesse modo, não um defeito.
 
-**Empresas do evento.** O catálogo fica em `config/companies.json`. Edite o arquivo e reinicie o
-daemon; não precisa rebuildar. Para usar outro caminho, aponte `BOOTH_COMPANIES_FILE`.
+**Empresas do evento.** Em **modo local puro**, o catálogo é `config/companies.json`: edite o arquivo
+e reinicie o daemon; não precisa rebuildar. Para usar outro caminho, aponte `BOOTH_COMPANIES_FILE`.
+Em **modo completo**, esse arquivo vira só a semente do primeiro boot — a fonte de verdade passa a
+ser o documento que o painel edita, e o daemon o espelha (§5.1).
+
+**Qual estande é este.** Com mais de uma máquina jogando contra o mesmo placar, defina
+`BOOTH_STATION_ID` (ex.: `booth-a` e `booth-b`). Ausente, o daemon usa o hostname e avisa no boot.
 
 **Relógios do fallback do `agy`.** Os quatro `AGY_*_TIMEOUT_MS` no `.env.example` já vêm com os
 defaults do código. Se mexer em um, mexa no conjunto: existe uma invariante — o teto rígido tem que
@@ -418,7 +423,8 @@ SVG). Este §6 é o mínimo; aquele é o gate.
 | Derrubar tudo | `npm run kill:all` |
 | Zerar o banco local | `npm run reset:db` |
 | Corrigir/anular uma partida | Painel `/admin` → Partidas |
-| Trocar as empresas | editar `config/companies.json` e reiniciar o daemon |
+| Trocar as empresas | painel `/admin` → Empresas (os estandes espelham em até 2 min). Só em modo local puro é que se edita `config/companies.json` |
+| Ver o catálogo que o estande aplicou | `curl -s localhost:3000/api/catalog/status \| jq '.catalog'` |
 | Ver a fila de sincronização | `curl -s localhost:3000/api/sync/status \| jq` |
 | Forçar uma tentativa de sync | reinicie o daemon (zera o backoff) ou jogue mais uma partida |
 
@@ -466,6 +472,7 @@ decisão deliberada, não efeito colateral de um script.
 
 | Precisa de | Vá para |
 | :--- | :--- |
+| **Montar e operar os dois estandes no evento** | [`15_EVENT_RUNBOOK_TWO_BOOTHS.md`](./15_EVENT_RUNBOOK_TWO_BOOTHS.md) |
 | Instalar num **Chromebook** (Crostini) | [`13_CHROMEBOOK_AND_CROSTINI_SPEC.md`](./13_CHROMEBOOK_AND_CROSTINI_SPEC.md) §6 |
 | **Testar** a instalação a fundo | [`12_MANUAL_TEST_PLAN_MAC.md`](./12_MANUAL_TEST_PLAN_MAC.md) |
 | Entender a **topologia** de nuvem | [`08_DEPLOYMENT_TOPOLOGY_AND_CLOUD_SPLIT.md`](./08_DEPLOYMENT_TOPOLOGY_AND_CLOUD_SPLIT.md) |
