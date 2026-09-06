@@ -2427,10 +2427,20 @@ selo `NUVEM`) **não piscam** na troca: eles ficam montados nas duas visões.
 Durante o painel do Antigravity, aperte a **seta direita** uma vez.
 
 **Critério:** avança para a próxima seção **e** aparece no rodapé o selo
-`MODO APRESENTAÇÃO · placar em 1:30`, com a contagem caindo de segundo em segundo. A partir daí a
-rotação **para de avançar sozinha** — a seção fica no ar enquanto o apresentador quiser. Seta
-esquerda volta uma seção e **renova** a contagem para 1:30; qualquer outra tecla também renova, sem
-mudar de seção.
+`MODO APRESENTAÇÃO · placar em 1:30 · ESC VOLTA AGORA`, com a contagem caindo de segundo em segundo.
+A partir daí a rotação **para de avançar sozinha** — a seção fica no ar enquanto o apresentador
+quiser. Seta esquerda volta uma seção e **renova** a contagem para 1:30; qualquer outra tecla também
+renova, sem mudar de seção.
+
+**Segunda parte, e é o que o selo anuncia:** aperte **Esc** (ou `Home`, ou `Backspace`). O placar
+volta **na hora**, com a fatia de 1m30 reiniciada. Sem essa saída, quem terminou de apresentar só
+conseguia voltar esperando os 90 s correrem — uma eternidade com um visitante ao lado perguntando
+onde está o ranking dele. Achado ao vivo em 2026-09-06, na primeira vez que alguém navegou o painel
+de verdade: dava para ir e voltar entre as seções, mas não para sair.
+
+> **Cuidado com o Esc em tela cheia por `F11`:** o navegador consome a tecla para sair do modo
+> tela cheia antes de a página vê-la. Em `--kiosk` isso não acontece. Se o telão estiver em `F11`,
+> use `Home` ou `Backspace`, que não têm esse conflito.
 
 > **Do placar, só as setas convocam o painel.** Aperte uma letra qualquer com o placar no ar: nada
 > deve acontecer. É deliberado — uma tecla esbarrada não pode tirar o ranking da TV no meio do
@@ -2488,7 +2498,7 @@ Chrome: `Shift+Esc`). Cinco ciclos completos cabem nessa janela.
 | 27.2 | Vai-e-volta em ≈88 s, dentro da fatia de 90 s | [ ] | |
 | 27.3 | Placar com poucas partidas não rola nem treme | [ ] | |
 | 27.4 | Ciclo automático 1m30 / 1m com as 3 seções | [ ] | |
-| 27.5 | Seta segura o painel e mostra a contagem | [ ] | |
+| 27.5 | Seta segura o painel; Esc volta ao placar na hora | [ ] | |
 | 27.6 | **Volta sozinho ao placar por inatividade** | [ ] | |
 | 27.7 | Recorde top-3 corta para o placar e celebra | [ ] | |
 | 27.8 | Ticker nas duas visões; nenhum QR falso na tela | [ ] | |

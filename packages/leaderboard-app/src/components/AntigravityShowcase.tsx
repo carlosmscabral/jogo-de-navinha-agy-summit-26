@@ -90,10 +90,10 @@ export function AntigravityShowcase({ section, holdMs }: AntigravityShowcaseProp
         {holdMs > 0 && (
           <span
             className="flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-2xl bg-[#10b981]/15 text-[#10b981] border border-[#10b981]/40 uppercase tracking-wider font-mono flex-shrink-0"
-            title="Setas navegam as seções. Sem toque no teclado, o placar volta sozinho."
+            title="Setas navegam as seções. Esc volta ao placar agora. Sem toque no teclado, o placar volta sozinho."
           >
             <Presentation className="w-3.5 h-3.5" />
-            Modo apresentação · placar em {formatCountdown(holdMs)}
+            Modo apresentação · placar em {formatCountdown(holdMs)} · Esc volta agora
           </span>
         )}
       </div>

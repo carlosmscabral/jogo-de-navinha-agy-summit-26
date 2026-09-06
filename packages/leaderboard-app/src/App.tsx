@@ -5,6 +5,7 @@ import { CompanyDominance, CompanyRankEntry } from './components/CompanyDominanc
 import { LiveTickerFeed, RecentMatchEntry } from './components/LiveTickerFeed.js';
 import { RecordCelebrationModal } from './components/RecordCelebrationModal.js';
 import { AntigravityShowcase } from './components/AntigravityShowcase.js';
+import { OperatorControls } from './components/OperatorControls.js';
 import { subscribeToLeaderboard, LeaderboardState, SourceStatus } from './firestore-source.js';
 import { enqueueCelebration, isCelebrationWorthy, type Celebration } from './celebration-queue.js';
 import {
@@ -83,6 +84,15 @@ export function App() {
         case 'PageUp':
           e.preventDefault();
           dispatchRotation({ type: 'OPERATOR_PREV' });
+          break;
+        // A saída explícita. Sem ela, quem terminou de apresentar só conseguia voltar ao placar
+        // esperando os 90 s da retenção correrem — uma eternidade com um visitante ao lado
+        // perguntando onde está o ranking dele.
+        case 'Escape':
+        case 'Home':
+        case 'Backspace':
+          e.preventDefault();
+          dispatchRotation({ type: 'FORCE_SCOREBOARD' });
           break;
         default:
           dispatchRotation({ type: 'OPERATOR_ACTIVITY' });
@@ -177,6 +187,14 @@ export function App() {
               {currentTime}
             </div>
           </div>
+
+          {/* Controles do apresentador — mesmo canto nas duas visões, ver OperatorControls. */}
+          <OperatorControls
+            noPlacar={noPlacar}
+            onNext={() => dispatchRotation({ type: 'OPERATOR_NEXT' })}
+            onPrev={() => dispatchRotation({ type: 'OPERATOR_PREV' })}
+            onExit={() => dispatchRotation({ type: 'FORCE_SCOREBOARD' })}
+          />
         </div>
       </header>
 

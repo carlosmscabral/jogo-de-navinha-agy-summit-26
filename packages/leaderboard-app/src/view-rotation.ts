@@ -47,7 +47,10 @@ export type RotationEvent =
   | { type: 'OPERATOR_PREV' }
   /** Qualquer outra tecla: só renova a retenção, e só se a educativa já estiver no ar. */
   | { type: 'OPERATOR_ACTIVITY' }
-  /** Um recorde de pódio chegou. Vence a retenção manual. */
+  /**
+   * Volta ao placar agora, vencendo a retenção manual. Dois emissores, com a mesma urgência: um
+   * recorde de pódio chegando, e o apresentador que terminou de falar e apertou Esc.
+   */
   | { type: 'FORCE_SCOREBOARD' };
 
 export const DEFAULT_ROTATION_CONFIG: RotationConfig = {
