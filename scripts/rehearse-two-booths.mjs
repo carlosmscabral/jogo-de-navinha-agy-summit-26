@@ -34,8 +34,8 @@
  *   BOOTH_CLOUD_API_BASE   URL do Cloud Run, ex. https://jogo-navinha-api-xxx.run.app
  *   BOOTH_INGEST_TOKEN     token Bearer dos estandes
  *   ADMIN_PANEL_PASSWORD   senha HTTP Basic do painel
- *   PROJECT_ID             default `vibe-cabral`
- *   FIRESTORE_DATABASE     default `jogo-navinha`
+ *   ENSAIO_PROJECT_ID          default `vibe-cabral` (prefixo `ENSAIO_` de propósito: ver abaixo)
+ *   ENSAIO_FIRESTORE_DATABASE  default `jogo-navinha`
  */
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -81,8 +81,23 @@ const envDaemon = lerEnvDoDaemon();
 const CLOUD_BASE = (process.env.BOOTH_CLOUD_API_BASE || envDaemon.BOOTH_CLOUD_API_BASE || '').replace(/\/+$/, '');
 const TOKEN = process.env.BOOTH_INGEST_TOKEN || envDaemon.BOOTH_INGEST_TOKEN || '';
 const SENHA_PAINEL = process.env.ADMIN_PANEL_PASSWORD || '';
-const PROJECT_ID = process.env.PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT || 'vibe-cabral';
-const DATABASE_ID = process.env.FIRESTORE_DATABASE || 'jogo-navinha';
+/**
+ * Nomes com prefixo `ENSAIO_`, e nem `PROJECT_ID` nem `GOOGLE_CLOUD_PROJECT` são lidos aqui.
+ *
+ * Achado ao vivo em 2026-09-06, no primeiro ensaio rodado do Mac: o script abriu o Firestore em
+ * `cabral-apigee` enquanto o lado HTTP continuava batendo no Cloud Run do `vibe-cabral`, e o
+ * sintoma foi um `5 NOT_FOUND` de gRPC com 30 linhas de pilha do `google-gax` sem uma palavra
+ * sobre projeto. A causa é a categoria, não a variável específica: `PROJECT_ID` e
+ * `GOOGLE_CLOUD_PROJECT` são nomes de propósito geral que qualquer outro trabalho no mesmo shell
+ * exporta, e o `gcloud config set project` não protege contra isso — o firebase-admin não lê a
+ * configuração do gcloud, lê o ambiente. Um nome que só este script usa não tem como ser herdado
+ * por acidente. Mesma armadilha que `cardgen-routes.test.ts` documenta do lado dos testes.
+ *
+ * Para apontar para outro projeto:
+ *   ENSAIO_PROJECT_ID=outro npm run rehearse:two-booths
+ */
+const PROJECT_ID = process.env.ENSAIO_PROJECT_ID || 'vibe-cabral';
+const DATABASE_ID = process.env.ENSAIO_FIRESTORE_DATABASE || 'jogo-navinha';
 
 /** Diretório de trabalho do ensaio. Fora do repo, e recriado do zero a cada execução. */
 const TRABALHO = path.join(os.tmpdir(), 'ensaio-dois-booths');
@@ -484,7 +499,39 @@ async function preparacao() {
   if (painelOk.status !== 200) throw new Error('senha do painel recusada');
 
   iniciarFirestore();
-  const original = await lerCatalogo();
+
+  // O ensaio fala com a nuvem por DOIS canais — HTTP no Cloud Run e Firestore direto — e nada
+  // garante sozinho que os dois apontem para o mesmo lugar. Quando não apontam, o erro nativo é um
+  // `5 NOT_FOUND` de gRPC com 30 linhas de pilha do `google-gax` que não menciona projeto nenhum.
+  let original;
+  try {
+    original = await lerCatalogo();
+  } catch (err) {
+    throw new Error(
+      `não consegui ler companies/catalog em '${PROJECT_ID}' / '${DATABASE_ID}'. ` +
+        `Confira se o projeto e o banco batem com ${CLOUD_BASE}. Só ENSAIO_PROJECT_ID e ` +
+        'ENSAIO_FIRESTORE_DATABASE sobrescrevem os defaults — PROJECT_ID e GOOGLE_CLOUD_PROJECT ' +
+        `são ignorados de propósito. Causa: ${err?.message || err}`
+    );
+  }
+
+  const servidoAgora = await nuvem('/v1/companies');
+  const listaServida = Array.isArray(servidoAgora.corpo?.companies) ? servidoAgora.corpo.companies : [];
+  const emComum = original.companies.filter((c) => listaServida.includes(c));
+  afirmar(
+    'o Firestore lido aqui é o MESMO que o Cloud Run serve aos estandes',
+    listaServida.length > 0 && emComum.length > 0,
+    `${original.companies.length} empresas no Firestore de '${PROJECT_ID}', ${listaServida.length} em GET /v1/companies, ${emComum.length} em comum`
+  );
+  if (listaServida.length > 0 && emComum.length === 0) {
+    // Zero em comum não é atraso de cache, é outro projeto ou outro banco. Seguir daqui produziria
+    // afirmações sobre convergência entre duas nuvens diferentes — pior que falhar.
+    throw new Error(
+      `o catálogo de '${PROJECT_ID}/${DATABASE_ID}' não tem NADA em comum com o que ${CLOUD_BASE} ` +
+        'serve. Os dois canais estão em projetos diferentes; rode com ENSAIO_PROJECT_ID explícito.'
+    );
+  }
+
   fs.mkdirSync(TRABALHO, { recursive: true });
   fs.writeFileSync(ARQUIVO_CATALOGO_ORIGINAL, JSON.stringify(original, null, 2), 'utf8');
   afirmar(
@@ -500,6 +547,31 @@ async function preparacao() {
     !original.companies.includes(CANONICA),
     'se estiver, uma execução anterior não terminou a limpeza'
   );
+
+  /**
+   * DOIS ENSAIOS AO MESMO TEMPO NÃO PODEM RODAR CONTRA A MESMA NUVEM, e é preciso dizer isso alto
+   * porque o modo de falha é confuso e não parece concorrência.
+   *
+   * Achado ao vivo em 2026-09-06: um ensaio no Mac e outro na máquina de desenvolvimento se
+   * cruzaram, e o resultado foram três vermelhos que pareciam regressão de produto. Os dois usam
+   * os MESMOS `station_id` e os MESMOS nomes de empresa, então o `company_rankings` de
+   * `Ensaio Bidu Telecom` somou as partidas dos dois (14900 em vez de 10800, 4 pilotos em vez de
+   * 3); as gravações de catálogo de um bagunçaram a versão que o outro esperava, derrubando a
+   * afirmação da poda em massa; e a limpeza, que só apaga os `match_id` que ELA criou, deixou os
+   * rankings do outro de pé. Nenhum dos três era bug.
+   *
+   * Abortar antes de tocar em qualquer coisa é mais barato que interpretar isso depois.
+   */
+  const residuo = await rankingsDoEnsaio();
+  if (residuo.length > 0) {
+    throw new Error(
+      `já existem ${residuo.length} company_rankings de ensaio na nuvem (${residuo.map((r) => r.id).join(', ')}). ` +
+        'Ou outro ensaio está rodando AGORA contra este mesmo projeto — espere ele terminar, dois ' +
+        'ao mesmo tempo se contaminam — ou uma execução com --sem-limpeza deixou dados para trás. ' +
+        'Nesse caso apague as partidas ENSAIO* pelo painel (Partidas → seleção em massa → Apagar) ' +
+        'antes de rodar de novo.'
+    );
+  }
 
   if (!SEM_BUILD) {
     nota('compilando shared, mcps e daemon…');
@@ -1042,9 +1114,11 @@ async function main() {
   }
 
   const falhas = relatorio();
-  if (SEM_LIMPEZA) {
-    // Segurar o processo é o que faz o Ctrl-C derrubar os dois daemons de forma limpa — sair aqui
-    // os deixaria órfãos segurando 3100/3101 até alguém descobrir com `lsof`.
+  // Só segurar se houver de fato estande de pé. Segurar é o que faz o Ctrl-C derrubar os dois
+  // daemons de forma limpa (sair aqui os deixaria órfãos segurando 3100/3101 até alguém descobrir
+  // com `lsof`) — mas quando a Preparação aborta nenhum chegou a subir, e prender o terminal ali
+  // só esconde a mensagem de erro atrás de um processo que parece travado.
+  if (SEM_LIMPEZA && BOOTHS.some((b) => b.processo)) {
     console.log('\n[ensaio] estandes de pé para o Bloco 26 manual. Ctrl-C quando terminar.');
     await new Promise(() => {});
   }

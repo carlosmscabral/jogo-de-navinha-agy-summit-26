@@ -2056,7 +2056,29 @@ O `--sem-limpeza` é o modo deste bloco: ele **deixa os dois estandes de pé** n
 as partidas de ensaio na nuvem, que é o cenário de que os passos seguintes precisam. Ctrl-C no fim
 derruba os dois daemons.
 
-**Critério:** o relatório fecha com **`45/45 afirmações passaram`** nos sete blocos, que cobrem,
+> **Um ensaio por vez contra a mesma nuvem.** Os dois usam os mesmos `station_id` e os mesmos nomes
+> de empresa, então dois em paralelo se contaminam de um jeito que **não parece concorrência**:
+> o `company_rankings` soma as partidas dos dois, as gravações de catálogo de um bagunçam a versão
+> que o outro espera, e a limpeza de cada um só apaga os `match_id` que ele mesmo criou. Aconteceu
+> em 2026-09-06 (um ensaio no Mac, outro na máquina de desenvolvimento) e produziu três vermelhos
+> com cara de regressão de produto — nenhum era bug. Hoje a Preparação aborta se encontrar
+> `company_rankings` de ensaio já na nuvem, antes de tocar em qualquer coisa. Se isso acontecer:
+> ou outro ensaio está rodando agora, ou um `--sem-limpeza` anterior deixou dados — apague as
+> partidas `ENSAIO*` pelo painel e rode de novo.
+>
+> **Confira a segunda linha do relatório antes de qualquer coisa: `projeto <X> / banco <Y>`.** O
+> ensaio fala com a nuvem por dois canais — HTTP no Cloud Run e Firestore direto — e o segundo
+> precisa cair no mesmo projeto do primeiro. Achado ao vivo em 2026-09-06: um
+> variável de ambiente de outro trabalho no shell do Mac levou o lado Firestore para outro projeto,
+> e o erro nativo foi um `5 NOT_FOUND` de gRPC com 30 linhas de pilha do `google-gax` sem nenhuma
+> menção a projeto. Repare que **`gcloud config set project` não protege contra isso** — o
+> firebase-admin não lê a configuração do gcloud, lê o ambiente. Hoje o script ignora `PROJECT_ID` e
+> `GOOGLE_CLOUD_PROJECT` de propósito (nomes genéricos demais para não serem herdados por acidente):
+> só `ENSAIO_PROJECT_ID` e `ENSAIO_FIRESTORE_DATABASE` sobrescrevem os defaults. Além disso ele
+> afirma que os dois canais veem o mesmo catálogo e, se não virem, aborta dizendo o nome dos dois.
+> Mesma armadilha que `cardgen-routes.test.ts` documenta do lado dos testes.
+
+**Critério:** o relatório fecha com **`46/46 afirmações passaram`** nos sete blocos, que cobrem,
 nesta ordem: divergência silenciosa de catálogo (dois rankings), convergência pelo pull (um ranking
 só, com a soma certa), remoção espelhada nos dois estandes, as travas contra poda em massa e
 catálogo vazio, buffer offline com `played_at`, `stationActivity` no `/v1/admin/health` e o cenário
