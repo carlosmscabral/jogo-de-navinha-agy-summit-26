@@ -7,7 +7,10 @@ export interface TopPilotEntry {
   callsign: string;
   company_canonical: string;
   final_score: number;
+  /** Hora em que a nuvem INGERIU a partida (`serverTimestamp`), não em que ela foi jogada. */
   created_at: string;
+  /** Relógio do estande na hora da partida; ausente nas partidas anteriores ao campo. */
+  played_at?: string;
 }
 
 interface HallOfFameProps {
@@ -116,7 +119,7 @@ export function HallOfFame({ pilots }: HallOfFameProps) {
                   {pilot.final_score.toLocaleString()} <span className="text-[10px] text-slate-400 font-normal">PTS</span>
                 </div>
                 <div className="text-[9px] text-slate-500 font-mono">
-                  {new Date(pilot.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {new Date(pilot.played_at ?? pilot.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>
               </div>
             </div>

@@ -6,7 +6,14 @@ export interface RecentMatchEntry {
   callsign: string;
   company_canonical: string;
   final_score: number;
+  /** Hora em que a nuvem INGERIU a partida (`serverTimestamp`), não em que ela foi jogada. */
   created_at: string;
+  /**
+   * Hora do relógio do estande, carimbada na hora da partida. Ausente nas partidas anteriores ao
+   * campo — daí o fallback. É o que a TV mostra: um estande que ficou sem rede e drenou a fila
+   * depois faria dez partidas antigas aparecerem todas com o horário do religamento.
+   */
+  played_at?: string;
 }
 
 interface LiveTickerFeedProps {
@@ -39,7 +46,7 @@ export function LiveTickerFeed({ recentMatches }: LiveTickerFeedProps) {
                 +{item.final_score.toLocaleString()} PTS
               </span>
               <span className="text-slate-500 text-[10px]">
-                [{new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}]
+                [{new Date(item.played_at ?? item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}]
               </span>
               <span className="text-slate-700 ml-4">•</span>
             </div>

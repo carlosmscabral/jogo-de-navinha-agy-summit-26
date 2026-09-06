@@ -88,7 +88,72 @@ function toIsoString(value: unknown): string {
 /** Normalizes a raw Firestore doc into the `MatchDocument` shape the rest of this file expects. */
 function normalizeMatchDoc(raw: DocumentData): MatchDocument {
   const data = raw as MatchDocument;
-  return { ...data, created_at: toIsoString(data.created_at) };
+  const normalized: MatchDocument = { ...data, created_at: toIsoString(data.created_at) };
+  // `played_at` é gravado pelo daemon como string ISO e não passa por `serverTimestamp()`, então
+  // normalmente já chega pronto. Normalizar mesmo assim custa nada e cobre o caso de alguém
+  // regravá-lo pelo painel: o bug que `toIsoString` existe para evitar é exatamente um Timestamp
+  // cru vazando até o React e virando "Invalid Date" na TV.
+  if (data.played_at !== undefined) {
+    normalized.played_at = toIsoString(data.played_at);
+  }
+  return normalized;
+}
+
+/**
+ * Milissegundos de um campo de data que pode chegar como string ISO, como `Timestamp` do
+ * Firestore, ou não chegar. `null` quando não dá para ler — quem chama decide o fallback, porque
+ * as duas ordenações deste arquivo querem coisas diferentes de um valor ilegível.
+ */
+function msOf(value: unknown): number | null {
+  if (value && typeof (value as { toDate?: unknown }).toDate === 'function') {
+    const t = (value as { toDate: () => Date }).toDate().getTime();
+    return Number.isNaN(t) ? null : t;
+  }
+  if (typeof value === 'string') {
+    const t = Date.parse(value);
+    return Number.isNaN(t) ? null : t;
+  }
+  return null;
+}
+
+/**
+ * Quando a partida foi JOGADA, não quando foi ingerida.
+ *
+ * `created_at` é sobrescrito com `FieldValue.serverTimestamp()` em `ingestOne`, então um estande
+ * que ficou sem rede e drenou a fila depois faz todas as suas partidas aparecerem como as mais
+ * recentes do evento. Com dois estandes isso deixa de ser hipótese: basta um dos dois Macs perder
+ * o Wi-Fi por dez minutos para o "LIVE FEED" virar um bloco de partidas antigas. `played_at` é o
+ * relógio do estande, carimbado na hora da partida; `created_at` continua sendo o fallback para
+ * as partidas anteriores ao campo.
+ */
+function playedAtMs(m: MatchDocument): number {
+  return msOf(m.played_at) ?? msOf(m.created_at) ?? 0;
+}
+
+/**
+ * Desempate determinístico do hall da fama: score, depois a partida MAIS ANTIGA, depois
+ * `match_id`.
+ *
+ * Com dois estandes os empates deixam de ser curiosidade. `Array.prototype.sort` é estável desde
+ * o ES2019, mas a entrada aqui NÃO é estável: vem de um `Map` que mescla dois snapshots
+ * independentes (por score e por recência), e a ordem de inserção nesse Map muda conforme qual
+ * dos dois listeners entregou por último. Sem um critério total, dois scores iguais trocam de
+ * lugar sozinhos entre snapshots — e as duas TVs podem mostrar pódios diferentes ao mesmo tempo.
+ * "Mais antigo primeiro" é a convenção justa: quem fez o score antes chegou antes.
+ */
+function compareByScoreThenAge(a: MatchDocument, b: MatchDocument): number {
+  if (b.final_score !== a.final_score) return b.final_score - a.final_score;
+  const ta = msOf(a.created_at) ?? 0;
+  const tb = msOf(b.created_at) ?? 0;
+  if (ta !== tb) return ta - tb;
+  return a.match_id < b.match_id ? -1 : a.match_id > b.match_id ? 1 : 0;
+}
+
+/** Mesma necessidade de determinismo do comparador acima, aplicada ao ticker. */
+function compareByRecency(a: MatchDocument, b: MatchDocument): number {
+  const diff = playedAtMs(b) - playedAtMs(a);
+  if (diff !== 0) return diff;
+  return a.match_id < b.match_id ? -1 : a.match_id > b.match_id ? 1 : 0;
 }
 
 export type SourceStatus = 'cloud' | 'local' | 'offline';
@@ -96,8 +161,17 @@ export type SourceStatus = 'cloud' | 'local' | 'offline';
 export interface LeaderboardHandlers {
   onData(state: LeaderboardState): void;
   onSourceChange(status: SourceStatus): void;
-  /** Optional: fired for a newly-added match, used to trigger the celebration modal. */
-  onNewMatch?(match: RecentMatchEntry): void;
+  /**
+   * Optional: fired for a newly-added match, used to trigger the celebration modal.
+   *
+   * O `rank` vem RESOLVIDO daqui (1..10, ou 0 se a partida não entrou no top 10), e não é uma
+   * conveniência: era uma corrida. O `App` calculava o rank de um `useRef` que só é atualizado
+   * num `useEffect` pós-render, então a celebração dependia de o snapshot POR SCORE ter chegado e
+   * mesclado antes do snapshot POR RECÊNCIA — dois listeners independentes, sem nenhuma ordem
+   * garantida entre eles. Funcionava por sorte, e com dois estandes a sorte piora na proporção
+   * das partidas. Aqui o rank é lido do estado já mesclado, no mesmo tick em que ele é emitido.
+   */
+  onNewMatch?(match: RecentMatchEntry, rank: number): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -133,10 +207,8 @@ export function mergeLeaderboardState(
   rankings: CompanyRankingDocument[]
 ): LeaderboardState {
   const activeMatches = matches.filter((m) => !m.voided);
-  const byScoreDesc = [...activeMatches].sort((a, b) => b.final_score - a.final_score);
-  const byRecencyDesc = [...activeMatches].sort(
-    (a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)
-  );
+  const byScoreDesc = [...activeMatches].sort(compareByScoreThenAge);
+  const byRecencyDesc = [...activeMatches].sort(compareByRecency);
 
   const topPilots: TopPilotEntry[] = byScoreDesc.slice(0, TOP_PILOTS_LIMIT).map((m, i) => ({
     rank: i + 1,
@@ -144,7 +216,8 @@ export function mergeLeaderboardState(
     callsign: m.callsign,
     company_canonical: m.company_canonical,
     final_score: m.final_score,
-    created_at: m.created_at
+    created_at: m.created_at,
+    played_at: m.played_at
   }));
 
   const companyRankings: CompanyRankEntry[] = [...rankings]
@@ -163,7 +236,8 @@ export function mergeLeaderboardState(
     callsign: m.callsign,
     company_canonical: m.company_canonical,
     final_score: m.final_score,
-    created_at: m.created_at
+    created_at: m.created_at,
+    played_at: m.played_at
   }));
 
   const distinctPilots = new Set(activeMatches.map((m) => m.pilot_id)).size;
@@ -463,7 +537,8 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
     }
   }
 
-  function emitMerged() {
+  /** Devolve o estado que acabou de emitir, para quem precisa do rank já resolvido. */
+  function emitMerged(): LeaderboardState {
     const merged = new Map<string, MatchDocument>();
     for (const m of matchesByScore) merged.set(m.match_id, m);
     for (const m of matchesByRecency) merged.set(m.match_id, m);
@@ -472,6 +547,7 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
       state = applyAccurateCounts(state, latestCounts);
     }
     handlers.onData(state);
+    return state;
   }
 
   /**
@@ -555,12 +631,21 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
 
   function startLocalBridge() {
     if (localUnsubscribe) return; // already running
+    // O bridge manda o estado inteiro junto do `newMatch` na mesma mensagem, e sempre nesta
+    // ordem, então o rank sai do estado que acabou de chegar — mesma garantia do caminho da
+    // nuvem, sem `useRef` nenhum no meio.
+    let lastLocalState: LeaderboardState | null = null;
     localUnsubscribe = subscribeToLocalBridge({
       onData: (state) => {
+        lastLocalState = state;
         setStatus('LOCAL_SNAPSHOT');
         handlers.onData(state);
       },
-      onNewMatch: handlers.onNewMatch,
+      onNewMatch: (match) => {
+        if (!handlers.onNewMatch) return;
+        const top = lastLocalState?.topPilots ?? [];
+        handlers.onNewMatch(match, top.findIndex((p) => p.match_id === match.match_id) + 1);
+      },
       onFailure: () => setStatus('LOCAL_FAILURE')
     });
   }
@@ -579,14 +664,14 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
      * dublês de teste mais antigos, que não o carregam; ausente é lido como "veio do servidor",
      * o comportamento anterior.
      */
-    const onCloudSuccess = (snap: QuerySnapshot<DocumentData>) => {
+    const onCloudSuccess = (snap: QuerySnapshot<DocumentData>): LeaderboardState => {
       const fromCache = snap.metadata?.fromCache === true;
       if (!fromCache) {
         clearWatchdog();
         hasEverConnected = true; // ver armWatchdog(): silêncio depois disto não é mais falha.
       }
       setStatus(fromCache ? 'CLOUD_CACHE' : 'CLOUD_SNAPSHOT');
-      emitMerged();
+      return emitMerged();
     };
 
     const onCloudError = (context: string) => (err: unknown) => {
@@ -641,22 +726,34 @@ export function subscribeToLeaderboard(handlers: LeaderboardHandlers): () => voi
           matchesByRecency = snap.docs.map((d) => normalizeMatchDoc(d.data()));
           // Skip the initial snapshot (pre-existing docs) so the celebration
           // modal only fires for matches that arrive while the telão is up.
-          if (recencyInitialized && handlers.onNewMatch) {
-            for (const change of snap.docChanges()) {
-              if (change.type === 'added') {
-                const m = normalizeMatchDoc(change.doc.data());
-                handlers.onNewMatch({
-                  match_id: m.match_id,
-                  callsign: m.callsign,
-                  company_canonical: m.company_canonical,
-                  final_score: m.final_score,
-                  created_at: m.created_at
-                });
-              }
-            }
-          }
+          const added =
+            recencyInitialized && handlers.onNewMatch
+              ? snap
+                  .docChanges()
+                  .filter((change) => change.type === 'added')
+                  .map((change) => normalizeMatchDoc(change.doc.data()))
+              : [];
           recencyInitialized = true;
-          onCloudSuccess(snap);
+
+          // Emitir ANTES de notificar, e tirar o rank do estado que acabou de sair daqui. Este
+          // snapshot já contém a partida nova, então `topPilots` do estado mesclado é a resposta
+          // definitiva — não depende de o listener por score ter chegado primeiro.
+          const state = onCloudSuccess(snap);
+
+          for (const m of added) {
+            const rank = state.topPilots.findIndex((p) => p.match_id === m.match_id) + 1;
+            handlers.onNewMatch!(
+              {
+                match_id: m.match_id,
+                callsign: m.callsign,
+                company_canonical: m.company_canonical,
+                final_score: m.final_score,
+                created_at: m.created_at,
+                played_at: m.played_at
+              },
+              rank
+            );
+          }
         },
         onError: onCloudError('matches-by-recency')
       })

@@ -7,6 +7,12 @@ import {
   subscribeToLeaderboard,
   type SourceStatus
 } from './firestore-source.js';
+import {
+  enqueueCelebration,
+  isCelebrationWorthy,
+  CELEBRATION_QUEUE_MAX,
+  type Celebration
+} from './celebration-queue.js';
 import type { MatchDocument, CompanyRankingDocument } from '@jogo/shared';
 
 /** A minimal stand-in for a Firestore `Timestamp` — only `.toDate()` is used by the code under test. */
@@ -150,6 +156,167 @@ describe('mergeLeaderboardState', () => {
     expect(s.stats.top_score).toBe(500);
     expect(s.stats.total_matches).toBe(2);
     expect(s.stats.total_pilots).toBe(2);
+  });
+});
+
+/**
+ * Dois estandes tornam empate e fila drenada em atraso eventos rotineiros, não curiosidades.
+ * Estes testes travam as duas coisas que o visitante enxerga: a ordem do pódio não pode oscilar
+ * entre as duas TVs, e o "LIVE FEED" não pode ser tomado por partidas velhas.
+ */
+describe('mergeLeaderboardState — dois estandes', () => {
+  it('desempata score igual pela partida mais antiga', () => {
+    const matches = [
+      makeMatch({ match_id: 'booth-b', final_score: 5000, created_at: '2026-01-01T10:05:00.000Z' }),
+      makeMatch({ match_id: 'booth-a', final_score: 5000, created_at: '2026-01-01T10:00:00.000Z' })
+    ];
+
+    const s = mergeLeaderboardState(matches, []);
+
+    expect(s.topPilots.map((p) => p.match_id)).toEqual(['booth-a', 'booth-b']);
+  });
+
+  it('desempata score E horário iguais pelo match_id, para as duas TVs concordarem', () => {
+    // O caso real: os dois Macs enviam, a nuvem carimba `created_at` com o MESMO
+    // `serverTimestamp` e o único critério que resta tem que ser total.
+    const mesmoInstante = '2026-01-01T10:00:00.000Z';
+    const matches = [
+      makeMatch({ match_id: 'zzz', final_score: 5000, created_at: mesmoInstante }),
+      makeMatch({ match_id: 'aaa', final_score: 5000, created_at: mesmoInstante })
+    ];
+
+    const direta = mergeLeaderboardState(matches, []);
+    const invertida = mergeLeaderboardState([...matches].reverse(), []);
+
+    expect(direta.topPilots.map((p) => p.match_id)).toEqual(['aaa', 'zzz']);
+    expect(invertida.topPilots.map((p) => p.match_id)).toEqual(['aaa', 'zzz']);
+  });
+
+  it('a ordem do pódio não depende da ordem em que os dois snapshots chegaram', () => {
+    // A entrada real vem de um Map que mescla o snapshot por score com o por recência, e a ordem
+    // de inserção nesse Map muda conforme qual dos dois listeners entregou por último.
+    const matches = [
+      makeMatch({ match_id: 'c', final_score: 100, created_at: '2026-01-01T00:00:03.000Z' }),
+      makeMatch({ match_id: 'a', final_score: 100, created_at: '2026-01-01T00:00:01.000Z' }),
+      makeMatch({ match_id: 'b', final_score: 100, created_at: '2026-01-01T00:00:02.000Z' })
+    ];
+
+    const esperado = ['a', 'b', 'c'];
+    for (const permutacao of [matches, [...matches].reverse(), [matches[1], matches[0], matches[2]]]) {
+      expect(mergeLeaderboardState(permutacao, []).topPilots.map((p) => p.match_id)).toEqual(esperado);
+    }
+  });
+
+  it('ordena o ticker por played_at, não pela hora em que a nuvem ingeriu', () => {
+    // O estande B ficou sem rede e drenou a fila agora: `created_at` é recentíssimo, mas as
+    // partidas são antigas. Sem isto, o "LIVE FEED" abre com dez partidas velhas no topo.
+    const matches = [
+      makeMatch({
+        match_id: 'drenada-atrasada',
+        played_at: '2026-01-01T09:00:00.000Z',
+        created_at: '2026-01-01T12:00:00.000Z'
+      }),
+      makeMatch({
+        match_id: 'acabou-de-jogar',
+        played_at: '2026-01-01T11:59:00.000Z',
+        created_at: '2026-01-01T11:59:05.000Z'
+      })
+    ];
+
+    const s = mergeLeaderboardState(matches, []);
+
+    expect(s.recentMatches.map((m) => m.match_id)).toEqual(['acabou-de-jogar', 'drenada-atrasada']);
+  });
+
+  it('cai para created_at nas partidas anteriores ao played_at, sem misturar as duas escalas', () => {
+    const matches = [
+      makeMatch({ match_id: 'antiga-sem-campo', created_at: '2026-01-01T10:00:00.000Z' }),
+      makeMatch({
+        match_id: 'nova-com-campo',
+        played_at: '2026-01-01T11:00:00.000Z',
+        created_at: '2026-01-01T11:00:02.000Z'
+      })
+    ];
+
+    const s = mergeLeaderboardState(matches, []);
+
+    expect(s.recentMatches.map((m) => m.match_id)).toEqual(['nova-com-campo', 'antiga-sem-campo']);
+  });
+
+  it('leva played_at até o ticker, que é quem mostra o horário na TV', () => {
+    const s = mergeLeaderboardState(
+      [makeMatch({ match_id: 'm', played_at: '2026-01-01T09:00:00.000Z', created_at: '2026-01-01T12:00:00.000Z' })],
+      []
+    );
+
+    expect(s.recentMatches[0].played_at).toBe('2026-01-01T09:00:00.000Z');
+  });
+
+  it('uma data ilegível não embaralha o ticker inteiro', () => {
+    const matches = [
+      makeMatch({ match_id: 'torta', created_at: 'não é data' }),
+      makeMatch({ match_id: 'boa', created_at: '2026-01-01T10:00:00.000Z' })
+    ];
+
+    const s = mergeLeaderboardState(matches, []);
+
+    expect(s.recentMatches.map((m) => m.match_id)).toEqual(['boa', 'torta']);
+  });
+});
+
+describe('fila de celebração', () => {
+  const entry = (id: string, rank = 1): Celebration => ({
+    match: {
+      match_id: id,
+      callsign: id.toUpperCase(),
+      company_canonical: 'ACME',
+      final_score: 1000,
+      created_at: '2026-01-01T00:00:00.000Z'
+    },
+    rank
+  });
+
+  it('não perde nenhum item numa rajada dentro dos 7s do modal', () => {
+    // O caso que motivou a fila: os dois estandes fecham partida quase juntos, e o slot único
+    // fazia a segunda celebração apagar a primeira no meio da animação.
+    let queue: Celebration[] = [];
+    queue = enqueueCelebration(queue, entry('booth-a'));
+    queue = enqueueCelebration(queue, entry('booth-b'));
+
+    expect(queue.map((c) => c.match.match_id)).toEqual(['booth-a', 'booth-b']);
+  });
+
+  it('descarta duplicata pelo match_id — uma reinscrição do listener reentrega tudo como added', () => {
+    let queue = enqueueCelebration([], entry('m1'));
+    const mesmaReferencia = enqueueCelebration(queue, entry('m1'));
+
+    expect(mesmaReferencia).toBe(queue);
+    expect(mesmaReferencia).toHaveLength(1);
+  });
+
+  it('para de enfileirar no teto, em vez de sequestrar o telão por minutos', () => {
+    let queue: Celebration[] = [];
+    for (let i = 0; i < CELEBRATION_QUEUE_MAX + 3; i++) {
+      queue = enqueueCelebration(queue, entry(`m${i}`));
+    }
+
+    expect(queue).toHaveLength(CELEBRATION_QUEUE_MAX);
+    expect(queue[0].match.match_id).toBe('m0');
+  });
+
+  it('preserva o rank de cada item — a fila não é só uma lista de partidas', () => {
+    let queue = enqueueCelebration([], entry('primeiro', 1));
+    queue = enqueueCelebration(queue, entry('terceiro', 3));
+
+    expect(queue.map((c) => c.rank)).toEqual([1, 3]);
+  });
+
+  it('só o pódio celebra; fora do top 3 e fora do top 10 não entram', () => {
+    expect(isCelebrationWorthy(1)).toBe(true);
+    expect(isCelebrationWorthy(3)).toBe(true);
+    expect(isCelebrationWorthy(4)).toBe(false);
+    // 0 é o que a fonte devolve quando a partida não entrou no top 10 — nunca um "rank válido".
+    expect(isCelebrationWorthy(0)).toBe(false);
   });
 });
 
@@ -439,6 +606,18 @@ function fakeMatchSnapshot(docsData: unknown[], fromCache = false) {
   };
 }
 
+/** Como `fakeMatchSnapshot`, mas com `docChanges()` de verdade — é o que dispara a celebração. */
+function fakeSnapshotWithAdded(docsData: unknown[], addedData: unknown[], fromCache = false) {
+  return {
+    ...fakeMatchSnapshot(docsData, fromCache),
+    docChanges: () => addedData.map((data) => ({ type: 'added', doc: { data: () => data } }))
+  };
+}
+
+/** Índices dos três listeners, na ordem em que `subscribeToLeaderboard` os registra. */
+const SCORE_LISTENER = 0;
+const RECENCY_LISTENER = 1;
+
 describe('subscribeToLeaderboard (Firestore mockado)', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -550,6 +729,115 @@ describe('subscribeToLeaderboard (Firestore mockado)', () => {
     expect(typeof lastState.topPilots[0].created_at).toBe('string');
     expect(Number.isNaN(Date.parse(lastState.topPilots[0].created_at))).toBe(false);
     expect(lastState.topPilots[0].created_at).toBe('2026-08-22T10:00:00.000Z');
+
+    unsubscribe();
+  });
+
+  /**
+   * A corrida do rank. `onNewMatch` sai do listener por RECÊNCIA, e o rank vinha do listener por
+   * SCORE — dois `onSnapshot` independentes, sem ordem garantida entre eles. Se o de recência
+   * chegasse primeiro (metade das vezes, e mais que isso com o dobro de partidas), o rank era
+   * calculado sobre um estado que ainda não continha a partida nova: `findIndex` devolvia -1,
+   * `rank` virava 0, e a celebração simplesmente não acontecia.
+   */
+  it('resolve o rank pelo estado já mesclado, mesmo se o listener por score ainda não entregou nada', () => {
+    const onNewMatch = vi.fn();
+    const unsubscribe = subscribeToLeaderboard({ onData: vi.fn(), onSourceChange: vi.fn(), onNewMatch });
+
+    // Primeiro snapshot do listener de recência: só marca "já inicializado", não celebra nada.
+    onSnapshotHandlers[RECENCY_LISTENER].next(fakeMatchSnapshot([]));
+    expect(onNewMatch).not.toHaveBeenCalled();
+
+    const recorde = {
+      match_id: 'novo-recorde',
+      callsign: 'NOVA',
+      company_canonical: 'ACME',
+      final_score: 9000,
+      created_at: '2026-01-01T10:00:00.000Z'
+    };
+    // Repare: o listener por score NUNCA foi acionado nesta assinatura.
+    onSnapshotHandlers[RECENCY_LISTENER].next(fakeSnapshotWithAdded([recorde], [recorde]));
+
+    expect(onNewMatch).toHaveBeenCalledTimes(1);
+    const [entrada, rank] = onNewMatch.mock.calls[0];
+    expect(entrada.match_id).toBe('novo-recorde');
+    expect(rank).toBe(1);
+
+    unsubscribe();
+  });
+
+  it('devolve rank 0 para quem não entrou no top 10, em vez de celebrar por engano', () => {
+    const onNewMatch = vi.fn();
+    const unsubscribe = subscribeToLeaderboard({ onData: vi.fn(), onSourceChange: vi.fn(), onNewMatch });
+
+    const dezGrandes = Array.from({ length: 10 }, (_, i) => ({
+      match_id: `top-${i}`,
+      callsign: `T${i}`,
+      company_canonical: 'ACME',
+      final_score: 100_000 - i,
+      created_at: '2026-01-01T09:00:00.000Z'
+    }));
+    onSnapshotHandlers[SCORE_LISTENER].next(fakeMatchSnapshot(dezGrandes));
+    onSnapshotHandlers[RECENCY_LISTENER].next(fakeMatchSnapshot([]));
+
+    const modesta = {
+      match_id: 'modesta',
+      callsign: 'ZERO',
+      company_canonical: 'ACME',
+      final_score: 10,
+      created_at: '2026-01-01T10:00:00.000Z'
+    };
+    onSnapshotHandlers[RECENCY_LISTENER].next(fakeSnapshotWithAdded([modesta], [modesta]));
+
+    expect(onNewMatch).toHaveBeenCalledTimes(1);
+    expect(onNewMatch.mock.calls[0][1]).toBe(0);
+
+    unsubscribe();
+  });
+
+  it('emite o estado ANTES de notificar a partida nova — o telão não mostra pódio velho sob o modal', () => {
+    const ordem: string[] = [];
+    const unsubscribe = subscribeToLeaderboard({
+      onData: () => ordem.push('onData'),
+      onSourceChange: vi.fn(),
+      onNewMatch: () => ordem.push('onNewMatch')
+    });
+
+    onSnapshotHandlers[RECENCY_LISTENER].next(fakeMatchSnapshot([]));
+    ordem.length = 0;
+
+    const recorde = {
+      match_id: 'm',
+      callsign: 'NOVA',
+      company_canonical: 'ACME',
+      final_score: 9000,
+      created_at: '2026-01-01T10:00:00.000Z'
+    };
+    onSnapshotHandlers[RECENCY_LISTENER].next(fakeSnapshotWithAdded([recorde], [recorde]));
+
+    expect(ordem).toEqual(['onData', 'onNewMatch']);
+
+    unsubscribe();
+  });
+
+  it('duas partidas na mesma entrega geram duas notificações, cada uma com seu rank', () => {
+    // Dois estandes fechando partida quase juntos: o Firestore pode entregar as duas no mesmo
+    // snapshot. O slot único do telão perdia uma delas antes da fila.
+    const onNewMatch = vi.fn();
+    const unsubscribe = subscribeToLeaderboard({ onData: vi.fn(), onSourceChange: vi.fn(), onNewMatch });
+
+    onSnapshotHandlers[RECENCY_LISTENER].next(fakeMatchSnapshot([]));
+
+    const base = { callsign: 'X', company_canonical: 'ACME', created_at: '2026-01-01T10:00:00.000Z' };
+    const a = { ...base, match_id: 'booth-a', final_score: 9000 };
+    const b = { ...base, match_id: 'booth-b', final_score: 8000 };
+    onSnapshotHandlers[RECENCY_LISTENER].next(fakeSnapshotWithAdded([a, b], [a, b]));
+
+    expect(onNewMatch).toHaveBeenCalledTimes(2);
+    expect(onNewMatch.mock.calls.map((c) => [c[0].match_id, c[1]])).toEqual([
+      ['booth-a', 1],
+      ['booth-b', 2]
+    ]);
 
     unsubscribe();
   });

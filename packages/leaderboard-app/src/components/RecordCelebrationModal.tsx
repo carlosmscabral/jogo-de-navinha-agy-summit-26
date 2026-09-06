@@ -145,7 +145,7 @@ export function RecordCelebrationModal({ match, rank, onDismiss }: RecordCelebra
 
         {/* CTA to Booth */}
         <div className="text-xs text-slate-400 font-mono pt-2">
-          Visite a bancada do estande para forjar sua própria nave com o <b className="text-[#ff9e0b]">Antigravity CLI</b>!
+          Visite uma das bancadas do estande para forjar sua própria nave com o <b className="text-[#ff9e0b]">Antigravity CLI</b>!
         </div>
       </div>
     </div>

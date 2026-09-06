@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Trophy, Radio, Zap, Users, Flame, Shield, Globe, Terminal } from 'lucide-react';
 import { HallOfFame, TopPilotEntry } from './components/HallOfFame.js';
 import { CompanyDominance, CompanyRankEntry } from './components/CompanyDominance.js';
@@ -6,6 +6,7 @@ import { LiveTickerFeed, RecentMatchEntry } from './components/LiveTickerFeed.js
 import { RecordCelebrationModal } from './components/RecordCelebrationModal.js';
 import { AttractQrCode } from './components/AttractQrCode.js';
 import { subscribeToLeaderboard, LeaderboardState, SourceStatus } from './firestore-source.js';
+import { enqueueCelebration, isCelebrationWorthy, type Celebration } from './celebration-queue.js';
 
 const SOURCE_BADGE: Record<SourceStatus, { label: string; className: string }> = {
   cloud: { label: 'NUVEM', className: 'bg-[#10b981]/20 text-[#10b981] border-[#10b981]/40' },
@@ -20,13 +21,15 @@ export function App() {
     recentMatches: [],
     stats: { total_pilots: 0, total_matches: 0, top_score: 0 }
   });
-  const dataRef = useRef(data);
-  useEffect(() => {
-    dataRef.current = data;
-  }, [data]);
 
   const [source, setSource] = useState<SourceStatus>('offline');
-  const [celebrationMatch, setCelebrationMatch] = useState<{ match: any; rank: number } | null>(null);
+  /**
+   * FILA, não slot único. Era `celebrationMatch`, sobrescrito a cada recorde: com dois estandes
+   * jogando ao mesmo tempo, dois recordes dentro da janela de 7 s do modal fazem o segundo apagar
+   * o primeiro, e o visitante perde exatamente o momento que a experiência inteira existe para
+   * produzir. Agora cada um aparece por vez, e a fila anda no `onDismiss`.
+   */
+  const [celebrations, setCelebrations] = useState<Celebration[]>([]);
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString());
 
   // Clock Ticker
@@ -37,21 +40,27 @@ export function App() {
     return () => clearInterval(timer);
   }, []);
 
+  const dismissCelebration = useCallback(() => {
+    setCelebrations((queue) => queue.slice(1));
+  }, []);
+
   // Leaderboard data: Firestore onSnapshot as primary source, local bridge
   // (fetch + WebSocket) as fallback. See firestore-source.ts.
   useEffect(() => {
     const unsubscribe = subscribeToLeaderboard({
       onData: (state) => setData(state),
       onSourceChange: (status) => setSource(status),
-      onNewMatch: (match) => {
-        const rank = dataRef.current.topPilots.findIndex((p) => p.match_id === match.match_id) + 1;
-        if (rank > 0 && rank <= 3) {
-          setCelebrationMatch({ match, rank });
-        }
+      // `rank` chega resolvido da fonte, calculado sobre o estado já mesclado — ver o comentário
+      // em `LeaderboardHandlers.onNewMatch`. Aqui não se consulta mais nenhum estado do React.
+      onNewMatch: (match, rank) => {
+        if (!isCelebrationWorthy(rank)) return;
+        setCelebrations((queue) => enqueueCelebration(queue, { match, rank }));
       }
     });
     return unsubscribe;
   }, []);
+
+  const currentCelebration = celebrations[0] ?? null;
 
   return (
     <div className="flex flex-col h-screen w-screen bg-obsidian-950 text-white overflow-hidden select-none font-sans relative">
@@ -138,12 +147,17 @@ export function App() {
         <LiveTickerFeed recentMatches={data.recentMatches} />
       </footer>
 
-      {/* Celebration Modal (When a new Top 3 score is homologated) */}
-      {celebrationMatch && (
+      {/* Celebration Modal (When a new Top 3 score is homologated) — um por vez, vindo da fila.
+          A `key` por `match_id` é o que força a remontagem entre duas celebrações seguidas: o
+          cronômetro de 7 s e o confete do modal vivem num `useEffect` que não reroda só porque
+          as props mudaram, então sem ela a segunda celebração herdaria o tempo restante da
+          primeira e sumiria em um piscar. */}
+      {currentCelebration && (
         <RecordCelebrationModal
-          match={celebrationMatch.match}
-          rank={celebrationMatch.rank}
-          onDismiss={() => setCelebrationMatch(null)}
+          key={currentCelebration.match.match_id}
+          match={currentCelebration.match}
+          rank={currentCelebration.rank}
+          onDismiss={dismissCelebration}
         />
       )}
     </div>

@@ -20,7 +20,10 @@ export function AttractQrCode() {
             </span>
           </div>
           <p className="text-[11px] text-slate-400 leading-snug">
-            Vá até a bancada, escolha seus MCPs e forje sua nave no <b>Antigravity CLI</b>!
+            {/* Duas bancadas a partir deste evento: mandar o visitante para "a bancada" faz a
+                fila toda ir para a mesma, com a outra livre ao lado. */}
+            Vá até uma das duas bancadas, escolha seus MCPs e forje sua nave no{' '}
+            <b>Antigravity CLI</b>!
           </p>
         </div>
       </div>
