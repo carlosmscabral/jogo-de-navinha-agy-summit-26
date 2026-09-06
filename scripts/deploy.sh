@@ -104,6 +104,14 @@ echo "-- 3/11: Regras e índices do Firestore --"
 # o que é o que torna este passo reproduzível para outro projeto sem editar nada versionado.
 firebase deploy --project="$PROJECT_ID" --only "firestore:$FIRESTORE_DATABASE"
 
+# `companies/catalog` é a fonte única do catálogo de empresas: é o que a canonicalização na
+# nuvem consulta e o que `GET /v1/companies` serve aos dois estandes. Sem semear, o documento só
+# nasce no primeiro "Salvar" do painel — e até lá a tela abre com uma lista VAZIA, que um clique
+# descuidado transforma no catálogo de verdade das duas estações. O script NUNCA sobrescreve um
+# catálogo existente e não vazio; um deploy que apagasse as empresas cadastradas pelo operador na
+# véspera seria pior que um deploy que não semeia.
+PROJECT_ID="$PROJECT_ID" node "$(dirname "$0")/seed-company-catalog.mjs" --database "$FIRESTORE_DATABASE"
+
 echo ""
 echo "-- 4/11: Service account do Cloud Run --"
 if gcloud iam service-accounts describe "$SERVICE_ACCOUNT_EMAIL" --project="$PROJECT_ID" >/dev/null 2>&1; then

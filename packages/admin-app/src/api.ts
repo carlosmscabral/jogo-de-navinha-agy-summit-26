@@ -18,6 +18,26 @@ import { ENDPOINTS } from './config.js';
 // servido pelo mesmo container Cloud Run da API, sob /admin).
 const BASE = ENDPOINTS.cloudApiBase ?? '';
 
+/**
+ * Erro de resposta HTTP que preserva o status e o corpo.
+ *
+ * Antes daqui só sobrevivia a mensagem, e isso bastava enquanto todo erro do painel era
+ * "seu corpo está errado" (400). Deixou de bastar quando o catálogo de empresas passou a
+ * alimentar as duas estações: um `PUT` recusado por concorrência volta como **409** e traz
+ * o catálogo atual no corpo, e a tela precisa dos dois para dizer "outro operador salvou
+ * primeiro" em vez de repetir uma mensagem de erro genérica.
+ */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly body: unknown
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
@@ -25,7 +45,11 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}) as { error?: string });
-    throw new Error(body.error ?? `Request to ${path} failed with status ${res.status}`);
+    throw new ApiError(
+      (body as { error?: string }).error ?? `Request to ${path} failed with status ${res.status}`,
+      res.status,
+      body
+    );
   }
   return res.json() as Promise<T>;
 }
@@ -73,8 +97,27 @@ export function fetchCompanies(): Promise<CompanyCatalogDocument> {
   return requestJson('/v1/admin/companies');
 }
 
-export function putCompanies(companies: string[]): Promise<{ status: string }> {
-  return requestJson('/v1/admin/companies', { method: 'PUT', body: JSON.stringify({ companies }) });
+/**
+ * Grava o catálogo com concorrência otimista. `expectedVersion` é a versão que a tela carregou;
+ * se outra pessoa (ou a outra aba do mesmo operador) salvou nesse meio-tempo, o servidor recusa
+ * com 409 em vez de sobrescrever em silêncio — era `.set()` puro, last-write-wins, e isso deixou
+ * de ser aceitável quando este documento virou a fonte única das duas estações.
+ *
+ * `force` só existe para o caso legítimo de esvaziar o catálogo de propósito, que o servidor
+ * recusa por padrão. Não usar para "resolver" um 409: aí o certo é recarregar e reaplicar.
+ */
+export function putCompanies(
+  companies: string[],
+  opts: { expectedVersion?: number; force?: boolean } = {}
+): Promise<{ status: string; version: number }> {
+  return requestJson('/v1/admin/companies', {
+    method: 'PUT',
+    body: JSON.stringify({
+      companies,
+      ...(opts.expectedVersion !== undefined ? { expectedVersion: opts.expectedVersion } : {}),
+      ...(opts.force ? { force: true } : {})
+    })
+  });
 }
 
 export interface AdminHealthReport {

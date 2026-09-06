@@ -107,17 +107,32 @@ export interface CompanyRankingDocument {
 }
 
 /**
- * Documento único em /companies/catalog. Espelha `config/companies.json` (Tarefa C0b), mas
- * é a cópia que o painel de admin (Tarefa C7) edita — a fonte de verdade local e offline do
- * estande continua sendo o arquivo. A reconciliação entre os dois é manual e explícita (um
- * botão "exportar para o estande" no painel), nunca automática: um segundo canal nuvem→estande
- * é exatamente o que a Spec 05 §5 evita.
+ * Documento único em /companies/catalog — a FONTE ÚNICA do catálogo de empresas.
+ *
+ * Já foi só a cópia que o painel de admin editava, com `config/companies.json` de cada estande
+ * como fonte de verdade offline e uma reconciliação manual entre os dois. Isso caiu quando o
+ * evento passou a ter dois estandes contra o mesmo placar: `company_canonical` é o ID do
+ * documento em `company_rankings`, então catálogos divergentes racham a mesma empresa em dois
+ * rankings — e de forma silenciosa, porque grafias diferentes resolvem com confiança ALTA nos
+ * dois lados, nenhuma é marcada para revisão e a varredura de canonicalização nunca as vê.
+ *
+ * Hoje este documento é lido pela canonicalização e servido aos daemons por `GET /v1/companies`;
+ * o arquivo em disco virou semente de primeiro boot e rede de segurança para o estande sem rede.
  */
 export interface CompanyCatalogDocument {
   schema_version: number;
   companies: string[];
   /** ISO 8601 no cliente. O servidor sobrescreve com FieldValue.serverTimestamp(). */
   updated_at: string;
+  /**
+   * Incrementada a cada gravação. Serve a dois propósitos:
+   * 1. Concorrência otimista no `PUT` — dois operadores no painel ao mesmo tempo não podem
+   *    mais fazer o segundo salvar por cima do primeiro sem saber (era `.set()` puro).
+   * 2. Barateia o pull dos daemons: o estande só reaplica o catálogo quando a versão mudou.
+   *
+   * Ausente nos documentos gravados antes desta mudança; tratar como 1.
+   */
+  version?: number;
 }
 
 /**

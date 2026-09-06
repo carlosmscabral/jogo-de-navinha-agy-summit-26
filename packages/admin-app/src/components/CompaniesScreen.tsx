@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { fetchCompanies, putCompanies } from '../api.js';
+import type { CompanyCatalogDocument } from '@jogo/shared';
+import { ApiError, fetchCompanies, putCompanies } from '../api.js';
 import { toCompaniesFileJson } from '../companies-export.js';
 
 export function CompaniesScreen() {
@@ -8,13 +9,21 @@ export function CompaniesScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  // Versão que esta tela carregou. Vai junto no PUT para o servidor recusar a gravação se
+  // alguém tiver salvado nesse meio-tempo — sem isso, a última aba a clicar "Salvar" apagava
+  // as edições da outra em silêncio, e agora esse documento alimenta as duas estações.
+  const [version, setVersion] = useState<number | null>(null);
+  // Catálogo que o servidor devolveu junto do 409, para o operador comparar antes de decidir.
+  const [conflict, setConflict] = useState<CompanyCatalogDocument | null>(null);
 
   async function load() {
     setLoading(true);
     setError(null);
+    setConflict(null);
     try {
       const catalog = await fetchCompanies();
       setCompanies(catalog.companies);
+      setVersion(catalog.version ?? 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -40,17 +49,29 @@ export function CompaniesScreen() {
   async function save() {
     setError(null);
     setSavedAt(null);
+    setConflict(null);
     try {
-      await putCompanies(companies);
+      // `version ?? undefined`: enquanto a carga inicial não terminou não há versão para
+      // apostar, e mandar um palpite errado transformaria a primeira gravação num 409 falso.
+      const result = await putCompanies(companies, { expectedVersion: version ?? undefined });
+      setVersion(result.version);
       setSavedAt(new Date().toLocaleTimeString());
     } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        const body = err.body as { current?: CompanyCatalogDocument };
+        setConflict(body?.current ?? null);
+        return;
+      }
       setError(err instanceof Error ? err.message : String(err));
     }
   }
 
   // Botão "exportar para o estande": gera o JSON no formato de config/companies.json
-  // ({ companies: [...] }) e dispara o download. Puramente client-side — a reconciliação
-  // com o arquivo do estande é manual e explícita, nunca automática (ver companies-export.ts).
+  // ({ companies: [...] }) e dispara o download. Puramente client-side.
+  //
+  // Deixou de ser o canal de sincronização: os daemons puxam este catálogo do Firestore.
+  // O arquivo em disco é só a semente do primeiro boot de uma máquina nova — e a rede de
+  // segurança de um estande que sobe sem rede, antes do primeiro pull dar certo.
   function exportForBooth() {
     const json = toCompaniesFileJson(companies);
     const blob = new Blob([json], { type: 'application/json' });
@@ -66,12 +87,32 @@ export function CompaniesScreen() {
     <section>
       <h2>Empresas</h2>
       <p className="note">
-        Este catálogo vive no Firestore e é editado aqui. O daemon do estande continua lendo{' '}
-        <code>config/companies.json</code> como fonte local e offline — use "Exportar para o estande"
-        para gerar o arquivo e substituí-lo manualmente. Não há sincronização automática entre os dois.
+        Este catálogo vive no Firestore e é a <strong>fonte única</strong>: a canonicalização na
+        nuvem consulta ele, e os dois estandes o puxam periodicamente — inclusive as remoções. O{' '}
+        <code>config/companies.json</code> de cada Mac é só semente de primeiro boot e rede de
+        segurança offline. Use "Exportar para o estande" apenas para preparar uma máquina nova.
       </p>
 
       {error && <p className="error">{error}</p>}
+
+      {conflict && (
+        <div className="error">
+          <p>
+            <strong>Outro operador salvou primeiro.</strong> Nada foi gravado — suas edições ainda
+            estão nesta tela. O catálogo no servidor está na versão {conflict.version ?? '?'} com{' '}
+            {conflict.companies.length} empresa(s):
+          </p>
+          <p>
+            <code>{conflict.companies.join(', ') || '(vazio)'}</code>
+          </p>
+          <p>
+            Compare com a sua lista abaixo. "Recarregar do servidor" descarta o que você editou
+            aqui e começa da versão dele.
+          </p>
+          <button onClick={() => void load()}>Recarregar do servidor (descarta suas edições)</button>
+        </div>
+      )}
+
       {loading && <p>Carregando...</p>}
 
       <ul>
@@ -96,7 +137,11 @@ export function CompaniesScreen() {
 
       <button onClick={() => void save()}>Salvar catálogo</button>{' '}
       <button onClick={exportForBooth}>Exportar para o estande (companies.json)</button>
-      {savedAt && <p className="note">Salvo às {savedAt}.</p>}
+      {savedAt && (
+        <p className="note">
+          Salvo às {savedAt} (versão {version}). Os estandes aplicam em até um ciclo do worker.
+        </p>
+      )}
     </section>
   );
 }

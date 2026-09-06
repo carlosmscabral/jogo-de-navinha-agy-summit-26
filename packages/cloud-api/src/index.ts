@@ -20,6 +20,8 @@ import {
   listMatches,
   getCompanyCatalog,
   putCompanyCatalog,
+  seedCompanyCatalogIfMissing,
+  CatalogConflictError,
   getHealthReport,
   type MatchCorrection
 } from './admin.js';
@@ -32,6 +34,7 @@ import {
   generateWithVertex as canonicalizeWithVertex,
   type CanonicalizeRequestItem
 } from './canonicalize.js';
+import { createCompanyCatalogProvider, firestoreCatalogReader } from './company-catalog.js';
 
 /** POST /v1/matches aceita no máximo isso por chamada (Spec 08 §6.1). */
 const MAX_BATCH_SIZE = 50;
@@ -72,7 +75,15 @@ const ADMIN_PANEL_PASSWORD = process.env.ADMIN_PANEL_PASSWORD;
 // serviço fica mais lento exatamente nos casos em que mais precisamos dele, e é por isso que o
 // fail-closed neste teto é a política certa.
 const MODERATION_L2_TIMEOUT_MS = Number(process.env.MODERATION_L2_TIMEOUT_MS) || 20_000;
-const COMPANY_CATALOG = loadCompanyCatalog();
+/**
+ * Semente de disco do catálogo, lida uma vez na subida. Deixou de ser a fonte de verdade
+ * (agora é `companies/catalog` no Firestore, ver company-catalog.ts) e virou duas coisas:
+ * o conteúdo que semeia o documento na primeira execução, e a rede de segurança para quando
+ * a leitura do Firestore falha. Vazia significava, até pouco tempo atrás, canonicalização
+ * desligada em silêncio — ver o comentário no Dockerfile.
+ */
+const COMPANY_CATALOG_DISK_SEED = loadCompanyCatalog();
+const COMPANY_CATALOG_TTL_MS = Number(process.env.COMPANY_CATALOG_TTL_MS) || undefined;
 
 // Revisão final Fase C — Crítico 4: falhar JÁ NA SUBIDA, não só na primeira chamada real de
 // moderação, quando falta a variável de que `vertex.ts` depende (`requireEnv('GOOGLE_CLOUD_PROJECT')`).
@@ -96,6 +107,30 @@ if (process.env.NODE_ENV !== 'test' && !process.env.GOOGLE_CLOUD_PROJECT) {
 // da service account do serviço; não existe (nem deve existir) arquivo de chave aqui.
 const firebaseApp = initializeApp();
 const db = getFirestore(firebaseApp, DATABASE_ID);
+
+/**
+ * O catálogo de empresas, com o Firestore como fonte única e o disco como semente/fallback.
+ * Substitui a constante que era lida uma vez na subida: aquela nunca via as edições do painel,
+ * o que tornava o editor de empresas um no-op e — desde que o evento passou a ter dois estandes
+ * — deixava as duas estações resolverem contra catálogos que ninguém podia reconciliar.
+ */
+const companyCatalog = createCompanyCatalogProvider({
+  read: firestoreCatalogReader(db),
+  diskSeed: COMPANY_CATALOG_DISK_SEED,
+  ttlMs: COMPANY_CATALOG_TTL_MS,
+  // Segunda defesa da semeadura (a primeira é `scripts/seed-company-catalog.mjs`, chamado pelo
+  // deploy): cobre um projeto que já está no ar sem exigir um deploy novo. Fire-and-forget de
+  // propósito — quem pediu o catálogo já foi servido pela semente de disco e não espera por isto.
+  onSeedNeeded: (seed) => {
+    void seedCompanyCatalogIfMissing(db, seed)
+      .then((created) => {
+        if (created) {
+          console.log(`[cloud-api] companies/catalog semeado com ${seed.length} empresas do disco.`);
+        }
+      })
+      .catch((err) => console.error('[cloud-api] falha ao semear companies/catalog:', err));
+  }
+});
 
 export const app = express();
 app.use(express.json({ limit: '2mb' }));
@@ -231,15 +266,33 @@ if (process.env.CARDGEN_ENABLED === '1') {
   });
 
   app.put('/v1/admin/companies', async (req: Request, res: Response) => {
-    const body = req.body as { companies?: unknown };
+    const body = req.body as { companies?: unknown; expectedVersion?: unknown; force?: unknown };
     if (!Array.isArray(body?.companies) || body.companies.some((c) => typeof c !== 'string')) {
       res.status(400).json({ error: 'body must be { companies: string[] }' });
       return;
     }
+    if (body.expectedVersion !== undefined && typeof body.expectedVersion !== 'number') {
+      res.status(400).json({ error: 'expectedVersion must be a number when present' });
+      return;
+    }
     try {
-      await putCompanyCatalog(db, body.companies as string[]);
-      res.status(200).json({ status: 'ok' });
+      const { version } = await putCompanyCatalog(db, body.companies as string[], {
+        expectedVersion: body.expectedVersion as number | undefined,
+        force: body.force === true
+      });
+      // Só esta instância. As outras convergem pelo TTL do provedor — um catálogo até um minuto
+      // obsoleto numa varredura em segundo plano é aceitável; forçar coerência entre instâncias
+      // exigiria um canal de invalidação que não paga o próprio custo aqui.
+      companyCatalog.invalidate();
+      res.status(200).json({ status: 'ok', version });
     } catch (err) {
+      // 409, e não 400: o painel precisa distinguir "seu corpo está errado" de "outra pessoa
+      // salvou primeiro", que são erros do operador completamente diferentes. O estado atual vai
+      // no corpo para a tela poder mostrar o que existe hoje sem uma segunda requisição.
+      if (err instanceof CatalogConflictError) {
+        res.status(409).json({ error: err.message, current: err.current });
+        return;
+      }
       res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
@@ -281,9 +334,12 @@ if (process.env.CARDGEN_ENABLED === '1') {
    * inteiro, não um erro de uma partida.
    */
   function triggerCanonicalizationSweep(dbRef: FirebaseFirestore.Firestore): void {
-    runCanonicalizationSweep(dbRef, canonicalizeWithVertex, COMPANY_CATALOG).catch((err) => {
-      console.error('[cloud-api] canonicalization sweep failed:', err);
-    });
+    companyCatalog
+      .get()
+      .then(({ companies }) => runCanonicalizationSweep(dbRef, canonicalizeWithVertex, companies))
+      .catch((err) => {
+        console.error('[cloud-api] canonicalization sweep failed:', err);
+      });
   }
 
   app.post('/v1/moderate', async (req: Request, res: Response) => {
@@ -326,12 +382,30 @@ if (process.env.CARDGEN_ENABLED === '1') {
       res.status(400).json({ error: 'body must be { items: Array<{match_id, company_raw, local_guess}> }' });
       return;
     }
+    const { companies } = await companyCatalog.get();
     const resolved = await resolveCompanies(
       body.items as CanonicalizeRequestItem[],
       canonicalizeWithVertex,
-      COMPANY_CATALOG
+      companies
     );
     res.status(200).json({ resolved });
+  });
+
+  /**
+   * `GET /v1/companies` — o catálogo servido aos estandes, atrás do mesmo Bearer da ingestão.
+   *
+   * Este é o canal que faz as duas estações resolverem empresa contra a MESMA lista. Sem ele,
+   * cada Mac casa nomes contra o `config/companies.json` do próprio disco, e a divergência é
+   * invisível: grafias diferentes da mesma empresa resolvem com confiança alta nos dois lados,
+   * nenhuma é marcada para revisão, e `company_rankings` fica com dois documentos para sempre.
+   *
+   * Reusa o provedor — não faz leitura própria — e portanto herda o cache, o TTL e a cadeia
+   * de fallback inteira. Dois estandes puxando a cada 2 minutos não geram duas leituras por
+   * tick no Firestore.
+   */
+  app.get('/v1/companies', async (_req: Request, res: Response) => {
+    const { companies, version, source } = await companyCatalog.get();
+    res.status(200).json({ companies, version, source });
   });
 
   app.get('/v1/aliases', async (req: Request, res: Response) => {

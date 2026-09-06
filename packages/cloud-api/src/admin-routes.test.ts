@@ -127,3 +127,79 @@ describe('cobertura HTTP do middleware de admin (Tarefa C10)', () => {
     assert.equal(res.status, 200, 'a senha correta precisa efetivamente abrir a rota, não só recusar as erradas');
   });
 });
+
+/**
+ * O catálogo de empresas virou a fonte única das DUAS estações, e ganhou uma rota nova
+ * (`GET /v1/companies`, atrás do token do estande) e um código de status novo no `PUT`
+ * (409 em vez de 400 quando outro operador salvou primeiro). Os dois são contratos de HTTP:
+ * o daemon depende do primeiro, o painel depende de conseguir distinguir o segundo de um
+ * corpo malformado — nenhum dos dois é observável nos testes de função pura.
+ */
+describe('catálogo de empresas pelas rotas HTTP', () => {
+  it('GET /v1/companies recusa com 401 sem o token do estande', async () => {
+    const res = await fetch(`${baseUrl}/v1/companies`);
+    assert.equal(res.status, 401);
+  });
+
+  it('GET /v1/companies NÃO abre com a senha do painel', async () => {
+    // O catálogo é servido ao estande, não ao navegador do operador: privilégios distintos.
+    const res = await fetch(`${baseUrl}/v1/companies`, {
+      headers: { authorization: basicAuth(process.env.ADMIN_PANEL_PASSWORD!) }
+    });
+    assert.equal(res.status, 401);
+  });
+
+  it('GET /v1/companies devolve o catálogo com o token do estande', async (t) => {
+    if (!(await firestoreEmulatorReachable())) {
+      t.skip('emulador do Firestore inalcançável neste ambiente');
+      return;
+    }
+    const res = await fetch(`${baseUrl}/v1/companies`, {
+      headers: { authorization: `Bearer ${process.env.BOOTH_INGEST_TOKEN}` }
+    });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { companies: unknown; version: unknown; source: unknown };
+    assert.ok(Array.isArray(body.companies), 'o daemon espera um array em `companies`');
+    assert.equal(typeof body.version, 'number', 'é a versão que decide se o estande reaplica');
+    assert.equal(typeof body.source, 'string');
+  });
+
+  it('PUT /v1/admin/companies devolve 409 (não 400) quando a versão está obsoleta', async (t) => {
+    if (!(await firestoreEmulatorReachable())) {
+      t.skip('emulador do Firestore inalcançável neste ambiente');
+      return;
+    }
+    const auth = { authorization: basicAuth(process.env.ADMIN_PANEL_PASSWORD!), 'content-type': 'application/json' };
+
+    const first = await fetch(`${baseUrl}/v1/admin/companies`, {
+      method: 'PUT',
+      headers: auth,
+      body: JSON.stringify({ companies: ['Empresa da rota A'] })
+    });
+    assert.equal(first.status, 200);
+    const { version } = (await first.json()) as { version: number };
+
+    const conflicting = await fetch(`${baseUrl}/v1/admin/companies`, {
+      method: 'PUT',
+      headers: auth,
+      body: JSON.stringify({ companies: ['Empresa da rota B'], expectedVersion: version - 1 })
+    });
+    assert.equal(conflicting.status, 409, '400 faria o painel dizer "requisição inválida" para um conflito');
+    const body = (await conflicting.json()) as { error: string; current: { companies: string[] } };
+    assert.deepEqual(body.current.companies, ['Empresa da rota A'], 'a tela mostra o estado atual sem uma 2ª requisição');
+  });
+
+  it('PUT /v1/admin/companies devolve 400 para um catálogo vazio', async (t) => {
+    if (!(await firestoreEmulatorReachable())) {
+      t.skip('emulador do Firestore inalcançável neste ambiente');
+      return;
+    }
+    const res = await fetch(`${baseUrl}/v1/admin/companies`, {
+      method: 'PUT',
+      headers: { authorization: basicAuth(process.env.ADMIN_PANEL_PASSWORD!), 'content-type': 'application/json' },
+      body: JSON.stringify({ companies: [] })
+    });
+    assert.equal(res.status, 400);
+    assert.match(((await res.json()) as { error: string }).error, /VAZIO/);
+  });
+});

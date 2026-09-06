@@ -17,6 +17,8 @@ import {
   listMatches,
   getCompanyCatalog,
   putCompanyCatalog,
+  seedCompanyCatalogIfMissing,
+  CatalogConflictError,
   getHealthReport
 } from './admin.js';
 import { testDb, clearFirestore, matchFixture } from './test-helpers.js';
@@ -308,6 +310,107 @@ describe('companies/catalog', () => {
     const catalog = await getCompanyCatalog(testDb);
     assert.deepEqual(catalog.companies, ['Google', 'Nubank']);
     assert.equal(catalog.schema_version, 1);
+  });
+
+  it('documento ausente é versão 0, e cada gravação incrementa', async () => {
+    assert.equal((await getCompanyCatalog(testDb)).version, 0);
+    assert.equal((await putCompanyCatalog(testDb, ['Google'])).version, 1);
+    assert.equal((await getCompanyCatalog(testDb)).version, 1);
+    assert.equal((await putCompanyCatalog(testDb, ['Google', 'Nubank'])).version, 2);
+    assert.equal((await getCompanyCatalog(testDb)).version, 2);
+  });
+
+  it('documento gravado antes do campo `version` existir é lido como versão 1', async () => {
+    // Zero significa "nunca gravado". Devolver 0 para um catálogo real faria um PUT com
+    // expectedVersion: 0 passar por cima dele — o oposto do que a trava existe para impedir.
+    await testDb.collection('companies').doc('catalog').set({
+      schema_version: 1,
+      companies: ['Google'],
+      updated_at: FieldValue.serverTimestamp()
+    });
+    assert.equal((await getCompanyCatalog(testDb)).version, 1);
+  });
+
+  it('uma versão obsoleta NÃO altera o documento', async () => {
+    // Dois operadores com a tela aberta. O primeiro salva; o segundo salva por cima com a
+    // versão que carregou antes. Antes da trava, o segundo apagava as edições do primeiro
+    // em silêncio, e este documento hoje alimenta as DUAS estações.
+    await putCompanyCatalog(testDb, ['Google']); // versão 1
+    await putCompanyCatalog(testDb, ['Google', 'Nubank'], { expectedVersion: 1 }); // versão 2
+
+    await assert.rejects(
+      () => putCompanyCatalog(testDb, ['Só o que eu tinha na tela'], { expectedVersion: 1 }),
+      (err: unknown) => {
+        assert.ok(err instanceof CatalogConflictError);
+        assert.deepEqual(err.current.companies, ['Google', 'Nubank'], 'o 409 carrega o estado atual');
+        assert.equal(err.current.version, 2);
+        return true;
+      }
+    );
+
+    const catalog = await getCompanyCatalog(testDb);
+    assert.deepEqual(catalog.companies, ['Google', 'Nubank'], 'nada pode ter sido gravado');
+    assert.equal(catalog.version, 2, 'nem a versão pode ter avançado');
+  });
+
+  it('PUT sem expectedVersion continua gravando (compatibilidade)', async () => {
+    await putCompanyCatalog(testDb, ['Google']);
+    await putCompanyCatalog(testDb, ['Ambev']);
+    assert.deepEqual((await getCompanyCatalog(testDb)).companies, ['Ambev']);
+  });
+
+  it('recusa gravar um catálogo VAZIO sem force', async () => {
+    await putCompanyCatalog(testDb, ['Google', 'Nubank']);
+    await assert.rejects(() => putCompanyCatalog(testDb, []), /VAZIO/);
+    assert.deepEqual((await getCompanyCatalog(testDb)).companies, ['Google', 'Nubank']);
+  });
+
+  it('aceita esvaziar com force, que é o caso legítimo e explícito', async () => {
+    await putCompanyCatalog(testDb, ['Google']);
+    await putCompanyCatalog(testDb, [], { force: true });
+    assert.deepEqual((await getCompanyCatalog(testDb)).companies, []);
+  });
+
+  it('recusa entradas em branco ou não-string', async () => {
+    await assert.rejects(() => putCompanyCatalog(testDb, ['Google', '   ']), /non-blank/);
+    await assert.rejects(
+      () => putCompanyCatalog(testDb, ['Google', 42] as unknown as string[]),
+      /non-blank/
+    );
+    assert.deepEqual((await getCompanyCatalog(testDb)).companies, []);
+  });
+});
+
+describe('seedCompanyCatalogIfMissing', () => {
+  beforeEach(async () => { await clearFirestore(); });
+
+  it('cria o documento quando ele não existe', async () => {
+    assert.equal(await seedCompanyCatalogIfMissing(testDb, ['Google', 'Nubank']), true);
+    const catalog = await getCompanyCatalog(testDb);
+    assert.deepEqual(catalog.companies, ['Google', 'Nubank']);
+    assert.equal(catalog.version, 1);
+  });
+
+  it('NUNCA sobrescreve um catálogo que já tem empresas', async () => {
+    // Um deploy na véspera do evento que apagasse as empresas cadastradas pelo operador seria
+    // muito pior que um deploy que não semeia.
+    await putCompanyCatalog(testDb, ['Empresa do operador']);
+    assert.equal(await seedCompanyCatalogIfMissing(testDb, ['Google', 'Nubank']), false);
+    assert.deepEqual((await getCompanyCatalog(testDb)).companies, ['Empresa do operador']);
+  });
+
+  it('semeia por cima de um documento que existe mas está VAZIO', async () => {
+    // Resíduo exato do "Salvar" descuidado numa tela que abriu vazia — não é conteúdo a
+    // preservar, é o estado que a semeadura existe para consertar.
+    await putCompanyCatalog(testDb, [], { force: true });
+    assert.equal(await seedCompanyCatalogIfMissing(testDb, ['Google']), true);
+    assert.deepEqual((await getCompanyCatalog(testDb)).companies, ['Google']);
+  });
+
+  it('é idempotente: a segunda chamada não faz nada', async () => {
+    await seedCompanyCatalogIfMissing(testDb, ['Google']);
+    assert.equal(await seedCompanyCatalogIfMissing(testDb, ['Google']), false);
+    assert.equal((await getCompanyCatalog(testDb)).version, 1, 'a versão não pode avançar à toa');
   });
 });
 

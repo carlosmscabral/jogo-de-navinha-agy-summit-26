@@ -27,6 +27,13 @@ estande nunca fala com o Firestore diretamente — só com este serviço, via HT
   `POST /v1/matches`.
 - `GET /v1/aliases?since=<ISO 8601>` — aliases de empresa resolvidos pela canonicalização desde
   `since`, para o daemon cachear localmente em `company_aliases` (Spec 05 §3.1).
+- `GET /v1/companies` — `{ companies: string[]; version: number; source: 'firestore' | 'disk' |
+  'stale-cache' }`. É como o catálogo de empresas chega aos estandes. Serve o documento
+  `companies/catalog` através de `createCompanyCatalogProvider` (`company-catalog.ts`), com cache
+  de `COMPANY_CATALOG_TTL_MS`. `version` muda a cada gravação pelo painel e é o que permite ao
+  daemon só reaplicar o catálogo quando algo de fato mudou; `source` é observabilidade —
+  `disk` significa que o documento está ausente ou vazio e o `config/companies.json` embutido na
+  imagem assumiu.
 
 ### Endpoints administrativos (Tarefa C7) — `/v1/admin/*`
 
@@ -47,10 +54,17 @@ para o porquê.
   `match_id` não existir; 400 se a correção violar a faixa plausível de score
   (`MAX_PLAUSIBLE_SCORE`, mesma de `ingest.ts`).
 - `GET|PUT /v1/admin/companies` — o documento `companies/catalog`
-  (`{ schema_version, companies: string[], updated_at }`). `PUT` é a única escrita deste
-  catálogo pelo Firestore; `config/companies.json` do estande (Tarefa C0b) continua sendo a fonte
-  local e offline, e a reconciliação entre os dois é manual (botão "exportar para o estande" no
-  painel, puramente client-side).
+  (`{ schema_version, companies: string[], updated_at, version }`), que é a **fonte única** do
+  catálogo: a canonicalização o lê e os dois estandes o puxam por `GET /v1/companies`. O
+  `config/companies.json` foi rebaixado a semente de primeiro boot e rede de segurança offline —
+  o botão "exportar para o estande" do painel serve para preparar uma máquina nova, não para
+  sincronizar.
+  Duas travas no `PUT`, porque um clique errado aqui degrada as duas estações de uma vez:
+  **lista vazia é recusada** (400) sem `force: true`, e `expectedVersion` dá concorrência
+  otimista — versão obsoleta responde **409** com `{ error, current }`, e o painel mostra
+  "outro operador salvou primeiro" em vez de sobrescrever em silêncio. O documento é semeado no
+  deploy por `scripts/seed-company-catalog.mjs` (read-then-create, **nunca** sobrescreve) e,
+  preguiçosamente, pelo próprio provedor quando encontra o documento ausente ou vazio.
 - `POST /v1/admin/matches/bulk` (Tarefa C9) — corpo `{ match_ids: string[]; action: 'void' | 'delete'
   }`. Aplica `action` a cada `match_id` do lote, um de cada vez, isolando falhas por item (mesmo
   espírito de `ingestBatch`). Resposta `{ succeeded: string[]; failed: Array<{ match_id: string;
@@ -111,7 +125,12 @@ todo visitante do evento começa a ser recusado pela moderação), `VERTEX_LOCAT
 (default `20000`, e tem que ser **menor** que o `BOOTH_MODERATION_L2_TIMEOUT_MS` do daemon, hoje
 `25000` — senão o abort local vence sempre e o fail-closed do servidor nunca chega lá).
 Desde a Tarefa C10: `ADMIN_PANEL_PASSWORD`, também do Secret Manager em
-produção — ver "Autenticação do painel de admin" acima. `CARDGEN_ENABLED=1` troca o papel do
+produção — ver "Autenticação do painel de admin" acima. `COMPANY_CATALOG_TTL_MS` (default
+`60000`) é por quanto tempo o catálogo de empresas fica em cache em cada instância: é também o
+atraso máximo entre um "Salvar" no painel e o efeito nas instâncias que não atenderam aquela
+requisição (a que atendeu invalida o cache na hora). `BOOTH_COMPANIES_FILE` aponta para a semente
+de disco e é definida no `Dockerfile` (`/app/config/companies.json`) — sem ela o container não
+tinha catálogo nenhum e a canonicalização na nuvem era um no-op silencioso. `CARDGEN_ENABLED=1` troca o papel do
 processo inteiro — ver "Serviço `cardgen`" abaixo; **não a ligue** no serviço de ingestão.
 
 ## Testes locais

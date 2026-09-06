@@ -434,29 +434,113 @@ export async function listMatches(db: Firestore, params: ListMatchesParams): Pro
 
 const COMPANY_CATALOG_DOC_ID = 'catalog';
 
+/**
+ * Uma gravação perdeu a corrida contra outra. Tipo próprio (e não um `Error` genérico) porque
+ * `index.ts` precisa distinguir isto de um corpo malformado: 409 com o estado atual, para o
+ * painel poder dizer "outro operador salvou primeiro" em vez de 400 "requisição inválida".
+ */
+export class CatalogConflictError extends Error {
+  constructor(readonly current: CompanyCatalogDocument) {
+    super('putCompanyCatalog: o catálogo foi alterado por outra pessoa desde que esta tela carregou');
+    this.name = 'CatalogConflictError';
+  }
+}
+
 /** `GET /v1/admin/companies` — devolve `{ companies: [] }` se o painel ainda nunca gravou nada. */
 export async function getCompanyCatalog(db: Firestore): Promise<CompanyCatalogDocument> {
   const snap = await db.collection('companies').doc(COMPANY_CATALOG_DOC_ID).get();
   if (!snap.exists) {
-    return { schema_version: SCHEMA_VERSION, companies: [], updated_at: new Date(0).toISOString() };
+    return { schema_version: SCHEMA_VERSION, companies: [], updated_at: new Date(0).toISOString(), version: 0 };
   }
-  return snap.data() as CompanyCatalogDocument;
+  const data = snap.data() as CompanyCatalogDocument;
+  // Documento gravado antes de `version` existir: 1, não 0. Zero significa "nunca gravado", e
+  // um `PUT` com `expectedVersion: 0` contra um documento real seria um conflito de verdade.
+  return { ...data, version: typeof data.version === 'number' ? data.version : 1 };
 }
 
 /**
- * `PUT /v1/admin/companies` — grava o catálogo canônico no Firestore. Esta escrita NÃO
- * toca `config/companies.json` do estande: as duas fontes existem de propósito (Spec 05
- * §5 evita um segundo canal nuvem→estande), e a reconciliação é manual, via o botão
- * "exportar para o estande" do painel (client-side, gera o JSON para download).
+ * `PUT /v1/admin/companies` — grava o catálogo canônico, que é a FONTE ÚNICA consumida pela
+ * canonicalização na nuvem e pelas duas estações (via `GET /v1/companies`).
+ *
+ * Duas travas que não existiam quando esta escrita era um `.set()` puro e o documento não
+ * alimentava nada:
+ *
+ * 1. **Lista vazia é recusada** sem `force`. Um catálogo vazio não é um estado neutro: ele
+ *    desliga o casamento de nomes nas duas estações ao mesmo tempo e racha `company_rankings`
+ *    em uma entrada por grafia digitada. É um bloqueador visível ao visitante nascido de um
+ *    clique no painel, e o caminho mais provável até ele é banal — a tela abria com `[]`
+ *    quando o documento não existia, e bastava um "Salvar" descuidado.
+ * 2. **Concorrência otimista** por `version`. Dois operadores com a tela aberta ao mesmo tempo
+ *    não podem mais fazer o segundo apagar as edições do primeiro em silêncio.
  */
-export async function putCompanyCatalog(db: Firestore, companies: string[]): Promise<void> {
+export async function putCompanyCatalog(
+  db: Firestore,
+  companies: string[],
+  opts: { expectedVersion?: number; force?: boolean } = {}
+): Promise<{ version: number }> {
   if (!Array.isArray(companies) || companies.some((c) => typeof c !== 'string' || !c.trim())) {
     throw new Error('putCompanyCatalog: companies must be an array of non-blank strings');
   }
-  await db.collection('companies').doc(COMPANY_CATALOG_DOC_ID).set({
-    schema_version: SCHEMA_VERSION,
-    companies,
-    updated_at: FieldValue.serverTimestamp()
+  if (companies.length === 0 && !opts.force) {
+    throw new Error(
+      'putCompanyCatalog: recusando gravar um catálogo VAZIO. Isso desliga o casamento de ' +
+        'empresas nas duas estações e racha o ranking por grafia. Se é mesmo o que você quer, ' +
+        'reenvie com force=true.'
+    );
+  }
+
+  const ref = db.collection('companies').doc(COMPANY_CATALOG_DOC_ID);
+
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const current = snap.exists ? (snap.data() as CompanyCatalogDocument) : null;
+    const currentVersion = current ? (typeof current.version === 'number' ? current.version : 1) : 0;
+
+    if (opts.expectedVersion !== undefined && opts.expectedVersion !== currentVersion) {
+      throw new CatalogConflictError(
+        current
+          ? { ...current, version: currentVersion }
+          : { schema_version: SCHEMA_VERSION, companies: [], updated_at: new Date(0).toISOString(), version: 0 }
+      );
+    }
+
+    const nextVersion = currentVersion + 1;
+    tx.set(ref, {
+      schema_version: SCHEMA_VERSION,
+      companies,
+      updated_at: FieldValue.serverTimestamp(),
+      version: nextVersion
+    });
+    return { version: nextVersion };
+  });
+}
+
+/**
+ * Semeadura idempotente: cria o documento a partir de `config/companies.json` se — e somente
+ * se — ele ainda não existir. Devolve `true` quando de fato criou.
+ *
+ * **Nunca sobrescreve.** Um deploy na véspera do evento que apagasse as empresas cadastradas
+ * pelo operador seria pior que um deploy que não semeia nada. É por isso que a leitura e a
+ * escrita ficam na mesma transação em vez de um `set` com merge.
+ */
+export async function seedCompanyCatalogIfMissing(db: Firestore, companies: string[]): Promise<boolean> {
+  if (!Array.isArray(companies) || companies.length === 0) return false;
+
+  const ref = db.collection('companies').doc(COMPANY_CATALOG_DOC_ID);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const existing = snap.exists ? (snap.data() as CompanyCatalogDocument) : null;
+    // Documento presente mas VAZIO também é semeado: é o resultado exato do "Salvar" descuidado
+    // descrito em `putCompanyCatalog`, e deixá-lo assim manteria as duas estações sem catálogo.
+    if (existing && Array.isArray(existing.companies) && existing.companies.length > 0) return false;
+
+    tx.set(ref, {
+      schema_version: SCHEMA_VERSION,
+      companies,
+      updated_at: FieldValue.serverTimestamp(),
+      version: (existing && typeof existing.version === 'number' ? existing.version : 0) + 1
+    });
+    return true;
   });
 }
 
