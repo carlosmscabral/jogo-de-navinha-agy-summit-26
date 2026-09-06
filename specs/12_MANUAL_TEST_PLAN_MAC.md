@@ -2078,14 +2078,21 @@ derruba os dois daemons.
 > afirma que os dois canais veem o mesmo catálogo e, se não virem, aborta dizendo o nome dos dois.
 > Mesma armadilha que `cardgen-routes.test.ts` documenta do lado dos testes.
 
-**Critério:** o relatório fecha com **`46/46 afirmações passaram`** nos sete blocos, que cobrem,
-nesta ordem: divergência silenciosa de catálogo (dois rankings), convergência pelo pull (um ranking
-só, com a soma certa), remoção espelhada nos dois estandes, as travas contra poda em massa e
-catálogo vazio, buffer offline com `played_at`, `stationActivity` no `/v1/admin/health` e o cenário
-de empate.
+**Critério:** o relatório fecha com **`N/N afirmações passaram`** — nenhuma falha — nos sete blocos,
+que cobrem, nesta ordem: divergência silenciosa de catálogo (dois rankings), convergência pelo pull
+(um ranking só, com a soma certa), remoção espelhada nos dois estandes, as travas contra poda em
+massa e catálogo vazio, buffer offline com `played_at`, `stationActivity` no `/v1/admin/health` e o
+cenário de empate.
+
+> O total não é fixo de propósito: ele muda com `--sem-limpeza` (a limpeza tem afirmações próprias)
+> e a cada afirmação nova. Fixá-lo aqui já rendeu uma discrepância entre este critério e o número
+> registrado no 26.9. O que vale é **zero falhas**; se o total cair de uma execução para a outra sem
+> ninguém ter mexido no script, isso é o achado, não o número em si.
 
 > O catálogo de produção é salvo antes de qualquer alteração e **restaurado sempre**, inclusive se
-> um passo falhar no meio — a cópia fica em `/tmp/ensaio-dois-booths/catalogo-original.json`. As
+> um passo falhar no meio — a cópia fica em `catalogo-original.json` dentro do diretório de trabalho
+> do ensaio, que é `os.tmpdir()/ensaio-dois-booths/`. No macOS **isso não é `/tmp`**: `os.tmpdir()`
+> resolve para algo como `/var/folders/tj/…/T/`, e o próprio script imprime o caminho no fim. As
 > empresas de ensaio começam com `Ensaio ` e os codinomes com `ENSAIO`. Com `--sem-limpeza` as
 > partidas **ficam**: o script imprime os `match_id` no fim, e você as apaga pelo painel (Partidas →
 > seleção em massa → Apagar) antes de abrir o estande.
@@ -2202,33 +2209,49 @@ snapshot, e com dois estandes os empates deixam de ser exceção.
 
 - [ ] **26.5 — Ticker ordenado por hora de jogo, não por hora de ingestão**
 
-O Bloco 5 do ensaio derruba a rede do estande B, joga duas partidas com 1,5 s entre elas, religa e
-espera a fila drenar. Essas partidas chegam ao Firestore **minutos** depois de terem sido jogadas, e
-`created_at` é sobrescrito com a hora de **ingestão** — sem `played_at`, elas ocupariam o topo de
-"recentes" e poderiam disparar uma celebração de recorde velho.
+O Bloco 5 do ensaio derruba a rede do estande B, joga duas partidas com 1,5 s entre elas, **segura o
+estande sem nuvem por 8 s**, religa e espera a fila drenar. Essas partidas chegam ao Firestore bem
+depois de terem sido jogadas, e `created_at` é sobrescrito com a hora de **ingestão** — sem
+`played_at`, elas ocupariam o topo de "recentes" e poderiam disparar uma celebração de recorde velho.
 
 **Olhe o `LIVE FEED`, não o ranking.** O ranking do telão ordena por score, e `ENSAIOOFF1`/`OFF2`
 (1500 e 1600) ficariam no fim dele de qualquer jeito — ver as duas lá embaixo não prova nada sobre
 `played_at`. Quem ordena por hora é o ticker (`LiveTickerFeed`), e é ele que mostra o `[HH:MM]` de
 cada partida.
 
-**O discriminador aqui é o relógio, não a posição.** Achado de 2026-09-06: a fila do estande B
-drenou **antes** de os Blocos 6 e 7 postarem, então naquela execução `created_at` e `played_at`
-davam a mesma ordem — a posição no ticker concordaria com as duas hipóteses e não separaria nada.
-O que separa é o horário exibido, porque `created_at` foi sobrescrito na ingestão e `played_at` não.
+> **De onde vieram os 8 s.** Achado de 2026-09-06, e vale a leitura antes de confiar num relatório
+> verde deste bloco. Até aquela data o Bloco 5 conferia a nuvem no instante seguinte à segunda
+> partida — uma janela offline de menos de dois segundos. Só que a latência de um envio
+> **bem-sucedido** naquela mesma execução foi de 3,3 a 3,8 s por partida, ou seja, **maior que a
+> janela**. Com isso as duas afirmações de estande offline passavam por corrida com uma requisição
+> em voo, e não por comportamento: passariam igual com a rede perfeita. A terceira afirmação era
+> `played_at < created_at`, que é verdade para **toda** partida do ensaio, offline ou não, porque a
+> ingestão sempre acontece depois do relógio do estande. Três afirmações verdes, nenhuma medindo o
+> que dizia medir. O bloco agora (a) exige que o próprio `/api/sync/status` do estande B acuse
+> `state: retrying` com falhas consecutivas antes de afirmar qualquer coisa, (b) segura a janela
+> offline por 8 s, mais que qualquer envio observado, e (c) troca a comparação por uma de
+> **magnitude**: o atraso da ingestão tem que ser de pelo menos a janela inteira.
 
-**Critério, em duas partes:**
+**O discriminador na TV é o relógio, não a posição.** Na execução de 2026-09-06 a fila do estande B
+drenou **antes** de os Blocos 6 e 7 postarem, então `created_at` e `played_at` davam a mesma ordem —
+a posição no ticker concordaria com as duas hipóteses e não separaria nada. O que separa é o horário
+exibido, porque `created_at` foi sobrescrito na ingestão e `played_at` não.
 
-1. No `LIVE FEED`, o `[HH:MM]` de `ENSAIOOFF1`/`OFF2` é o de **quando foram jogadas** — anterior ao
+**Critério, em três partes:**
+
+1. O Bloco 5 fecha verde **incluindo** a afirmação nova de que o worker acusou falha de envio. Se
+   ela falhar, o estande não ficou offline e o resto do bloco não vale — investigue o
+   `BOOTH_CLOUD_API_BASE` do processo, não o `played_at`.
+2. No `LIVE FEED`, o `[HH:MM]` de `ENSAIOOFF1`/`OFF2` é o de **quando foram jogadas** — anterior ao
    `Criada em` que a tela de Partidas mostra para os mesmos `match_id`. Confirme os dois valores
    lado a lado:
    ```bash
    curl -su ":$ADMIN_PANEL_PASSWORD" '<URL do Cloud Run>/v1/admin/matches?q=ENSAIOOFF&limit=10' \
      | jq '.matches[] | {callsign, played_at, created_at}'
    ```
-   `played_at` tem que ser **menor** que `created_at` nas duas (o Bloco 5 do script afirma isso no
-   dado; aqui se verifica que o número que chega à TV é o certo).
-2. **Nenhuma celebração de recorde** foi disparada pela drenagem.
+   A diferença tem que ser de **vários segundos** nas duas, não de centenas de milissegundos: essa
+   é a assinatura da fila que esperou, e é o que a versão anterior deste passo não distinguia.
+3. **Nenhuma celebração de recorde** foi disparada pela drenagem.
 
 - [ ] **26.6 — Painel: "Atividade por estação" e o filtro por Mac**
 
@@ -2300,13 +2323,13 @@ script são todas sobre convergência na nuvem e o mesmo código de daemon roda 
 
 | # | Passo | Passou? | Observação |
 |---|-------|---------|------------|
-| 26.0 | Ensaio automatizado fechou sem falhas | ✅ | **45/45** afirmações. O deploy semeou `companies/catalog` com 25 empresas — o documento **não existia** em produção, confirmando ao vivo o achado de que o editor de empresas do painel era um no-op |
+| 26.0 | Ensaio automatizado fechou sem falhas | 🟡 | **45/45** afirmações na execução de 06/09. O deploy semeou `companies/catalog` com 25 empresas — o documento **não existia** em produção, confirmando ao vivo o achado de que o editor de empresas do painel era um no-op. Mas o Bloco 5 daquela execução não media o que dizia medir (ver 26.5) e foi reescrito depois: **rodar de novo** para o verde valer |
 | 26.1 | `reset:db` rodado nos dois Macs, `company_aliases` zerado | [ ] | |
 | 26.2 | Forja em branco com `agy` logado | [ ] | |
-| 26.3 | Duas celebrações em cada TV, nenhuma engolida | [ ] | |
+| 26.3 | Duas celebrações em cada TV, nenhuma engolida | ✅ | **4 modais, 2 em cada janela**, uma de cada vez. Melhor score do dia era 4200; o script mandou `ENSAIOREC1` 4300 (A) e `ENSAIOREC2` 4400 (B). A fila cobriu a corrida que antes fazia o segundo recorde sobrescrever o primeiro |
 | 26.4 | Empate na mesma ordem nas duas TVs, estável em 3 refreshes | ✅ | `ENSAIOEMP1` antes de `ENSAIOEMP2`, estável em vários refreshes, simultâneos e alternando entre as duas janelas |
-| 26.5 | Partidas drenadas não subiram ao topo do ticker | [ ] | Primeira tentativa olhou o **ranking** (onde `ENSAIOOFF2`/`OFF1` ficam no fim só por terem score 1600/1500) — não discrimina. Refeito contra o `LIVE FEED` e o `played_at` do JSON |
-| 26.6 | Atividade por estação legível; filtro por Mac funciona | 🟡 | Saúde ✅: `ensaio-booth-b` 5 / `ensaio-booth-a` 3, com data legível. Partidas ❌ na primeira tentativa: **não havia coluna nem filtro de estação na tela** — o `?station=` já existia no `listMatches` desde a Fase 5, mas o `admin-app` nunca o expôs. Corrigido; refazer depois do redeploy |
+| 26.5 | Partidas drenadas não subiram ao topo do ticker | [ ] | Primeira tentativa olhou o **ranking** (onde `ENSAIOOFF2`/`OFF1` ficam no fim só por terem score 1600/1500) — não discrimina. Ao refazer contra o JSON apareceu o achado maior: o atraso medido foi de **707 ms** (`OFF2`) e **2180 ms** (`OFF1`), **abaixo** dos 3,3–3,8 s de latência das partidas online da mesma execução. A janela offline do Bloco 5 era mais curta que um envio normal, então as três afirmações passavam por corrida. Bloco 5 reescrito (prova de `state: retrying`, janela de 8 s, atraso medido por magnitude); **refazer o 26.0 antes deste passo** |
+| 26.6 | Atividade por estação legível; filtro por Mac funciona | ✅ | Saúde passou de primeira: `ensaio-booth-b` 5 / `ensaio-booth-a` 3, com data legível. Partidas ❌ na primeira tentativa: **não havia coluna nem filtro de estação na tela** — o `?station=` já existia no `listMatches` desde a Fase 5, mas o `admin-app` nunca o expôs, e este passo do plano descrevia uma UI que não existia. Coluna e filtro entregues em `2fb0c4a`; depois do redeploy a coluna apareceu e o clique filtrou |
 | 26.7 | Empresa nova no autocomplete dos dois estandes, mesma versão | [ ] | |
 | 26.8 | `station_id` distinto no boot dos dois Macs | [ ] | |
-| Fim | Partidas de ensaio apagadas e catálogo conferido | [ ] | |
+| Fim | Partidas de ensaio apagadas e catálogo conferido | [ ] | **Resíduo vivo em `vibe-cabral` desde 06/09**: as 8 partidas `ENSAIO*` do ensaio principal, mais `ENSAIOREC1` (4300) e `ENSAIOREC2` (4400) do 26.3 — estas duas estão **acima do recorde real (4200)** e sequestrariam a celebração do primeiro visitante. Apagar também a empresa `Ensaio Empresa Tardia` do 26.7 e conferir o catálogo de volta em 25 |

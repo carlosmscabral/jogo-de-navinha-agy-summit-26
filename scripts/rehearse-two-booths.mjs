@@ -134,6 +134,19 @@ const INTERVALO_PULL_MS = 8_000;
 /** Intervalo do worker na fase divergente: alto o bastante para o primeiro tick nunca chegar. */
 const INTERVALO_PULL_DESLIGADO_MS = 3_600_000;
 
+/**
+ * Quanto tempo o Bloco 5 segura o estande B sem nuvem DEPOIS da última partida, antes de
+ * religar. Não é uma pausa estética: até 2026-09-06 o bloco derrubava a rede, jogava duas
+ * partidas e conferia a nuvem no instante seguinte — uma janela de menos de dois segundos,
+ * a mesma ordem de grandeza da latência de um envio bem-sucedido (medida naquele ensaio:
+ * 3,3 a 3,8 s por partida). Com isso, "nada chegou à nuvem" e "a fila acusa pendentes"
+ * passavam mesmo com a rede perfeita, só porque a requisição ainda estava em voo, e
+ * `played_at < created_at` era satisfeito por 700 ms de latência comum em vez de pela
+ * ausência de rede. Oito segundos são maiores que qualquer envio observado, e é isso que
+ * transforma as três afirmações em medida de comportamento.
+ */
+const JANELA_OFFLINE_MS = 8_000;
+
 // ---------------------------------------------------------------------------
 // Relatório
 // ---------------------------------------------------------------------------
@@ -869,8 +882,36 @@ async function bloco5OfflineEPlayedAt() {
   await dormir(1_500);
   const off2 = await jogarPartida(b, { callsign: 'ENSAIOOFF2', companyRaw: 'Ensaio Offline', score: 1600 });
 
+  // Antes de afirmar qualquer coisa sobre "estar offline", provar que o estande está offline —
+  // pela boca do próprio worker, não por dedução. `syncNow()` é disparado sem `await` no
+  // `POST /api/matches`, então nesta altura ele já tentou e já falhou; `state: 'retrying'` com
+  // falhas consecutivas é a recusa de conexão na porta 9 aparecendo no status. Sem esta
+  // afirmação, um bloco que silenciosamente continuasse com rede daria exatamente o mesmo
+  // relatório verde do bloco que testou o que queria testar.
+  const acusouFalha = await esperarPor(
+    'o worker do estande B acusar falha de envio',
+    async () => {
+      const s = (await estande(b, '/api/sync/status')).corpo;
+      return s?.state === 'retrying' && (s?.consecutiveFailures ?? 0) > 0 ? s : null;
+    },
+    { timeoutMs: 15_000, intervaloMs: 250 }
+  );
+  afirmar(
+    'o estande B está mesmo sem nuvem — o worker acusa falha de envio',
+    acusouFalha !== null,
+    acusouFalha ? JSON.stringify(acusouFalha) : 'o status nunca saiu de ok/disabled'
+  );
+
+  // A janela offline propriamente dita. Ver JANELA_OFFLINE_MS: as duas afirmações abaixo só
+  // significam alguma coisa depois de decorrido mais tempo que a latência de um envio normal.
+  await dormir(JANELA_OFFLINE_MS);
+
   const nada = await partidasNaNuvem([off1.matchId, off2.matchId]);
-  afirmar('com a rede caída, nada chegou à nuvem', nada.length === 0, `${nada.length} partidas visíveis`);
+  afirmar(
+    `com a rede caída, nada chegou à nuvem em ${Math.round(JANELA_OFFLINE_MS / 1000)}s`,
+    nada.length === 0,
+    `${nada.length} partidas visíveis`
+  );
 
   const status = (await estande(b, '/api/sync/status')).corpo;
   afirmar('a fila local acusa partidas pendentes', (status?.pending ?? status?.pendingCount ?? 0) >= 2, JSON.stringify(status));
@@ -893,11 +934,18 @@ async function bloco5OfflineEPlayedAt() {
       ordemPorJogo.join(' → ')
     );
 
-    const atrasadas = drenadas.filter((m) => new Date(m.played_at) < new Date(m.created_at));
+    // Quantitativo de propósito, e não `played_at < created_at`. Aquela comparação é verdadeira
+    // para TODA partida do ensaio, offline ou não: mesmo online a ingestão acontece alguns
+    // segundos depois do relógio do estande, então ela media latência de rede e passava sozinha.
+    // O que distingue um estande que ficou sem rede é a MAGNITUDE do atraso — tem que ser pelo
+    // menos a janela offline inteira, porque a partida esperou nela antes de sair da fila.
+    const atrasoMs = drenadas.map((m) => Date.parse(m.created_at) - Date.parse(m.played_at));
     afirmar(
-      'played_at é ANTERIOR a created_at — a hora de jogo não foi perdida na ingestão',
-      atrasadas.length === 2,
-      drenadas.map((m) => `${m.callsign}: jogou ${m.played_at} / ingeriu ${m.created_at}`).join('  |  ')
+      `a ingestão ficou atrasada em relação ao jogo por mais que a janela offline (${Math.round(JANELA_OFFLINE_MS / 1000)}s)`,
+      atrasoMs.every((ms) => Number.isFinite(ms) && ms >= JANELA_OFFLINE_MS),
+      drenadas
+        .map((m, i) => `${m.callsign}: jogou ${m.played_at} / ingeriu ${m.created_at} (+${Math.round(atrasoMs[i])}ms)`)
+        .join('  |  ')
     );
   }
 }
