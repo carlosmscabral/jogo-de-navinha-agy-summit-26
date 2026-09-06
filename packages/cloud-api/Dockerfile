@@ -49,6 +49,18 @@ COPY package.json ./
 COPY vendor/admin-app-dist ./admin-app-dist
 ENV ADMIN_APP_DIST=/app/admin-app-dist
 
+# Catálogo de empresas: `canonicalize.ts` resolve o default como
+# `<packageRoot>/../../config/companies.json`, que dentro do container vira
+# `/config/companies.json` — um caminho que nunca existiu, porque o contexto de build é
+# `packages/cloud-api` e o Docker não enxerga `../../config`. O efeito era silencioso e
+# grave: `loadCompanyCatalog()` devolvia `[]`, o prompt de canonicalização ia com
+# "Catálogo: []" e a instrução de nunca inventar nome fora dele, e o modelo só conseguia
+# ecoar o palpite local — a canonicalização na nuvem era um no-op. `vendor/companies.json`
+# (gerado por `npm run vendor:companies`) é a cópia que fecha esse buraco, e serve de
+# semente/fallback para o catálogo do Firestore (company-catalog.ts).
+COPY vendor/companies.json ./config/companies.json
+ENV BOOTH_COMPANIES_FILE=/app/config/companies.json
+
 # Cloud Run injeta PORT; o servidor lê process.env.PORT (src/index.ts).
 EXPOSE 8080
 CMD ["node", "dist/index.js"]

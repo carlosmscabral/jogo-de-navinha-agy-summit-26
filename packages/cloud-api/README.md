@@ -154,16 +154,21 @@ npm run build --workspace=packages/admin-app
 npm run vendor --workspace=packages/cloud-api
 ```
 
-`npm run vendor` roda `vendor:shared` e depois `vendor:admin-app` (rodáveis também em
-separado). Isso escreve em `packages/cloud-api/vendor/jogo-shared/` e
-`packages/cloud-api/vendor/admin-app-dist/` (ambos gitignored, regenerados a cada build) o
+`npm run vendor` roda `vendor:shared`, `vendor:admin-app` e `vendor:companies` (rodáveis
+também em separado). Isso escreve em `packages/cloud-api/vendor/jogo-shared/`,
+`packages/cloud-api/vendor/admin-app-dist/` e `packages/cloud-api/vendor/companies.json`
+(todos gitignored, regenerados a cada build) o
 material que o `Dockerfile` injeta na imagem: `jogo-shared/` vira
 `node_modules/@jogo/shared` (ver os comentários no `Dockerfile` para o porquê disso e por
 que `ajv`, `ajv-formats` e `zod` também estão em `dependencies` deste pacote);
 `admin-app-dist/` vira `/app/admin-app-dist`, o diretório que `ADMIN_APP_DIST` (definida
 pelo próprio `Dockerfile`) diz a `src/index.ts` para servir sob `/admin` — ver "Topologia de
 `/admin`" abaixo. `admin-app/dist` já é build final (HTML/JS/CSS estáticos via `vite build`),
-não código-fonte: o Docker só o copia, nunca o recompila.
+não código-fonte: o Docker só o copia, nunca o recompila. `companies.json` é a cópia de
+`config/companies.json` da raiz do repositório, que vira `/app/config/companies.json` na
+imagem e é apontada por `BOOTH_COMPANIES_FILE` — sem ela o catálogo de empresas resolvia
+para um caminho inexistente e a canonicalização virava um no-op silencioso (ver comentário
+no `Dockerfile`).
 
 ## Deploy
 
