@@ -2023,3 +2023,191 @@ Execução de 2026-09-06, contra `vibe-cabral` / `jogo-navinha`, revisão
 **Brinde de verificação, fora do plano original:** o SVG renderizado localmente a partir do spec da
 partida saiu **byte-idêntico** ao que a nuvem gravou. A imagem no ar roda o mesmo renderizador de
 `@jogo/shared`, sem drift entre o que o teste local afirma e o que o estande vai produzir.
+
+---
+
+## Bloco 26 — Dois estandes simultâneos contra o mesmo placar
+
+> **Pré-requisitos:** este bloco roda contra o projeto real (`vibe-cabral` / `jogo-navinha`), depois
+> de um `npm run deploy:gcp` que já inclua a entrega de dois estandes (`GET /v1/companies`, pull de
+> catálogo e aliases no daemon, `station_id`/`played_at`, fila de celebração no telão). ADC do
+> operador (`gcloud auth application-default login`). Estimativa: 30 min, mais 10 min se você fizer
+> o 26.2 nos dois Macs de verdade.
+
+O que este bloco cobre é o que **um Mac só não prova sozinho e um emulador não prova nunca**: o
+`company_canonical` é o ID do documento em `company_rankings`, então dois Macs casando nomes contra
+listas diferentes racham a mesma empresa em dois rankings — em silêncio, porque as duas grafias
+resolvem com confiança alta e nenhuma é marcada para revisão.
+
+A parte automatizável está em `scripts/rehearse-two-booths.mjs`: ele sobe **dois daemons de
+verdade** neste Mac (portas 3100 e 3101, bancos SQLite e catálogos separados, `station_id`
+`ensaio-booth-a` e `ensaio-booth-b`), aponta os dois para o Cloud Run e afirma tudo que dá para
+julgar por HTTP e por uma leitura do Firestore. Este bloco é o resto — o que precisa de olho humano.
+
+- [ ] **26.0 — Rodar o ensaio automatizado**
+
+```bash
+gcloud auth application-default login          # se ainda não tiver ADC
+export ADMIN_PANEL_PASSWORD='<senha do painel>' # as outras duas saem de packages/daemon/.env
+npm run rehearse:two-booths -- --sem-limpeza
+```
+
+O `--sem-limpeza` é o modo deste bloco: ele **deixa os dois estandes de pé** nas portas 3100/3101 e
+as partidas de ensaio na nuvem, que é o cenário de que os passos seguintes precisam. Ctrl-C no fim
+derruba os dois daemons.
+
+**Critério:** o relatório fecha com `0 falhas` nos sete blocos. Eles cobrem, nesta ordem:
+divergência silenciosa de catálogo (dois rankings), convergência pelo pull (um ranking só, com a
+soma certa), remoção espelhada nos dois estandes, as travas contra catálogo vazio e poda em massa,
+buffer offline com `played_at`, `stationActivity` no `/v1/admin/health` e o cenário de empate.
+
+> O catálogo de produção é salvo antes de qualquer alteração e **restaurado sempre**, inclusive se
+> um passo falhar no meio — a cópia fica em `/tmp/ensaio-dois-booths/catalogo-original.json`. As
+> empresas de ensaio começam com `Ensaio ` e os codinomes com `ENSAIO`. Com `--sem-limpeza` as
+> partidas **ficam**: o script imprime os `match_id` no fim, e você as apaga pelo painel (Partidas →
+> seleção em massa → Apagar) antes de abrir o estande.
+
+- [ ] **26.1 — O resíduo de alias, e por que os dois Macs precisam de banco zerado**
+
+Este passo não é uma verificação, é uma **decisão operacional** que o ensaio automatizado torna
+visível. O Bloco 2 do script afirma, de propósito, um comportamento que parece bug e não é:
+
+> `o resíduo do alias divergente sobrevive ao pull (comportamento de projeto)`
+
+`resolveCompany` consulta o cache de aliases **antes** do catálogo, e o espelhamento de catálogo
+deliberadamente não apaga aliases já aprendidos (senão uma edição no painel reescreveria o histórico
+do evento no meio dele). Então um estande que já cacheou uma grafia divergente continua resolvendo
+para o canônico velho **para sempre**: o pull de catálogo não conserta, e o pull de aliases também
+não, porque aquela resolução divergente teve confiança 1,0 — nunca foi marcada `needs_company_review`
+e a nuvem nunca teve o que aprender com ela. **O pull conserta o futuro, não o passado.**
+
+**Critério, e é a única ação deste passo:** em **cada um dos dois Macs**, na véspera do evento,
+
+```bash
+npm run reset:db
+```
+
+Confirme depois, em cada Mac, que `sqlite3 <BOOTH_DB_PATH> 'select count(*) from company_aliases'`
+devolve `0`. Um Mac que chega no dia com aliases de teste é um Mac que vai rachar rankings reais.
+
+- [ ] **26.2 — Smoke de forja em branco, com login do `agy` conferido**
+
+Um auto-update do `agy` já derrubou a autenticação em silêncio, e sem login **todo visitante recebe
+preset de emergência** — a experiência inteira vira uma nave genérica. Isto vale por Mac.
+
+**Limitação honesta deste ensaio:** `scripts/booth-terminal.sh` tem `/tmp/booth_session` e
+`localhost:3000` fixos no código, então **não** há como rodar dois terminais de forja no mesmo Mac.
+Aqui, faça o smoke contra o daemon de sempre (`npm run start:daemon` na 3000 e `npm run
+start:terminal`), uma vez. No dia, faça em **cada** Mac, que tem seu próprio `/tmp/booth_session`.
+
+**Critério:** uma jornada completa termina com uma nave **forjada** (geometria própria, não a
+silhueta neutra), e o cabeçalho da sessão do `agy` não mostra nenhum pedido de login. Se sair a
+silhueta neutra, o `agy` está deslogado — resolva antes de abrir o estande, não é ajuste fino.
+
+- [ ] **26.3 — Fila de celebração: dois recordes em menos de 7 s, duas celebrações em cada TV**
+
+Este é o clímax da experiência e o passo com maior chance de decepcionar um visitante. Antes desta
+entrega o telão tinha um **slot único** de celebração, sobrescrito pelo recorde seguinte; o modal
+fica 7 s na tela, então dois recordes dentro dessa janela faziam alguém perder o próprio momento.
+Com dois estandes, a janela deixa de ser rara.
+
+Abra **duas** janelas de `https://jogo-navinha-telao.web.app` (as duas TVs do dia), lado a lado, as
+duas em `NUVEM`. Então, num terminal:
+
+```bash
+npm run rehearse:two-booths -- --recordes
+```
+
+O modo `--recordes` lê o melhor score do dia, sobe os dois estandes e dispara `topo+100` no A e
+`topo+200` no B com ≈1,5 s entre eles. À mão isso é uma corrida de segundos entre duas máquinas, e é
+exatamente a corrida que a fila existe para cobrir.
+
+**Critério:** **duas** celebrações, **uma de cada vez**, em **cada uma** das duas janelas — quatro
+modais no total, nenhum engolido, nenhum piscando por cima do outro. A ordem entre elas pode diferir
+entre as janelas; o que não pode é sumir uma. Apague depois os dois `match_id` que o script imprime.
+
+- [ ] **26.4 — Empate: a mesma ordem nas duas TVs**
+
+O Bloco 7 do ensaio deixa duas partidas com score **idêntico** (2777), uma de cada estande. Com as
+duas janelas do telão abertas, recarregue **as duas** três vezes seguidas.
+
+**Critério:** `ENSAIOEMP1` e `ENSAIOEMP2` aparecem na **mesma ordem relativa** nas duas janelas, e
+essa ordem **não muda** entre os refreshes. O desempate é `final_score` → `created_at` mais antigo →
+`match_id`, e é determinístico de propósito: sem ele a ordem exibida oscilava a cada mesclagem de
+snapshot, e com dois estandes os empates deixam de ser exceção.
+
+- [ ] **26.5 — Ticker ordenado por hora de jogo, não por hora de ingestão**
+
+O Bloco 5 do ensaio derruba a rede do estande B, joga duas partidas com 1,5 s entre elas, religa e
+espera a fila drenar. Essas partidas chegam ao Firestore **minutos** depois de terem sido jogadas, e
+`created_at` é sobrescrito com a hora de **ingestão** — sem `played_at`, elas ocupariam o topo de
+"recentes" e poderiam disparar uma celebração de recorde velho.
+
+No telão, olhe o ticker de partidas recentes logo depois que o Bloco 5 fechar.
+
+**Critério:** as duas partidas de `ENSAIOOFF` aparecem na posição correspondente a **quando foram
+jogadas** (isto é, atrás das partidas que os blocos seguintes produziram enquanto B estava offline),
+não empilhadas no topo. E **nenhuma celebração de recorde** foi disparada pela drenagem.
+
+- [ ] **26.6 — Painel: "Atividade por estação" e o filtro por Mac**
+
+Abra `<URL do Cloud Run>/admin` → **Saúde**. O script já afirma o conteúdo do JSON; aqui o que se
+verifica é a **tela**, e sobretudo que ela não engane o operador.
+
+**Critério:** a tabela **Atividade por estação** lista `ensaio-booth-a` e `ensaio-booth-b` com
+contagem e último horário **formatado como data legível** (não `Timestamp` cru, não `undefined`), e
+ela aparece como uma seção **separada** da fila de sincronização. As duas respondem perguntas
+diferentes — "aquele Mac está produzindo partidas?" contra "a fila de saída daquele Mac está
+drenando?" — e a nota honesta de que a nuvem não enxerga a segunda continua na tela.
+
+Depois vá em **Partidas** e use o filtro por estação.
+
+**Critério:** filtrando por `ensaio-booth-b`, **todas** as linhas mostram aquela estação, e as
+partidas de `ensaio-booth-a` somem. Sem filtro, as duas estações aparecem misturadas e cada linha
+diz de qual veio.
+
+- [ ] **26.7 — Uma empresa cadastrada no painel chega aos dois autocompletes**
+
+Com os dois estandes de pé (26.0 com `--sem-limpeza`), vá em **Empresas** no painel, acrescente
+`Ensaio Empresa Tardia` e salve. Espere um ciclo do worker.
+
+```bash
+curl -s 'http://localhost:3100/api/companies?q=Ensaio%20Empresa' | jq
+curl -s 'http://localhost:3101/api/companies?q=Ensaio%20Empresa' | jq
+curl -s http://localhost:3100/api/catalog/status | jq '.catalog'
+curl -s http://localhost:3101/api/catalog/status | jq '.catalog'
+```
+
+**Critério:** a empresa aparece no autocomplete dos **dois** estandes, e os dois
+`/api/catalog/status` mostram `state: "ok"` com a **mesma** `appliedVersion`. No estande de verdade
+o efeito visível é o campo Empresa da Tela 1 sugerindo o nome novo nos dois Macs. Apague a empresa
+pelo painel no fim — ela começa com `Ensaio ` justamente para isso.
+
+> No dia, o ciclo do worker é de 120 s, não os 8 s que o ensaio usa. "Cadastrei e não apareceu" nos
+> primeiros dois minutos é comportamento normal, e vale avisar quem for operar o painel.
+
+- [ ] **26.8 — Os dois Macs têm `BOOTH_STATION_ID` distinto (fazer nos Macs de verdade)**
+
+Este é o único passo que **não** dá para fechar no Mac único: o ensaio injeta os `station_id` por
+env, então ele prova o mecanismo, não a configuração das duas máquinas. No dia, no boot de cada
+daemon, olhe a primeira dezena de linhas do log.
+
+**Critério:** cada Mac imprime um `station_id` **diferente**, e nenhum dos dois imprime
+`estacao-desconhecida` nem o aviso de env ausente. O default por hostname já é útil (os dois Macs
+têm hostnames distintos), mas um `BOOTH_STATION_ID` explícito em cada `.env` é o que torna o painel
+legível para quem não decorou os hostnames.
+
+- [ ] **26.9 — Tabela de registro**
+
+| # | Passo | Passou? | Observação |
+|---|-------|---------|------------|
+| 26.0 | Ensaio automatizado fechou com 0 falhas | [ ] | |
+| 26.1 | `reset:db` rodado nos dois Macs, `company_aliases` zerado | [ ] | |
+| 26.2 | Forja em branco com `agy` logado | [ ] | |
+| 26.3 | Duas celebrações em cada TV, nenhuma engolida | [ ] | |
+| 26.4 | Empate na mesma ordem nas duas TVs, estável em 3 refreshes | [ ] | |
+| 26.5 | Partidas drenadas não subiram ao topo do ticker | [ ] | |
+| 26.6 | Atividade por estação legível; filtro por Mac funciona | [ ] | |
+| 26.7 | Empresa nova no autocomplete dos dois estandes, mesma versão | [ ] | |
+| 26.8 | `station_id` distinto no boot dos dois Macs | [ ] | |
+| Fim | Partidas de ensaio apagadas e catálogo conferido | [ ] | |
