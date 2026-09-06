@@ -2107,6 +2107,13 @@ em `catalog-sync.test.ts`) e só é alcançável apontando um estande para um se
 de verdade. A poda em massa é o oposto: o servidor **aceita** (só a lista vazia é barrada lá) e quem
 recusa são os dois daemons, acima de 30% de remoção num pull.
 
+> **Consequência que não é óbvia, e que vale para o dia.** A lista que assume nesse cenário é a do
+> **disco do container**, congelada no build — não a que o operador curou no painel. Se as duas
+> divergirem (e basta um "Salvar" para isso), esvaziar o documento faz os dois Macs espelharem,
+> em silêncio e dentro de um ciclo de pull, um catálogo diferente do que estava valendo. Nada
+> quebra e nada esvazia; só passa a valer uma lista antiga. O `source` que `GET /v1/companies`
+> devolve (`firestore` / `disk` / `stale-cache`) é o que diz qual camada está no ar.
+
 **Se preferir subir os dois estandes à mão** (para depurar, ou para jogar de verdade nas duas
 janelas em vez de deixar o script postar as partidas), é um terminal por estande. O que separa um do
 outro são cinco variáveis — porta, `station_id`, banco, sessão e catálogo:
@@ -2323,12 +2330,12 @@ script são todas sobre convergência na nuvem e o mesmo código de daemon roda 
 
 | # | Passo | Passou? | Observação |
 |---|-------|---------|------------|
-| 26.0 | Ensaio automatizado fechou sem falhas | 🟡 | **45/45** afirmações na execução de 06/09. O deploy semeou `companies/catalog` com 25 empresas — o documento **não existia** em produção, confirmando ao vivo o achado de que o editor de empresas do painel era um no-op. Mas o Bloco 5 daquela execução não media o que dizia medir (ver 26.5) e foi reescrito depois: **rodar de novo** para o verde valer |
+| 26.0 | Ensaio automatizado fechou sem falhas | 🟡 | 1ª execução 06/09: **45/45**, e o deploy semeou `companies/catalog` com 25 empresas — o documento **não existia** em produção, confirmando ao vivo que o editor de empresas do painel era um no-op. Mas o Bloco 5 dali não media o que dizia medir (ver 26.5). 2ª execução, com o Bloco 5 corrigido: **44/45** — Bloco 5 ✅ com atrasos de 8988 ms e 10430 ms, e uma falha nova no Bloco 4, também afirmação errada e não defeito (o estande espelhou o catálogo de fallback, que não é obrigado a ser idêntico ao de produção). Corrigida; **3ª execução pendente** |
 | 26.1 | `reset:db` rodado nos dois Macs, `company_aliases` zerado | [ ] | |
 | 26.2 | Forja em branco com `agy` logado | [ ] | |
 | 26.3 | Duas celebrações em cada TV, nenhuma engolida | ✅ | **4 modais, 2 em cada janela**, uma de cada vez. Melhor score do dia era 4200; o script mandou `ENSAIOREC1` 4300 (A) e `ENSAIOREC2` 4400 (B). A fila cobriu a corrida que antes fazia o segundo recorde sobrescrever o primeiro |
 | 26.4 | Empate na mesma ordem nas duas TVs, estável em 3 refreshes | ✅ | `ENSAIOEMP1` antes de `ENSAIOEMP2`, estável em vários refreshes, simultâneos e alternando entre as duas janelas |
-| 26.5 | Partidas drenadas não subiram ao topo do ticker | [ ] | Primeira tentativa olhou o **ranking** (onde `ENSAIOOFF2`/`OFF1` ficam no fim só por terem score 1600/1500) — não discrimina. Ao refazer contra o JSON apareceu o achado maior: o atraso medido foi de **707 ms** (`OFF2`) e **2180 ms** (`OFF1`), **abaixo** dos 3,3–3,8 s de latência das partidas online da mesma execução. A janela offline do Bloco 5 era mais curta que um envio normal, então as três afirmações passavam por corrida. Bloco 5 reescrito (prova de `state: retrying`, janela de 8 s, atraso medido por magnitude); **refazer o 26.0 antes deste passo** |
+| 26.5 | Partidas drenadas não subiram ao topo do ticker | [ ] | Primeira tentativa olhou o **ranking** (onde `ENSAIOOFF2`/`OFF1` ficam no fim só por terem score 1600/1500) — não discrimina. Ao refazer contra o JSON apareceu o achado maior: o atraso medido foi de **707 ms** (`OFF2`) e **2180 ms** (`OFF1`), **abaixo** dos 3,3–3,8 s de latência das partidas online da mesma execução. A janela offline do Bloco 5 era mais curta que um envio normal, então as três afirmações passavam por corrida. Bloco 5 reescrito (prova de `state: retrying`, janela de 8 s, atraso medido por magnitude). Na 2ª execução o bloco fechou verde com atrasos de **8988 ms** e **10430 ms** — uma ordem de grandeza acima do que a versão anterior media. Falta só a conferência do `LIVE FEED` na TV |
 | 26.6 | Atividade por estação legível; filtro por Mac funciona | ✅ | Saúde passou de primeira: `ensaio-booth-b` 5 / `ensaio-booth-a` 3, com data legível. Partidas ❌ na primeira tentativa: **não havia coluna nem filtro de estação na tela** — o `?station=` já existia no `listMatches` desde a Fase 5, mas o `admin-app` nunca o expôs, e este passo do plano descrevia uma UI que não existia. Coluna e filtro entregues em `2fb0c4a`; depois do redeploy a coluna apareceu e o clique filtrou |
 | 26.7 | Empresa nova no autocomplete dos dois estandes, mesma versão | [ ] | |
 | 26.8 | `station_id` distinto no boot dos dois Macs | [ ] | |
