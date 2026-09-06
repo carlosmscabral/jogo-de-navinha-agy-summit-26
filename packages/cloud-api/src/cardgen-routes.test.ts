@@ -17,10 +17,22 @@ import { SHIP_CARD_VERSION } from '@jogo/shared';
 process.env.NODE_ENV = 'test';
 process.env.CARDGEN_ENABLED = '1';
 // Atribuição, não `||=`: `index.ts` monta seu Firestore com `initializeApp()` sem argumentos, que
-// tira o projeto DESTA variável, enquanto `test-helpers.ts` fixa `jogo-navinha-test`. O emulador
+// tira o projeto DESTAS variáveis, enquanto `test-helpers.ts` fixa `jogo-navinha-test`. O emulador
 // isola um projeto do outro, então uma variável já exportada no shell (um `GOOGLE_CLOUD_PROJECT`
 // de trabalho, por exemplo) faria a rota procurar a partida num projeto onde ela não existe — e o
 // sintoma seria um 204 "documento não existe", indistinguível de um bug de verdade no cardgen.
+//
+// São TRÊS variáveis, nesta ordem de precedência dentro do firebase-admin: `FIREBASE_CONFIG`
+// (JSON, ganha de tudo), depois `GCLOUD_PROJECT`, e só então `GOOGLE_CLOUD_PROJECT`. O
+// `firebase emulators:exec --project X` exporta as três para o processo filho, então fixar só
+// `GOOGLE_CLOUD_PROJECT` aqui não adiantava nada — o `FIREBASE_CONFIG` do wrapper vencia.
+// O `npm run test:cloud-api` da raiz passa `--project jogo-navinha-test` e por isso sempre
+// funcionou; quem rodasse o `emulators:exec` na mão com outro `--project` (achado ao vivo em
+// 2026-09-06, com `--project vibe-cabral`) via o `db` de `index.ts` cair no projeto errado e a
+// rota responder o 204 descrito acima — um falso negativo com cara de bug real no cardgen.
+// Fixar as três aqui torna a suíte indiferente a como o emulador foi levantado.
+process.env.FIREBASE_CONFIG = JSON.stringify({ projectId: 'jogo-navinha-test' });
+process.env.GCLOUD_PROJECT = 'jogo-navinha-test';
 process.env.GOOGLE_CLOUD_PROJECT = 'jogo-navinha-test';
 process.env.BOOTH_INGEST_TOKEN ||= 'test-booth-token';
 process.env.ADMIN_PANEL_PASSWORD ||= 'test-admin-panel-password';

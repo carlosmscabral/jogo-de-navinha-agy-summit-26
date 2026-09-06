@@ -20,7 +20,14 @@ import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
 
 process.env.NODE_ENV = 'test';
-process.env.GOOGLE_CLOUD_PROJECT ||= 'jogo-navinha-test';
+// Atribuição, não `||=`, e as três variáveis: ver o comentário longo em `cardgen-routes.test.ts`.
+// O `db` de `index.ts` tem de cair no mesmo projeto de emulador que `test-helpers.ts` fixa, e o
+// firebase-admin resolve o projeto por `FIREBASE_CONFIG` > `GCLOUD_PROJECT` > `GOOGLE_CLOUD_PROJECT`
+// — as três exportadas por baixo dos panos pelo `firebase emulators:exec --project X`, o que torna
+// o resultado da suíte dependente do `--project` que o operador escolheu. Fixar as três desfaz isso.
+process.env.FIREBASE_CONFIG = JSON.stringify({ projectId: 'jogo-navinha-test' });
+process.env.GCLOUD_PROJECT = 'jogo-navinha-test';
+process.env.GOOGLE_CLOUD_PROJECT = 'jogo-navinha-test';
 process.env.BOOTH_INGEST_TOKEN ||= 'test-booth-token';
 process.env.ADMIN_PANEL_PASSWORD ||= 'test-admin-panel-password';
 // Mesmo default de test-helpers.ts (porta 8080). Rodando fora deste sandbox específico, isto
