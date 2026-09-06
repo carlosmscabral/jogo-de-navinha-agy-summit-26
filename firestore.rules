@@ -29,6 +29,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Lease da varredura de canonicalização (system/canonicalization_lease). Ao contrário das
+    // coleções acima, NADA aqui é público: é estado interno de coordenação entre instâncias do
+    // Cloud Run, sem nenhum uso para o placar ou para o estande. O Admin SDK ignora estas regras.
+    match /system/{doc} {
+      allow read, write: if false;
+    }
+
     // Nada mais existe. Uma coleção nova precisa ser declarada aqui de propósito.
     match /{document=**} {
       allow read, write: if false;

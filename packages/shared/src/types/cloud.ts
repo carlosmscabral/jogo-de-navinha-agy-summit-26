@@ -157,3 +157,43 @@ export interface MatchCorrection {
   final_score?: number;
   voided?: boolean;
 }
+
+/**
+ * Corpo de `GET /v1/admin/health`. Mora aqui pelo mesmo motivo de `MatchCorrection` acima: era
+ * uma cópia manual em `packages/admin-app/src/api.ts`, sem nenhuma ligação pelo compilador com
+ * a interface de `packages/cloud-api/src/admin.ts` — as duas podiam divergir em silêncio até
+ * alguém abrir a tela de Saúde no meio do evento e ver um campo `undefined`.
+ */
+export interface AdminHealthReport {
+  syncQueue: {
+    stations: Array<{ stationId: string; pending: number; state: string }>;
+    note: string;
+  };
+  /**
+   * Atividade por estação, derivada das últimas partidas ingeridas. Seção SEPARADA de
+   * `syncQueue` de propósito, e a distinção importa no dia: `syncQueue` responderia "a fila de
+   * saída daquele Mac está drenando?" (pergunta que ninguém consegue responder do lado da
+   * nuvem, ver a nota daquela seção), enquanto esta responde "aquele Mac está produzindo
+   * partidas?". Preencher a primeira com os dados da segunda faria o operador ler "estação
+   * ausente" como "fila vazia, tudo certo" quando o significado real é "aquele Mac morreu".
+   */
+  stationActivity: {
+    stations: Array<{
+      stationId: string;
+      matches: number;
+      /** ISO 8601. Hora de INGESTÃO da última partida daquela estação, não de jogo. */
+      lastMatchAt: string;
+    }>;
+    sampleSize: number;
+    note: string;
+  };
+  recentRejections: {
+    items: Array<{ match_id: string; reason: string }>;
+    note: string;
+  };
+  emergencyPreset: {
+    rate: number;
+    sampleSize: number;
+    note: string;
+  };
+}

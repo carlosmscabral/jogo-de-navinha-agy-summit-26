@@ -56,6 +56,34 @@ export function HealthScreen() {
             </table>
           )}
 
+          {/* Seção separada da fila de sync, e a distinção é a que importa no dia: "aquele Mac
+              está produzindo partidas?" não é a mesma pergunta que "a fila de saída dele está
+              drenando?", e é esta aqui que a nuvem consegue responder. */}
+          <h3>Atividade por estação</h3>
+          {report.stationActivity.stations.length === 0 ? (
+            <p className="note">Nenhuma partida na amostra.</p>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Estação</th>
+                  <th>Partidas</th>
+                  <th>Última ingestão</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.stationActivity.stations.map((s) => (
+                  <tr key={s.stationId}>
+                    <td>{s.stationId}</td>
+                    <td>{s.matches}</td>
+                    <td>{new Date(s.lastMatchAt).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <p className="note">{report.stationActivity.note}</p>
+
           <h3>Rejeições recentes</h3>
           {report.recentRejections.items.length === 0 ? (
             <p className="note">{report.recentRejections.note}</p>

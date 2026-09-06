@@ -192,6 +192,43 @@ describe('runCanonicalizationSweep (Firestore emulator)', () => {
     const right = (await testDb.collection('company_rankings').doc('Google').get()).data()!;
     assert.equal(right.schema_version, SCHEMA_VERSION);
   });
+
+  it('duas varreduras concorrentes produzem o mesmo resultado que uma', async () => {
+    // Esta é a rede DE VERDADE contra varredura duplicada — o lease de `lease.ts` é economia de
+    // quota, não correção. Ele tem TTL, e uma varredura que estoure o TTL faz duas rodarem em
+    // paralelo de qualquer forma. O que impede estrago é `correctMatchCompany` reler a flag
+    // dentro da transação, e é exatamente isso que este teste tranca: ninguém pode passar a
+    // depender do lease para garantir exclusão mútua.
+    await ingestBatch(testDb, [
+      matchFixture({
+        match_id: 'm7',
+        pilot_id: 'p7',
+        final_score: 1000,
+        company_raw: 'gogle',
+        company_canonical: 'Gogle',
+        needs_company_review: true
+      })
+    ]);
+
+    const generate = async () =>
+      JSON.stringify([{ match_id: 'm7', company_canonical: 'Google', confidence: 0.95 }]);
+
+    await Promise.all([
+      runCanonicalizationSweep(testDb, generate, CATALOG, 0.85),
+      runCanonicalizationSweep(testDb, generate, CATALOG, 0.85)
+    ]);
+
+    const match = (await testDb.collection('matches').doc('m7').get()).data()!;
+    assert.equal(match.company_canonical, 'Google');
+    assert.equal(match.needs_company_review, undefined);
+
+    const certa = (await testDb.collection('company_rankings').doc('Google').get()).data()!;
+    assert.equal(certa.total_score, 1000, 'o score foi contado duas vezes');
+    assert.equal(certa.pilots_count, 1);
+
+    const errada = (await testDb.collection('company_rankings').doc('Gogle').get()).data();
+    assert.equal(errada?.total_score ?? 0, 0);
+  });
 });
 
 describe('listAliasesSince (Firestore emulator)', () => {

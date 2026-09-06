@@ -11,7 +11,7 @@
  * deste arquivo aparecer, é essa senha, não um bug de autenticação aqui. Ver README do
  * cloud-api ("Autenticação do painel de admin").
  */
-import type { MatchDocument, CompanyCatalogDocument, MatchCorrection } from '@jogo/shared';
+import type { MatchDocument, CompanyCatalogDocument, MatchCorrection, AdminHealthReport } from '@jogo/shared';
 import { ENDPOINTS } from './config.js';
 
 // '' quando não configurado: mesma origem, o caso normal em produção (o admin-app é
@@ -120,21 +120,12 @@ export function putCompanies(
   });
 }
 
-export interface AdminHealthReport {
-  syncQueue: {
-    stations: Array<{ stationId: string; pending: number; state: string }>;
-    note: string;
-  };
-  recentRejections: {
-    items: Array<{ match_id: string; reason: string }>;
-    note: string;
-  };
-  emergencyPreset: {
-    rate: number;
-    sampleSize: number;
-    note: string;
-  };
-}
+/**
+ * Reexportado, não redeclarado. Era uma cópia manual desta interface, sem ligação nenhuma pelo
+ * compilador com a de `packages/cloud-api/src/admin.ts` — o tipo de deriva que só aparece com a
+ * tela de Saúde aberta no meio do evento. Agora as duas pontas leem `@jogo/shared`.
+ */
+export type { AdminHealthReport };
 
 export function fetchHealth(): Promise<AdminHealthReport> {
   return requestJson('/v1/admin/health');

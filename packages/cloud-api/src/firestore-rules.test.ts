@@ -69,6 +69,15 @@ describe('firestore.rules', () => {
     await assertFails(db.collection('matches').doc('m2').set({ final_score: 1 }));
   });
 
+  it('nega LEITURA do lease de canonicalização, ao contrário das coleções do placar', async () => {
+    // `system/` é coordenação interna entre instâncias do Cloud Run. A regra existe declarada
+    // (e não só coberta pelo catch-all) para que uma coleção nova entre aqui de propósito — e
+    // este caso trava a diferença: as outras quatro coleções são de leitura pública, esta não.
+    const db = env.unauthenticatedContext().firestore();
+    await assertFails(db.collection('system').doc('canonicalization_lease').get());
+    await assertFails(db.collection('system').doc('canonicalization_lease').set({ holder: 'x' }));
+  });
+
   it('nega qualquer acesso a coleções não previstas', async () => {
     const db = env.unauthenticatedContext().firestore();
     await assertFails(db.collection('segredos').doc('x').get());

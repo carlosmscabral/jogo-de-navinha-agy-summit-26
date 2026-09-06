@@ -26,7 +26,8 @@ import {
   field,
   type MatchDocument,
   type CompanyCatalogDocument,
-  type MatchCorrection
+  type MatchCorrection,
+  type AdminHealthReport
 } from '@jogo/shared';
 import { MAX_PLAUSIBLE_SCORE } from './ingest.js';
 
@@ -34,7 +35,7 @@ import { MAX_PLAUSIBLE_SCORE } from './ingest.js';
 // PATCH /v1/admin/matches/:id
 // ---------------------------------------------------------------------------
 
-export type { MatchCorrection };
+export type { MatchCorrection, AdminHealthReport };
 
 type StoredMatch = MatchDocument;
 
@@ -361,6 +362,12 @@ export async function bulkPatchOrDelete(
 export interface ListMatchesParams {
   q?: string;
   company?: string;
+  /**
+   * Filtra por `station_id`. Em memória, sobre a mesma janela já varrida — nenhuma consulta nova,
+   * nenhum índice novo. Serve à pergunta operacional de um evento com dois estandes: "o que
+   * aquele Mac mandou?", tipicamente depois da tabela de atividade apontar um deles.
+   */
+  station?: string;
   limit?: number;
 }
 
@@ -402,6 +409,9 @@ export async function listMatches(db: Firestore, params: ListMatchesParams): Pro
   if (params.company) {
     docs = docs.filter((m) => m.company_canonical === params.company);
   }
+  if (params.station) {
+    docs = docs.filter((m) => (m.station_id ?? UNKNOWN_STATION_LABEL) === params.station);
+  }
   if (params.q) {
     const q = params.q.toLowerCase();
     docs = docs.filter(
@@ -417,9 +427,11 @@ export async function listMatches(db: Firestore, params: ListMatchesParams): Pro
       const exact = await db.collection('matches').doc(params.q).get();
       if (exact.exists) {
         const doc = normalizeMatchDocForRead(exact.data() as MatchDocument);
-        // O filtro de empresa continua valendo: um ID exato de outra empresa apareceria
-        // como resultado de uma busca que o operador restringiu de propósito.
-        if (!params.company || doc.company_canonical === params.company) {
+        // Os filtros continuam valendo: um ID exato de outra empresa (ou de outra estação)
+        // apareceria como resultado de uma busca que o operador restringiu de propósito.
+        const matchesCompany = !params.company || doc.company_canonical === params.company;
+        const matchesStation = !params.station || (doc.station_id ?? UNKNOWN_STATION_LABEL) === params.station;
+        if (matchesCompany && matchesStation) {
           docs = [doc, ...docs];
         }
       }
@@ -551,20 +563,39 @@ export async function seedCompanyCatalogIfMissing(db: Firestore, companies: stri
 /** Janela de partidas (por `created_at`) usada para estimar a taxa de preset de emergência. */
 const HEALTH_SAMPLE_SIZE = 200;
 
-export interface AdminHealthReport {
-  syncQueue: {
-    stations: Array<{ stationId: string; pending: number; state: string }>;
-    note: string;
-  };
-  recentRejections: {
-    items: Array<{ match_id: string; reason: string }>;
-    note: string;
-  };
-  emergencyPreset: {
-    rate: number;
-    sampleSize: number;
-    note: string;
-  };
+/** Rótulo das partidas ingeridas antes de `station_id` existir, ou vindas de um daemon sem env. */
+export const UNKNOWN_STATION_LABEL = '(sem station_id)';
+
+/**
+ * Agrupa a amostra de partidas por estação. Recebe os documentos já lidos — a leitura é a MESMA
+ * de `getHealthReport`, e o ponto inteiro desta seção é não custar nenhuma leitura extra nem
+ * exigir um canal novo do estande para a nuvem.
+ *
+ * Ordena por atividade mais recente primeiro: no dia, a pergunta é "qual Mac parou?", e a
+ * resposta é a última linha da tabela.
+ */
+export function groupMatchesByStation(
+  docs: MatchDocument[]
+): Array<{ stationId: string; matches: number; lastMatchAt: string }> {
+  const byStation = new Map<string, { matches: number; lastMatchAt: string }>();
+
+  for (const doc of docs) {
+    const stationId = typeof doc.station_id === 'string' && doc.station_id ? doc.station_id : UNKNOWN_STATION_LABEL;
+    // `toIsoTimestamp` e não `String(...)`: `created_at` volta do Firestore como `Timestamp` do
+    // Admin SDK, e mandar isso cru para o React é exatamente o bug que aquele helper documenta.
+    const at = toIsoTimestamp(doc.created_at);
+    const current = byStation.get(stationId);
+    if (!current) {
+      byStation.set(stationId, { matches: 1, lastMatchAt: at });
+      continue;
+    }
+    current.matches += 1;
+    if (at > current.lastMatchAt) current.lastMatchAt = at;
+  }
+
+  return [...byStation.entries()]
+    .map(([stationId, v]) => ({ stationId, ...v }))
+    .sort((a, b) => (a.lastMatchAt < b.lastMatchAt ? 1 : a.lastMatchAt > b.lastMatchAt ? -1 : 0));
 }
 
 /**
@@ -573,8 +604,12 @@ export interface AdminHealthReport {
  * de CADA daemon do estande, nunca reportado ao Firestore — este endpoint roda no
  * Cloud Run e não tem, hoje, nenhuma fila de sincronização por estação para mostrar.
  * O mesmo vale para `ingestBatch`'s `rejected[]` (`ingest.ts`): é devolvido na resposta
- * HTTP e nunca persistido. A única métrica que este endpoint calcula de verdade é a taxa
- * de preset de emergência, porque `telemetry.fallback_used` É gravado em `matches`.
+ * HTTP e nunca persistido.
+ *
+ * O que este endpoint calcula de verdade é o que sai da própria coleção `matches`: a taxa de
+ * preset de emergência (`telemetry.fallback_used` É gravado) e, desde que o evento passou a ter
+ * dois estandes, a atividade por estação — o mesmo snapshot de 200 partidas agrupado por
+ * `station_id`, sem nenhuma leitura extra e sem canal novo do estande para a nuvem.
  */
 export async function getHealthReport(db: Firestore): Promise<AdminHealthReport> {
   const snap = await db
@@ -592,9 +627,18 @@ export async function getHealthReport(db: Firestore): Promise<AdminHealthReport>
       stations: [],
       note:
         "CloudSyncService.status() (Task C5) is per-daemon, in-process state and is never reported " +
-        'to Firestore, so this cloud-side endpoint has no per-station sync queue to show today. Only ' +
-        'a single station is realistically deployed for this event; a real multi-station queue view ' +
-        'would need a new booth-to-cloud status channel, which is out of scope here.'
+        'to Firestore, so this cloud-side endpoint has no per-station sync queue to show today. A real ' +
+        'multi-station queue view would need a new booth-to-cloud status channel, which is out of scope ' +
+        'here. Para saber se cada Mac está VIVO — pergunta diferente — ver stationActivity abaixo.'
+    },
+    stationActivity: {
+      stations: groupMatchesByStation(docs),
+      sampleSize,
+      note:
+        `Partidas das últimas ${HEALTH_SAMPLE_SIZE} ingeridas, agrupadas por station_id. É atividade ` +
+        'observada na nuvem, não estado do estande: uma estação que jogou e ficou sem rede só aparece ' +
+        'aqui quando a fila dela drenar, e lastMatchAt é a hora de INGESTÃO, não a de jogo. Partidas ' +
+        `anteriores ao campo station_id aparecem como "${UNKNOWN_STATION_LABEL}".`
     },
     recentRejections: {
       items: [],

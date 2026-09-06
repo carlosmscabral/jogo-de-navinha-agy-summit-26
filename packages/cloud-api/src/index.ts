@@ -35,6 +35,8 @@ import {
   type CanonicalizeRequestItem
 } from './canonicalize.js';
 import { createCompanyCatalogProvider, firestoreCatalogReader } from './company-catalog.js';
+import { createSweepTrigger } from './sweep-trigger.js';
+import { withLease } from './lease.js';
 
 /** POST /v1/matches aceita no máximo isso por chamada (Spec 08 §6.1). */
 const MAX_BATCH_SIZE = 50;
@@ -132,6 +134,23 @@ const companyCatalog = createCompanyCatalogProvider({
   }
 });
 
+/**
+ * Gatilho da Tarefa C4, passado a `ingestBatch` — que o chama SEM `await`, e só quando alguma
+ * partida do lote ficou marcada `needs_company_review`.
+ *
+ * As duas guardas contra varredura duplicada estão em `sweep-trigger.ts` e `lease.ts`; o que
+ * importa aqui é por que elas passaram a valer a pena: com dois estandes, duas ingestões
+ * concorrentes chamavam o Vertex em duplicidade disputando quota com a moderação L2, que é
+ * bloqueante e está no caminho crítico do visitante.
+ */
+const canonicalizationSweep = createSweepTrigger({
+  run: async () => {
+    const { companies } = await companyCatalog.get();
+    await runCanonicalizationSweep(db, canonicalizeWithVertex, companies);
+  },
+  withLease: (fn) => withLease(db, fn)
+});
+
 export const app = express();
 app.use(express.json({ limit: '2mb' }));
 
@@ -225,9 +244,11 @@ if (process.env.CARDGEN_ENABLED === '1') {
     const q = typeof req.query.q === 'string' ? req.query.q : undefined;
     const company = typeof req.query.company === 'string' ? req.query.company : undefined;
     const limitParam = typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined;
+    const station = typeof req.query.station === 'string' ? req.query.station : undefined;
     const matches = await listMatches(db, {
       q,
       company,
+      station,
       limit: limitParam !== undefined && Number.isFinite(limitParam) ? limitParam : undefined
     });
     res.status(200).json({ matches });
@@ -323,24 +344,9 @@ if (process.env.CARDGEN_ENABLED === '1') {
       return;
     }
 
-    const result = await ingestBatch(db, body.matches as MatchDocument[], triggerCanonicalizationSweep);
+    const result = await ingestBatch(db, body.matches as MatchDocument[], canonicalizationSweep.trigger);
     res.status(200).json(result);
   });
-
-  /**
-   * Gatilho da Tarefa C4, passado a `ingestBatch` — que o chama SEM `await` só quando alguma
-   * partida do lote ficou marcada `needs_company_review`. `.catch` aqui é essencial: sem ele,
-   * uma falha do Vertex nesta promise desanexada vira um `unhandledRejection` do processo
-   * inteiro, não um erro de uma partida.
-   */
-  function triggerCanonicalizationSweep(dbRef: FirebaseFirestore.Firestore): void {
-    companyCatalog
-      .get()
-      .then(({ companies }) => runCanonicalizationSweep(dbRef, canonicalizeWithVertex, companies))
-      .catch((err) => {
-        console.error('[cloud-api] canonicalization sweep failed:', err);
-      });
-  }
 
   app.post('/v1/moderate', async (req: Request, res: Response) => {
     const body = req.body as { callsign?: unknown };

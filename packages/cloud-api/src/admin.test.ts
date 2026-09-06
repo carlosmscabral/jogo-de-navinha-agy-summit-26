@@ -426,4 +426,95 @@ describe('getHealthReport', () => {
     assert.equal(report.emergencyPreset.sampleSize, 2);
     assert.equal(report.emergencyPreset.rate, 0.5);
   });
+
+  it('agrupa as partidas por estação com contagem e último horário', async () => {
+    await ingestBatch(testDb, [
+      matchFixture({ match_id: 'm1', station_id: 'booth-a' }),
+      matchFixture({ match_id: 'm2', station_id: 'booth-b' }),
+      matchFixture({ match_id: 'm3', station_id: 'booth-a' })
+    ]);
+
+    const { stations } = (await getHealthReport(testDb)).stationActivity;
+    const porId = new Map(stations.map((s) => [s.stationId, s]));
+
+    assert.equal(stations.length, 2);
+    assert.equal(porId.get('booth-a')?.matches, 2);
+    assert.equal(porId.get('booth-b')?.matches, 1);
+  });
+
+  it('lastMatchAt é string ISO, nunca o Timestamp cru do Firestore', async () => {
+    // Mesma regressão de `listMatches`: `created_at` é gravado com `FieldValue.serverTimestamp()`
+    // e volta como `Timestamp` do Admin SDK. Serializado na resposta HTTP isso vira
+    // `{_seconds,_nanoseconds}`, e o React quebra com "Objects are not valid as a React child"
+    // — tela branca no painel, no meio do evento.
+    await ingestBatch(testDb, [matchFixture({ match_id: 'm1', station_id: 'booth-a' })]);
+
+    const { stations } = (await getHealthReport(testDb)).stationActivity;
+    assert.equal(typeof stations[0].lastMatchAt, 'string');
+    assert.ok(!Number.isNaN(Date.parse(stations[0].lastMatchAt)), 'lastMatchAt não é uma data legível');
+  });
+
+  it('partidas sem station_id caem num rótulo próprio, não somem nem viram "undefined"', async () => {
+    // As partidas ingeridas antes do campo existir, e as de um daemon sem a env configurada.
+    await ingestBatch(testDb, [
+      matchFixture({ match_id: 'm1' }),
+      matchFixture({ match_id: 'm2', station_id: 'booth-a' })
+    ]);
+
+    const ids = (await getHealthReport(testDb)).stationActivity.stations.map((s) => s.stationId);
+    assert.deepEqual([...ids].sort(), ['(sem station_id)', 'booth-a']);
+  });
+
+  it('a estação com atividade mais recente vem primeiro', async () => {
+    // No dia a pergunta é "qual Mac parou?", e ordenar por recência põe a resposta na última linha.
+    await ingestBatch(testDb, [matchFixture({ match_id: 'm1', station_id: 'booth-a' })]);
+    await new Promise((r) => setTimeout(r, 50));
+    await ingestBatch(testDb, [matchFixture({ match_id: 'm2', station_id: 'booth-b' })]);
+
+    const { stations } = (await getHealthReport(testDb)).stationActivity;
+    assert.equal(stations[0].stationId, 'booth-b');
+    assert.equal(stations[1].stationId, 'booth-a');
+  });
+
+  it('sem partida nenhuma, a seção vem vazia em vez de quebrar', async () => {
+    const report = await getHealthReport(testDb);
+    assert.deepEqual(report.stationActivity.stations, []);
+    assert.equal(report.stationActivity.sampleSize, 0);
+  });
+});
+
+describe('listMatches — filtro por estação', () => {
+  beforeEach(async () => { await clearFirestore(); });
+
+  it('filtra pelas partidas de um único Mac', async () => {
+    await ingestBatch(testDb, [
+      matchFixture({ match_id: 'm1', station_id: 'booth-a' }),
+      matchFixture({ match_id: 'm2', station_id: 'booth-b' }),
+      matchFixture({ match_id: 'm3', station_id: 'booth-a' })
+    ]);
+
+    const docs = await listMatches(testDb, { station: 'booth-a' });
+    assert.deepEqual(docs.map((d) => d.match_id).sort(), ['m1', 'm3']);
+  });
+
+  it('o rótulo das partidas sem station_id também filtra', async () => {
+    await ingestBatch(testDb, [
+      matchFixture({ match_id: 'm1' }),
+      matchFixture({ match_id: 'm2', station_id: 'booth-a' })
+    ]);
+
+    const docs = await listMatches(testDb, { station: '(sem station_id)' });
+    assert.deepEqual(docs.map((d) => d.match_id), ['m1']);
+  });
+
+  it('combina com o filtro de empresa em vez de substituí-lo', async () => {
+    await ingestBatch(testDb, [
+      matchFixture({ match_id: 'm1', station_id: 'booth-a', company_canonical: 'Google' }),
+      matchFixture({ match_id: 'm2', station_id: 'booth-a', company_canonical: 'Itaú' }),
+      matchFixture({ match_id: 'm3', station_id: 'booth-b', company_canonical: 'Google' })
+    ]);
+
+    const docs = await listMatches(testDb, { station: 'booth-a', company: 'Google' });
+    assert.deepEqual(docs.map((d) => d.match_id), ['m1']);
+  });
 });
