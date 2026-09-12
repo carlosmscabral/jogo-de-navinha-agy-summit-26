@@ -7,10 +7,10 @@ agente num terminal de verdade. Depois de forjada, o visitante pilota a própria
 segundos contra ondas de inimigos e um chefe, e vê a pontuação subir num placar corporativo exibido
 numa TV do estande.
 
-Isto **não é um produto**. É uma ativação de evento, com prazo, hardware específico e um ciclo-alvo
-de 2m30s por visitante. O repositório é dirigido por especificação: as decisões de projeto, os
-números de balanceamento e a topologia de nuvem moram em [`specs/`](./specs/), e o código é a
-execução delas.
+Isto **não é um produto** — nem um produto Google oficialmente suportado (ver
+[§9](#9-aviso)). É uma ativação de evento, com prazo, hardware específico e um ciclo-alvo de 2m30s
+por visitante. O repositório é dirigido por especificação: as decisões de projeto, os números de
+balanceamento e a topologia de nuvem moram em [`specs/`](./specs/), e o código é a execução delas.
 
 ---
 
@@ -130,7 +130,7 @@ Notas que valem mais que o diagrama:
 └── NOTICE                  Aviso de copyright no formato Apache
 ```
 
-### 4. Os oito pacotes
+## 4. Os oito pacotes
 
 | Pacote | O que é |
 | :--- | :--- |
@@ -275,3 +275,16 @@ sua**. O contexto está na [Spec 09](./specs/09_GAME_BALANCE_AND_DEV_MODE.md) e 
 
 Distribuído sob a **Apache License 2.0**. O texto integral está em [`LICENSE`](./LICENSE) e o aviso
 de copyright em [`NOTICE`](./NOTICE).
+
+---
+
+## 9. Aviso
+
+Este repositório **não é um produto Google oficialmente suportado**. O código aqui existe para fins
+demonstrativos: é a ativação de um estande de evento, construída sob prazo, e não recebe SLA,
+suporte, roadmap nem garantia de compatibilidade. Nada aqui deve ser lido como a posição oficial do
+Google sobre o Antigravity ou sobre qualquer outro produto citado — a fonte para isso é a
+documentação de cada produto.
+
+> This repository itself is not an officially supported Google product. The code in this repository
+> is for demonstrative purposes only.
