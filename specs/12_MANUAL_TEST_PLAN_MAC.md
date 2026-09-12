@@ -2362,8 +2362,17 @@ script são todas sobre convergência na nuvem e o mesmo código de daemon roda 
 > ou apontador de apresentador ligado na máquina que serve a TV. Estimativa: 15 min, mais 15 de
 > espera no 27.9.
 >
-> Para os passos que precisam de placar cheio, ≥20 partidas já ingeridas — as de ensaio do Bloco 26
-> servem, desde que apagadas depois.
+> Para os passos que precisam de placar cheio, ≥20 partidas já ingeridas. As de ensaio do Bloco 26
+> servem, mas o caminho direto é:
+>
+> ```bash
+> BOOTH_INGEST_TOKEN="$(gcloud secrets versions access latest --secret=booth-ingest-token --project=vibe-cabral)" \
+> npm run seed:demo-matches
+> ```
+>
+> 25 partidas em empresas reais do catálogo, todas com `station_id: demo-telao` — é por esse filtro,
+> em Painel → Partidas → Estação, que se apaga tudo depois. Enquanto elas estiverem lá a aba Saúde
+> mostra 100% de fallback; é esperado, o seeder marca `fallback_used: true` de propósito.
 
 O que mudou nesta entrega, e por que cada passo abaixo existe: o placar passou de 10 pilotos e 5
 empresas **fixos** para 20 e 15 **rolando** (`TOP_PILOTS_LIMIT` / `TOP_COMPANIES_LIMIT` em
@@ -2409,9 +2418,14 @@ Este é o caso das primeiras horas do estande, e é o mais fácil de esquecer. C
 no placar (ou apontando o telão para uma base recém-limpa), olhe os dois painéis por um minuto.
 
 **Critério:** **nenhuma** rolagem, **nenhum** tremor de um pixel indo e voltando, nenhum salto ao
-fim de um ciclo invisível. As listas ficam paradas no topo. É o caminho `overflowPx <= 0` de
-`scrollOffsetAt`, e um telão que treme com quatro linhas na tela é a primeira coisa que um visitante
-nota.
+fim de um ciclo invisível. As listas ficam paradas no topo — só o `LIVE FEED` do rodapé continua
+correndo. É o caminho `overflowPx <= 0` de `scrollOffsetAt`, e um telão que treme com quatro linhas
+na tela é a primeira coisa que um visitante nota.
+
+> **Faça este passo por último, e faça-o durante a limpeza.** Todos os outros passos deste bloco
+> precisam do placar cheio; este precisa dele quase vazio, então tentar os dois na mesma base é
+> impossível. Ao apagar as partidas de demonstração no painel, **deixe 3 ou 4 para trás**, confira
+> este passo com dado de verdade na tela, e só então apague o resto.
 
 - [ ] **27.4 — O ciclo automático**
 
@@ -2446,6 +2460,17 @@ de verdade: dava para ir e voltar entre as seções, mas não para sair.
 > deve acontecer. É deliberado — uma tecla esbarrada não pode tirar o ranking da TV no meio do
 > evento. Para sair do placar é preciso a intenção explícita de uma seta.
 
+**Terceira parte — os mesmos comandos no mouse.** Nem todo mundo que assume o estande no meio do dia
+sabe que existe um atalho de teclado, então os controles também são clicáveis, no **canto direito do
+cabeçalho** e no **mesmo canto nas duas visões** (`components/OperatorControls.tsx`). Com o placar no
+ar há um botão só, `ANTIGRAVITY`; dentro do painel aparecem `←`, `→` e `VOLTAR AO PLACAR`.
+
+**Critério:** clicar produz exatamente o mesmo efeito das teclas — inclusive o selo
+`MODO APRESENTAÇÃO` e a contagem. Depois de clicar em `→`, aperte **espaço**: deve avançar a seção,
+e não voltar ao placar. É o teste do `blur()`, e o motivo dele é concreto: o apontador do estande
+manda espaço, e um espaço com o foco preso no botão `VOLTAR AO PLACAR` tiraria o painel do ar no
+meio da apresentação.
+
 - [ ] **27.6 — A volta sozinho (o passo que não pode ser pulado)**
 
 Com o selo `MODO APRESENTAÇÃO` no ar, **tire a mão do teclado** e espere.
@@ -2461,12 +2486,24 @@ congelada num slide institucional pelo resto do evento.
 
 - [ ] **27.7 — Recorde top-3 durante a apresentação**
 
-Com o painel do Antigravity **segurado manualmente** (selo no ar), sincronize uma partida que entre
-no top 3. A partir de um estande de pé, ou:
+Com o painel do Antigravity **segurado manualmente** (selo no ar — confira antes de disparar, é o
+selo que garante que existe uma retenção para ser vencida), sincronize uma partida que entre no
+top 3. A partir de um estande de pé, ou:
 
 ```bash
-npm run rehearse:two-booths -- --recordes
+BOOTH_INGEST_TOKEN="$(gcloud secrets versions access latest --secret=booth-ingest-token --project=vibe-cabral)" \
+npm run seed:demo-matches -- --recorde
 ```
+
+Manda **uma** partida de 92.000 pontos direto no `POST /v1/matches`: sem daemon, sem porta, sem senha
+de painel. Se o placar já tiver algo acima disso, some com `--score=<maior>`.
+
+> **Não use `npm run rehearse:two-booths -- --recordes` para este passo.** Aquele modo existe para o
+> **26.3**, onde a corrida entre dois estandes é o objeto do teste; aqui ele só acrescenta dois
+> daemons entre você e uma celebração na tela. Ele também exige `ADMIN_PANEL_PASSWORD` exportada no
+> shell — a única das três variáveis que não vem do `.env` do daemon — para descobrir o topo atual do
+> placar. Sem ela, até 2026-09-12, o modo calculava recorde zero e disparava 100 e 200 num placar
+> cheio: nada celebrava e o script imprimia `1/1 afirmações passaram`. Hoje ele aborta.
 
 **Critério:** o telão **corta na hora** para o placar e celebra — o modal de recorde aparece, a
 retenção manual é descartada e o selo some. Depois dos 7 s do modal, o placar segue no ciclo normal.
@@ -2492,15 +2529,18 @@ Chrome: `Shift+Esc`). Cinco ciclos completos cabem nessa janela.
 
 - [ ] **27.10 — Tabela de registro**
 
+Executado em **2026-09-12**, na TV do estande, contra o Hosting, com 25 partidas semeadas por
+`npm run seed:demo-matches`.
+
 | # | Passo | Passou? | Observação |
 |---|-------|---------|------------|
-| 27.1 | 20 pilotos e 15 empresas, legíveis do fundo | [ ] | |
-| 27.2 | Vai-e-volta em ≈88 s, dentro da fatia de 90 s | [ ] | |
-| 27.3 | Placar com poucas partidas não rola nem treme | [ ] | |
-| 27.4 | Ciclo automático 1m30 / 1m com as 3 seções | [ ] | |
-| 27.5 | Seta segura o painel; Esc volta ao placar na hora | [ ] | |
-| 27.6 | **Volta sozinho ao placar por inatividade** | [ ] | |
-| 27.7 | Recorde top-3 corta para o placar e celebra | [ ] | |
-| 27.8 | Ticker nas duas visões; nenhum QR falso na tela | [ ] | |
-| 27.9 | 15 min sem deriva de rolagem, relógio ou memória | [ ] | |
-| Fim | Partidas de ensaio do 27.7 apagadas | [ ] | |
+| 27.1 | 20 pilotos e 15 empresas, legíveis do fundo | [x] | Topo e base de ambos os painéis legíveis da posição do visitante |
+| 27.2 | Vai-e-volta em ≈88 s, dentro da fatia de 90 s | [x] | Velocidade boa; `pxPerSecond` não precisou de ajuste |
+| 27.3 | Placar com poucas partidas não rola nem treme | [x] | Com 3 pilotos, as duas listas param; só o `LIVE FEED` se move |
+| 27.4 | Ciclo automático 1m30 / 1m com as 3 seções | [x] | |
+| 27.5 | Seta segura o painel; Esc volta ao placar na hora | [x] | Teclado e os botões do cabeçalho, os dois caminhos |
+| 27.6 | **Volta sozinho ao placar por inatividade** | [x] | |
+| 27.7 | Recorde top-3 corta para o placar e celebra | [x] | Pelo seeder, com `--recorde`. O ensaio `--recordes` não serve aqui — ver a nota do passo |
+| 27.8 | Ticker nas duas visões; nenhum QR falso na tela | [x] | Ticker no rodapé nas duas; nenhum vestígio do QR desenhado à mão |
+| 27.9 | 15 min sem deriva de rolagem, relógio ou memória | [x] | Heap estável entre dois snapshots; `(compiled code)` domina o retido, que é o bundle, não vazamento |
+| Fim | Partidas de ensaio do 27.7 apagadas | [ ] | Painel → Partidas → Estação `demo-telao`. **Mais** os 2 do ensaio, que têm outro `station_id`: `ENSAIOREC1` e `ENSAIOREC2`, empresa fictícia "Ensaio Recorde" |
