@@ -1,4 +1,4 @@
-import React, { useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { Terminal, Rocket, AlertCircle, RefreshCw, Flame, Shield, Gauge, Play, CheckCircle2, Activity, Circle, LifeBuoy, Zap, Sparkles, Copy, Check } from 'lucide-react';
 import {
   BALANCE,

@@ -1,4 +1,3 @@
-import React from 'react';
 import { Rocket, Sparkles, Download, Presentation } from 'lucide-react';
 import { ANTIGRAVITY_SECTIONS } from '../antigravity-content.js';
 

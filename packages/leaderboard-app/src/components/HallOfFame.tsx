@@ -1,5 +1,4 @@
-import React from 'react';
-import { Trophy, Crown, Medal, Flame, Zap, Shield, Sparkles } from 'lucide-react';
+import { Trophy, Crown, Medal } from 'lucide-react';
 import { useAutoScroll } from '../use-auto-scroll.js';
 
 export interface TopPilotEntry {

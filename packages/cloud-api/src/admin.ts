@@ -4,8 +4,8 @@
  * `patchMatch` é o único lugar do sistema onde recalcular um agregado varrendo as
  * partidas de uma empresa é a implementação correta. A Spec 05 §4.3 proíbe isso no
  * caminho de ingestão (`ingest.ts`), que é quente e roda centenas de vezes por evento;
- * este caminho é frio, roda um punhado de vezes, disparado por um operador humano atrás
- * do IAP — nunca pelo daemon do estande. `top_individual_score` é a razão de fundo:
+ * este caminho é frio, roda um punhado de vezes, disparado por um operador humano autenticado
+ * no painel — nunca pelo daemon do estande. `top_individual_score` é a razão de fundo:
  * é um máximo, não uma soma, e não sobrevive a um decremento aritmético — anular o
  * recordista exige descobrir quem é o segundo colocado, e só uma varredura responde
  * isso. `total_score`/`pilots_count` dariam para ajustar por delta, mas recalculá-los
@@ -13,12 +13,11 @@
  * idempotente de graça: uma segunda anulação da mesma partida recalcula exatamente o
  * mesmo estado, em vez de descontar de novo.
  *
- * Autenticação: nenhuma checagem aqui. Em produção, `/v1/admin/*` fica atrás do
- * Identity-Aware Proxy do Cloud Run (configuração de deploy, ver README) — o token de
- * ingestão de escopo único da Tarefa C3 não abre esta porta de propósito, porque é o
- * mesmo token que vive na máquina do estande. Em desenvolvimento/emulador, isso
- * significa que estas rotas ficam abertas sem nenhum token, o que é esperado nesta
- * camada.
+ * Autenticação: nenhuma checagem aqui, e sim uma camada acima. `index.ts` aplica
+ * `requireAdminAuth` (senha HTTP Basic, Tarefa C10) em todo `/v1/admin/*` via `app.use`,
+ * incondicionalmente — em produção e contra o emulador, sem exceção para desenvolvimento.
+ * Não há IAP nesta topologia. O token de ingestão de escopo único da Tarefa C3 não abre
+ * esta porta de propósito, porque é o mesmo token que vive na máquina do estande.
  */
 import { FieldValue, type Firestore, type Query } from 'firebase-admin/firestore';
 import {

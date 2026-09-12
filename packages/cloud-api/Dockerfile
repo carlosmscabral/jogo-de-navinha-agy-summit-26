@@ -42,8 +42,9 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY package.json ./
 
-# admin-app (Tarefa C7, Passo 5): servido pelo MESMO container, sob /admin, atrás do IAP
-# configurado no Cloud Run (não neste Dockerfile — ver README). `ADMIN_APP_DIST` diz a
+# admin-app (Tarefa C7, Passo 5): servido pelo MESMO container, sob /admin, atrás da senha HTTP
+# Basic da Tarefa C10, aplicada em src/index.ts (não há IAP nesta topologia — ver README).
+# `ADMIN_APP_DIST` diz a
 # `src/index.ts` onde procurar o build; sem ele, o servidor sobe normalmente e só loga um
 # aviso — `/admin` fica indisponível, mas `/v1/*` continua funcionando.
 COPY vendor/admin-app-dist ./admin-app-dist

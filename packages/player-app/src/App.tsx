@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ShipSpecification, PilotInfo, EnergySliders, McpServerName, SubagentName, FALLBACK_PRESETS, MatchRecord } from '@jogo/shared';
 import { createGameInstance, MatchCompleteData } from './game/index.js';
 import { buildMatchRecord } from './match-record.js';

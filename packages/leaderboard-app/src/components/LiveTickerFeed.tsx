@@ -1,5 +1,4 @@
-import React from 'react';
-import { Radio, Zap, Flame, Clock } from 'lucide-react';
+import { Radio, Zap } from 'lucide-react';
 
 export interface RecentMatchEntry {
   match_id: string;

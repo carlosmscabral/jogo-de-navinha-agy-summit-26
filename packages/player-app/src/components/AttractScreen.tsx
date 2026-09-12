@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Rocket, Trophy, Sparkles, Zap, Shield, Play, Terminal, ChevronRight } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Trophy, Play, Terminal, ChevronRight } from 'lucide-react';
 import { GAME_NAME, GAME_TAGLINE, EVENT_BANNER } from '@jogo/shared';
 import { audioManager } from '../game/audio/AudioManager.js';
 import { ENDPOINTS } from '../config.js';

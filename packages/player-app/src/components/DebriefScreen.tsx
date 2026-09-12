@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Trophy, RotateCcw, Award, CheckCircle, Clock, Heart, Flame, ShieldAlert, Sparkles, User, Building2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Trophy, RotateCcw, Award, Clock, Flame, ShieldAlert, User, Building2 } from 'lucide-react';
 import { MatchRecord } from '@jogo/shared';
 
 interface DebriefScreenProps {

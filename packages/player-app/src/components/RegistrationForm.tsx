@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Building2, ShieldCheck, ChevronRight, AlertCircle, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { User, Building2, ShieldCheck, ChevronRight, AlertCircle, ArrowLeft } from 'lucide-react';
 import { PilotInfo, validateCallsign } from '@jogo/shared';
 import { ENDPOINTS } from '../config.js';
 

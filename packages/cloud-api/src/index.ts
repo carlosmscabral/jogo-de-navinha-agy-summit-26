@@ -154,8 +154,9 @@ const canonicalizationSweep = createSweepTrigger({
 export const app = express();
 app.use(express.json({ limit: '2mb' }));
 
-// GET /v1/health fica fora da autenticação: é o endpoint que o self_test.sh (Tarefa D3)
-// bate para checar se o serviço subiu, antes de haver qualquer token para apresentar.
+// GET /v1/health fica fora da autenticação: é o endpoint que o self_test.sh da Tarefa D3 vai
+// bater para checar se o serviço subiu, antes de haver qualquer token para apresentar. Esse
+// script ainda não existe no repositório — até lá, o consumidor é `curl` na mão.
 app.get('/v1/health', (_req: Request, res: Response) => {
   res.status(200).json({ status: 'ok' });
 });
@@ -231,13 +232,12 @@ if (process.env.CARDGEN_ENABLED === '1') {
 
   // Tarefa C7 — /v1/admin/*. Este bloco fica ANTES do middleware do token de ingestão (logo
   // abaixo) de propósito: o token de escopo único da Tarefa C3 vive na máquina do estande e
-  // não pode abrir a porta administrativa — são privilégios diferentes. Em produção, o
-  // Cloud Run serve /v1/admin/* atrás do Identity-Aware Proxy (configuração de deploy, ver
-  // README, não código aqui). Sem IAP na frente (localmente, contra o emulador), estas rotas
-  // dependiam só do IAP e ficavam sem nenhuma autenticação própria — por isso a Tarefa C10
-  // acrescenta `requireAdminAuth` logo abaixo, cobrindo todo `/v1/admin/*` de uma vez via
-  // `app.use`, antes de qualquer rota individual. Ver admin.ts para o resto do raciocínio de
-  // autorização (não autenticação) destas rotas.
+  // não pode abrir a porta administrativa — são privilégios diferentes. Não há nenhuma camada
+  // de identidade na frente disto (ver o comentário de `requireAdminAuth` logo acima): até a
+  // Tarefa C10 estas rotas ficavam sem autenticação própria. O `requireAdminAuth` abaixo cobre
+  // todo `/v1/admin/*` de uma vez via `app.use`, antes de qualquer rota individual, igual em
+  // produção e contra o emulador. Ver admin.ts para o resto do raciocínio de autorização (não
+  // autenticação) destas rotas.
   app.use('/v1/admin', requireAdminAuth);
 
   app.get('/v1/admin/matches', async (req: Request, res: Response) => {
@@ -433,11 +433,12 @@ if (process.env.CARDGEN_ENABLED === '1') {
   });
 
   // --- Estáticos do admin-app (Tarefa C7, Passo 5 do brief) ---
-  // "Servir o admin-app pelo MESMO container Cloud Run da API, sob /admin, atrás do IAP.
-  // Um serviço a menos para provisionar, e o IAP protege a rota inteira de uma vez." O IAP em
-  // si é configuração de deploy (ver README, seção de autenticação) — este bloco só serve os
-  // estáticos já compilados, mesmo padrão de `packages/daemon/src/index.ts` para o player-app
-  // (Spec 08 §5): `express.static` para os arquivos com hash (JS/CSS), e uma rota de fallback
+  // Servir o admin-app pelo MESMO container Cloud Run da API, sob /admin: um serviço a menos
+  // para provisionar. Quem protege a rota é a senha HTTP Basic da Tarefa C10, aplicada logo
+  // abaixo neste mesmo bloco (não há IAP nesta topologia — ver README, seção de autenticação);
+  // aqui só se servem os estáticos já compilados, mesmo padrão de
+  // `packages/daemon/src/index.ts` para o player-app (Spec 08 §5): `express.static` para os
+  // arquivos com hash (JS/CSS), e uma rota de fallback
   // de SPA para qualquer outra coisa sob `/admin` que não seja um arquivo estático conhecido.
   // A checagem por `/admin` explícito (não um catch-all de toda a origem) garante que isto
   // nunca compete com nenhuma rota de `/v1/*` acima, em nenhuma ordem de registro.

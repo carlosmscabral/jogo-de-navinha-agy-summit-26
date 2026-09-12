@@ -1,4 +1,3 @@
-import React from 'react';
 import { Lightbulb } from 'lucide-react';
 import { ShipSpecification, SubagentName, SUBAGENT_CATALOG } from '@jogo/shared';
 

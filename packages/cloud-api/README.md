@@ -12,7 +12,8 @@ estande nunca fala com o Firestore diretamente — só com este serviço, via HT
   `{ accepted: string[]; rejected: Array<{ match_id: string; reason: string }> }`. Ao final,
   se algum item aceito ficou marcado `needs_company_review`, dispara (sem `await`, nunca no
   caminho de resposta) a varredura de canonicalização da Tarefa C4.
-- `GET /v1/health` — sem autenticação; usado pelo `self_test.sh` (Tarefa D3).
+- `GET /v1/health` — sem autenticação. Será o alvo do `self_test.sh` da Tarefa D3, que ainda
+  não existe no repositório; hoje se checa com `curl`.
 - `POST /v1/moderate` — corpo `{ callsign: string }` →
   `{ verdict: 'allow' | 'block' | 'unavailable'; reason?: string }`. Camada 2 de moderação
   (Tarefa C4, Spec 05 §3.2): bloqueante, falha FECHADA (`block`) em qualquer dúvida do modelo

@@ -36,7 +36,11 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Nada mais existe. Uma coleção nova precisa ser declarada aqui de propósito.
+    // Catch-all. Tudo que não está declarado acima cai aqui e fica negado a todo cliente —
+    // inclusive `company_aliases`, que EXISTE em produção (escrita pelo Admin SDK em
+    // canonicalize.ts) e deliberadamente não tem regra própria: ao contrário do placar, ela
+    // não tem leitor público. Uma coleção que precise de leitura pública tem de ser declarada
+    // aqui em cima, de propósito.
     match /{document=**} {
       allow read, write: if false;
     }

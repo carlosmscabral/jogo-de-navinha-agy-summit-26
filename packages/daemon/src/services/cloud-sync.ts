@@ -25,7 +25,8 @@
  * arquivo uma única vez, na subida do processo. Nada muta `process.env` em runtime.
  */
 
-/** Estado observável de `status()`, consumido por `GET /api/sync/status` (self_test.sh / painel do operador). */
+/** Estado observável de `status()`, consumido por `GET /api/sync/status` (painel do operador; e
+ *  pelo self_test.sh da Tarefa D3, que ainda não existe no repositório). */
 export type SyncState = 'ok' | 'retrying' | 'auth_failed' | 'disabled';
 
 export interface SyncOutcome {

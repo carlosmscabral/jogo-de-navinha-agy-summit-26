@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback, useReducer } from 'react';
-import { Trophy, Radio, Zap, Users, Flame, Shield, Globe, Terminal } from 'lucide-react';
-import { HallOfFame, TopPilotEntry } from './components/HallOfFame.js';
-import { CompanyDominance, CompanyRankEntry } from './components/CompanyDominance.js';
-import { LiveTickerFeed, RecentMatchEntry } from './components/LiveTickerFeed.js';
+import { useState, useEffect, useCallback, useReducer } from 'react';
+import { Trophy, Radio, Users } from 'lucide-react';
+import { HallOfFame } from './components/HallOfFame.js';
+import { CompanyDominance } from './components/CompanyDominance.js';
+import { LiveTickerFeed } from './components/LiveTickerFeed.js';
 import { RecordCelebrationModal } from './components/RecordCelebrationModal.js';
 import { AntigravityShowcase } from './components/AntigravityShowcase.js';
 import { OperatorControls } from './components/OperatorControls.js';

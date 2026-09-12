@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from 'react';
-import { Trophy, Crown, Sparkles, Flame, User, Building2 } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { Trophy, Crown, User, Building2 } from 'lucide-react';
 import { MatchRecord } from '@jogo/shared';
 
 interface RecordCelebrationModalProps {

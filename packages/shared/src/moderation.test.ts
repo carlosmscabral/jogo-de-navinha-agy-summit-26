@@ -2,8 +2,6 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { validateCallsign, placeholderCallsign } from './utils/moderation.js';
 import {
-  calculateSimilarity,
-  cleanCompanyName,
   resolveCompanyFromCatalog,
   isValidFirestoreDocId
 } from './utils/company-normalizer.js';

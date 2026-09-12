@@ -1,5 +1,4 @@
-import React from 'react';
-import { Building2, Users, Flame, Award, TrendingUp } from 'lucide-react';
+import { Building2, Users } from 'lucide-react';
 import { useAutoScroll } from '../use-auto-scroll.js';
 
 export interface CompanyRankEntry {
