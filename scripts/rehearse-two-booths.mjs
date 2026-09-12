@@ -33,7 +33,8 @@
  * primeiras, elas são lidas de lá):
  *   BOOTH_CLOUD_API_BASE   URL do Cloud Run, ex. https://jogo-navinha-api-xxx.run.app
  *   BOOTH_INGEST_TOKEN     token Bearer dos estandes
- *   ADMIN_PANEL_PASSWORD   senha HTTP Basic do painel
+ *   ADMIN_PANEL_PASSWORD   senha HTTP Basic do painel — NUNCA lida do .env do daemon, sempre do
+ *                          shell. O .env de um estande não deve carregar credencial de admin.
  *   ENSAIO_PROJECT_ID          default `vibe-cabral` (prefixo `ENSAIO_` de propósito: ver abaixo)
  *   ENSAIO_FIRESTORE_DATABASE  default `jogo-navinha`
  */
@@ -1095,8 +1096,33 @@ async function limpar(catalogoOriginal) {
 async function modoRecordes() {
   bloco('Modo --recordes — dois recordes em menos de 7 s para as duas TVs');
 
+  // Este modo desvia da `preparacao()` (ver `main()`), que é quem normalmente valida as três
+  // variáveis obrigatórias — então a checagem precisa existir aqui também. Sem ela o modo roda
+  // até o fim e "passa": `ADMIN_PANEL_PASSWORD` é a única das três SEM fallback para
+  // `packages/daemon/.env` (por desenho — o .env de um estande não deve carregar a senha do
+  // painel), então numa máquina de estande bem configurada ela é justamente a que falta.
+  const faltando = [];
+  if (!CLOUD_BASE) faltando.push('BOOTH_CLOUD_API_BASE');
+  if (!TOKEN) faltando.push('BOOTH_INGEST_TOKEN');
+  if (!SENHA_PAINEL) faltando.push('ADMIN_PANEL_PASSWORD (não vem do .env do daemon — exporte no shell)');
+  if (faltando.length) {
+    console.error(`\n[ensaio] faltam variáveis: ${faltando.join(', ')}`);
+    process.exit(1);
+  }
+
   iniciarFirestore();
-  const { corpo } = await painel('/v1/admin/matches?limit=200');
+  const resposta = await painel('/v1/admin/matches?limit=200');
+  // Achado ao vivo em 2026-09-12, no passo 27.7: sem este `throw`, um 401 caía no `?? []` abaixo
+  // e virava `topo = 0` — indistinguível de um banco vazio. O ensaio então disparava 100 e 200
+  // num placar cujo último colocado tinha 4.898, nenhuma celebração tinha motivo para acontecer,
+  // e o script imprimia `1/1 afirmações passaram`. Um recorde calculado a partir de uma consulta
+  // recusada não é um recorde; é melhor parar aqui do que reprovar o telão pelo motivo errado.
+  if (resposta.status !== 200) {
+    throw new Error(
+      `/v1/admin/matches devolveu ${resposta.status} — sem o placar atual não dá para calcular um recorde`
+    );
+  }
+  const { corpo } = resposta;
   const topo = Math.max(0, ...(corpo?.matches ?? []).map((m) => (m.voided ? 0 : m.final_score || 0)));
   nota(`melhor score hoje: ${topo}. Vou mandar ${topo + 100} e ${topo + 200}.`);
 
