@@ -137,21 +137,22 @@ processo inteiro — ver "Serviço `cardgen`" abaixo; **não a ligue** no servi�
 ## Testes locais
 
 ```bash
-npx firebase emulators:start --only firestore --project vibe-cabral
-FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 npm run test --workspace=packages/cloud-api
+npm run test:cloud-api   # da RAIZ do repositório
 ```
 
-**Se a 8080 já estiver ocupada** — um `code-server`, por exemplo — os testes batem no processo
-errado e saem ≈20 falhas com cara de bug real (`405` em `clearFirestore`). Confira antes
-(`lsof -ti :8080`) e, se estiver tomada, rode o emulador noutra porta. Não existe flag de porta na
-CLI: a porta vem do `firebase.json`, então use uma cópia temporária dele, na raiz do repositório
-(caminhos relativos como `firestore.rules` são resolvidos a partir do diretório do arquivo):
+**É o único jeito correto.** O script sobe o emulador, roda a suíte contra ele e o derruba no
+fim. Não rode `npm run test --workspace=packages/cloud-api` direto: sem
+`FIRESTORE_EMULATOR_HOST` apontando para um emulador no ar, saem ≈20 falhas com cara de bug real
+(`405` em `clearFirestore`).
 
-```bash
-jq '.emulators.firestore.port = 8085' firebase.json > firebase.emulator.json
-npx firebase emulators:start --only firestore --project vibe-cabral --config firebase.emulator.json
-FIRESTORE_EMULATOR_HOST=127.0.0.1:8085 npm run test --workspace=packages/cloud-api
-rm firebase.emulator.json   # é arquivo descartável, não commitar
+O motivo de existir um script para isso é a **porta**. O emulador não tem flag de porta na CLI —
+ela vem do arquivo de configuração —, e a 8080 do `firebase.json` costuma estar ocupada por um
+`code-server`. Por isso o repositório carrega um **`firebase.emulator.json` versionado**, idêntico
+ao `firebase.json` exceto pela porta **8085**, e é ele que o script usa:
+
+```jsonc
+// firebase.emulator.json — arquivo RASTREADO, não é scratch. Nunca redirecione saída para ele.
+"emulators": { "firestore": { "port": 8085 } }
 ```
 
 `ingest.test.ts` e `canonicalize.test.ts` compartilham o mesmo projeto/banco do emulador via

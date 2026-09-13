@@ -86,7 +86,8 @@ Em máquinas sem prebuild do `better-sqlite3`, tenha compilador: `build-essentia
 | :--- | :--- |
 | **Conta Google Cloud com faturamento** | Cloud Run, Firestore, Vertex AI, Eventarc |
 | **`gcloud` CLI** autenticado | `gcloud auth login && gcloud config set project <PROJECT_ID>` |
-| **`firebase` CLI** autenticado | `npx firebase login` (não precisa instalar global) |
+| **Credencial padrão da aplicação (ADC)** | `gcloud auth application-default login`. É uma coisa diferente do login acima: o passo 3/11 chama `scripts/seed-company-catalog.mjs`, que usa `applicationDefault()` (`:73`) e falha sem ela |
+| **`firebase` CLI** instalado **global** e autenticado | `npm i -g firebase-tools && firebase login`. `npx` **não serve**: `scripts/deploy.sh:70` exige o binário no `PATH` e aborta antes de qualquer coisa com *"firebase (firebase-tools) não encontrado no PATH"* |
 | **`openssl`** | o `deploy.sh` gera as senhas com ele |
 | Papel de **Owner** ou equivalente no projeto | criar service accounts, segredos e conceder IAM |
 
@@ -131,15 +132,22 @@ npm run build      # OBRIGATÓRIO na primeira vez — veja o aviso abaixo
 npm test
 ```
 
-Há **uma falha conhecida e esperada** em `packages/sim` (`balance-gate.test.ts`, espalhamento entre
-arquétipos). Ela aborta a suíte antes dos workspaces seguintes — para ver o resto, rode workspace a
-workspace:
+**O `npm test` da raiz não termina**, e isso é esperado. Ele percorre os workspaces em ordem
+alfabética e para no primeiro que falhar; o segundo da fila é o `cloud-api`, que precisa do
+emulador do Firestore e estoura em `clearFirestore` (`test-helpers.ts:38`) sem ele. Mais adiante,
+`packages/sim` tem uma **falha conhecida e esperada** (`balance-gate.test.ts`, espalhamento entre
+arquétipos) — mas você só chega nela rodando o workspace direto.
+
+Rode workspace a workspace, que é como a suíte é feita para ser usada:
 
 ```bash
 npm test --workspace=packages/shared
 npm test --workspace=packages/daemon
 npm test --workspace=packages/mcps
 npm test --workspace=packages/player-app
+npm test --workspace=packages/leaderboard-app
+npm test --workspace=packages/admin-app
+npm run test:cloud-api   # sobe o emulador sozinho, na 8085 — nunca rode o do cloud-api na mão
 ```
 
 Antes de aceitar qualquer outra falha como esperada, leia
@@ -250,7 +258,7 @@ PROJECT_ID=meu-projeto REGION=southamerica-east1 npm run deploy:gcp
 | :--- | :--- |
 | 1/11 | Habilita as APIs (Run, Firestore, Secret Manager, Vertex AI, Eventarc, Pub/Sub, …) |
 | 2/11 | Cria o banco Firestore nomeado |
-| 3/11 | Publica `firestore.rules` e `firestore.indexes.json` |
+| 3/11 | Publica `firestore.rules` e `firestore.indexes.json` **e semeia `companies/catalog`** com `seed-company-catalog.mjs` (`deploy.sh:113`), a origem do catálogo canônico do §3.3. O script nunca sobrescreve um catálogo existente e não vazio |
 | 4/11 | Service account do serviço de ingestão + papéis |
 | 5/11 | **Cria os dois segredos e imprime os valores — uma única vez** |
 | 6/11 | Registra o app Web do Firebase (config do SDK cliente) |
@@ -404,7 +412,10 @@ curl -s localhost:3000/api/sync/status | jq '.pending'            # 0 depois de 
 
 4. Abra `$BASE/admin` no navegador; qualquer usuário + a senha do `admin-panel-password`. As quatro
    telas (Partidas, Empresas, Saúde, Rankings) respondem.
-5. Abra a URL do Hosting numa TV/monitor: o telão mostra a partida que você acabou de jogar.
+5. Abra a URL do Hosting numa TV/monitor: o telão mostra a partida que você acabou de jogar —
+   **se estiver na visão de placar**. Ele alterna sozinho a cada 90s com o painel institucional
+   do Antigravity (`view-rotation.ts:56-60`); para cortar de volta na hora, aperte `Esc`, `Home`
+   ou `Backspace` (`operator-keys.ts:34`).
 6. Alguns segundos depois, a coluna **Nave** da tela Partidas mostra a miniatura do cartão SVG. Um
    traço (`—`) significa que o cartão ainda não foi gerado — normal logo após a ingestão, e
    permanente para partidas anteriores ao gatilho.
@@ -447,8 +458,13 @@ npm run undeploy:gcp
 Remove, nesta ordem: o gatilho Eventarc (antes dos serviços — um gatilho órfão continua tentando
 entregar), os **dois** serviços Cloud Run e as **duas** service accounts. Ele pede confirmação.
 
-**Não remove** o banco Firestore, os segredos nem o site do Hosting — apagar dados e credenciais é
-decisão deliberada, não efeito colateral de um script.
+**Tira o telão do ar**: `firebase hosting:disable --site` no site nomeado em `firebase.json`
+(`undeploy.sh:96-99`). O site e o histórico de releases continuam existindo — o endereço passa a
+responder "Site Not Found" e um `deploy --only hosting` republica tudo. Para sumir com o site de
+vez, é `firebase hosting:sites:delete <site>`, na mão.
+
+**Não remove** o banco Firestore nem os segredos — apagar dados e credenciais é decisão
+deliberada, não efeito colateral de um script.
 
 ---
 
@@ -461,8 +477,9 @@ decisão deliberada, não efeito colateral de um script.
 | `/api/sync/status` diz `"disabled"` com o `.env` preenchido | arquivo no lugar errado, ou Node < 20.12 | §5.1 |
 | Cloud Run recusa a revisão: *"Permission denied on secret"* | falta `secretAccessor` no segredo | rode `npm run deploy:gcp` de novo (o passo 5 concede sempre) |
 | Rotacionei a senha e o painel não mudou | `:latest` só re-resolve numa revisão nova | §4.3 |
-| ≈20 falhas nos testes da `cloud-api`, `405` em `clearFirestore` | a porta 8080 está ocupada por outro processo | veja `packages/cloud-api/README.md`, "Testes locais" |
-| Uma falha em `packages/sim` no `npm test` | conhecida e esperada | §3.2 |
+| ≈20 falhas nos testes da `cloud-api`, `405` em `clearFirestore` | o emulador foi subido na mão, na porta errada, ou não foi subido | use **`npm run test:cloud-api`** da raiz, que sobe o emulador na 8085 pela config própria — ver `packages/cloud-api/README.md`, "Testes locais" |
+| `npm test` da raiz para no `cloud-api` | falta o emulador; a suíte da raiz não o sobe | §3.2 — rode workspace a workspace |
+| Uma falha em `packages/sim` (`balance-gate.test.ts`) | conhecida e esperada | §3.2 |
 | `gcloud eventarc triggers create` falha com mensagem obscura | falta `serviceAccountTokenCreator` no agente do Pub/Sub | o passo 9/11 concede; rode o deploy de novo |
 | `invalid value for trigger.event_data_content_type: ""` | `gcloud` antigo, sem o `--event-data-content-type` do passo 9/11 | atualize o repo; o deploy é idempotente e retoma direto no gatilho |
 
