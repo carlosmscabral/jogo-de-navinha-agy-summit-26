@@ -23,6 +23,11 @@ A nave do jogador é um canvas de **128×128** renderizado com `setScale(0.65)`,
 
 ### 1.2. [D17] O SVG do agente não é renderizado
 
+> **D17 está FECHADO.** `renderSvgShipTexture()`
+> (`packages/player-app/src/game/factories/SvgShipRenderer.ts`) rasteriza o `svg_path_data` do agente,
+> com as silhuetas fixas como fallback; é chamado por `MainGameScene.ts:20` e pelo preview do builder
+> (`ShipPreviewCanvas.tsx:82`). O texto abaixo é o defeito como era.
+
 > **Correção.** Esta especificação definia: `svg_path_data` → `Blob` → `Image` → rasterização em canvas
 > retina 256×256 → `addCanvas`. **Esse pipeline não existe.** A fábrica desenha **três silhuetas fixas
 > no código**, escolhidas por substring de `visuals.style_name`:
@@ -119,7 +124,12 @@ três em uma tabela gerada; **nenhum número de faixa deve permanecer escrito à
 
 ### 3.2. [D13] Arma secundária
 
-Acionada por Shift, com cooldown de `secondary.cooldown_seconds`. Quatro falhas independentes a tornam
+> **D13 está FECHADO.** A secundária colide com inimigos comuns, o `emp_burst` aplica dano em área
+> (`MainGameScene.ts:948,954`) e o boss tem um teto próprio para ela
+> (`BALANCE.boss.max_damage_per_secondary_hit`), em vez de colapsar todo míssil em 45. A tabela abaixo
+> é o defeito como era; os requisitos da coluna direita foram atendidos.
+
+Acionada por Shift, com cooldown de `secondary.cooldown_seconds`. Quatro falhas independentes a tornavam
 quase inexistente — a evidência completa está em [Spec 00](./00_AUDIT_AND_DRIFT_REPORT.md) §2.12. Em
 resumo, e como requisitos:
 
@@ -131,8 +141,10 @@ resumo, e como requisitos:
 | O pool de 20 mísseis nunca é reciclado; `update()` limpa só `primaryBullets` | Limpar mísseis fora de tela no mesmo laço. |
 | `drone_escort` não é tratado em nenhum ramo | Removido do enum. Ver [Spec 03](./03_AGY_HARNESS_AND_INTEGRATION_SPEC.md) §5. |
 
-E uma quinta, que só aparece quando somada ao boss: o dano do míssil é grampeado em 60–120 aqui, e o
-`takeDamage` do boss corta qualquer impacto em 45. Um míssil de 120 entrega 45 antes da mitigação. Ver §5.
+E uma quinta, que só aparecia quando somada ao boss: o dano do míssil é grampeado em 60–120 aqui, e o
+`takeDamage` do boss cortava **qualquer** impacto em 45 — um míssil de 120 entregava 45 antes da
+mitigação, e melhorar a secundária não mudava nada na luta que decide a partida. Hoje a secundária tem
+o teto próprio que faltava (`BALANCE.boss.max_damage_per_secondary_hit`). Ver §5.
 
 ### 3.3. Ciclo de vida dos objetos de pool (corrigido em 2026-08-15)
 
@@ -182,25 +194,36 @@ spawner roda até 45s e o boss entra em seguida.
 ## 5. Boss: The Cyber Overlord
 
 > **Correção (P3).** A especificação definia 2.000 HP em três fases **cronometradas**, com duas torres
-> laterais destrutíveis e um core invulnerável. A implementação tem **15.000 HP**, um corpo único sem
-> torres, e fases por **limiar de HP**. O código é a verdade quanto à estrutura; quanto aos números,
-> ver D12 logo abaixo.
+> laterais destrutíveis e um core invulnerável. A implementação tem um corpo único sem torres e fases
+> por **limiar de HP**. O código é a verdade quanto à estrutura.
+>
+> **Quanto aos números, esta spec não é a fonte.** A fonte é `BALANCE.boss`, em
+> `packages/shared/src/constants/balance.ts`, e quem mede o efeito deles é `packages/sim`
+> (`combat-model.ts` e o portão de CI em `balance-gate.test.ts`). Esta seção descreve a **forma** da
+> luta — três fases por limiar, mitigação decrescente, invulnerabilidade na transição — porque isso
+> sobrevive a um rebalanceamento; os valores não.
 
-| Fase | Entra em | Mitigação de dano | Padrão de tiro |
+| Fase | Entra em | Dano absorvido | Padrão de tiro |
 | :--- | :--- | :--- | :--- |
-| 1 | Início, 15.000 HP | **50%** | Salvas duplas miradas a partir dos dois canhões laterais |
-| 2 | HP ≤ 66% | **30%** | Leque circular mais denso |
-| 3 | HP ≤ 33% | **0%** | Enrage: projéteis mais rápidos, cadência maior |
+| 1 | Início, com `boss.max_hp` | `1 - boss.mitigation.phase1` | Salvas duplas miradas a partir dos dois canhões laterais |
+| 2 | HP ≤ `boss.phase2_hp_ratio` | `1 - boss.mitigation.phase2` | Leque circular mais denso |
+| 3 | HP ≤ `boss.phase3_hp_ratio` | `1 - boss.mitigation.phase3` | Enrage: projéteis mais rápidos, cadência maior |
 
 Cada transição concede **2,0s de invulnerabilidade total** ao boss. O intervalo entre salvas cai de
 140ms para 110ms e depois 80ms; a velocidade dos projéteis sobe de 300 para 340 e 380 px/s.
 
-> **Nota (B8, 2026-08-13).** Os números da tabela acima (15.000 HP; mitigação de dano — a fração
-> absorvida, `1 - BALANCE.boss.mitigation.phaseN` — de 50%/30%/0%) são os que valiam **antes** desta
-> tarefa e produziram D12. Ver a correção completa, com os valores medidos vigentes hoje, no final da
-> §5.1.
+> **Os valores de hoje**, para leitura — conferir em `balance.ts` antes de citar em qualquer lugar:
+> `max_hp` 800 (`max_hp_hardcore` 1174), limiares 0,66 e 0,33, `mitigation` { 0,65; 0,70; 1,0 } — ou
+> seja, 35%, 30% e 0% de dano absorvido. Esta tabela já afirmou **15.000 HP** e 50%/30%/0%, e essa foi
+> exatamente a lição: número copiado para uma spec envelhece em silêncio, aqui por um fator de ≈19×.
 
 ### 5.1. [D12] O boss é invencível para os três presets, e um penhasco para o resto
+
+> **D12 está FECHADO desde a Fase B (2026-08-13).** Tudo que vem abaixo é o registro do defeito como
+> ele foi medido, com os números de então — 15.000 HP, mitigação de 50%/30%/0% — e **nada aqui
+> descreve o jogo de hoje**. Ficou porque a aritmética é o que explica por que o portão de CI existe;
+> as atualizações no fim da subseção contam o resto da história. Para o estado atual: `BALANCE.boss`
+> e `packages/sim`.
 
 `BossOverlord.takeDamage()` (`:305-308`) aplica, nesta ordem:
 
@@ -236,9 +259,10 @@ O ajuste não é escolher outro número por intuição — foi assim que se cheg
 travar a taxa de vitória em CI. Enquanto isso não existir, qualquer número novo é outro palpite.
 
 > **Correção (B8, medido em 2026-08-13, números revisados após revisão externa no mesmo dia).** Os
-> números de `mitigation`/`max_hp` acima e na tabela da §5 são os que **produziram** D12; eles não
-> valem mais em `balance.ts`. Os valores finais medidos — `boss.max_hp: 1.150` (`max_hp_hardcore:
-> 1.687`), `boss.mitigation: { phase1: 0.65, phase2: 0.70, phase3: 1.0 }`,
+> números de `mitigation`/`max_hp` acima são os que **produziram** D12; eles não valem mais em
+> `balance.ts`. Os valores medidos ao fim desta tarefa — `boss.max_hp: 1.150` (`max_hp_hardcore:
+> 1.687`, depois revisados para 800/1174 em 2026-08-16, ver §5.4 da Spec 09),
+> `boss.mitigation: { phase1: 0.65, phase2: 0.70, phase3: 1.0 }`,
 > `weapons.primary.vulcan_pellet_factor: 0.6`, `match.boss_spawn_s: 40`, `match.boss_warning_s: 37`
 > — e o processo que chegou a eles (cinco hipóteses aplicadas uma de cada vez, efeito medido a cada
 > passo, incluindo duas correções de medição feitas depois de uma revisão externa apontar que a
@@ -306,8 +330,13 @@ travar a taxa de vitória em CI. Enquanto isso não existir, qualquer número no
 
 ### 5.2. [D15] As sinergias não afetam o boss nem nada
 
-Nenhum modificador de `build_metadata.synergies_unlocked` é aplicado em `PlayerShip`, `WeaponSystem` ou
-`MainGameScene`. A sinergia é anunciada no builder, calculada pelo MCP, gravada no spec — e ignorada
+> **D15 está FECHADO.** As sinergias têm efeito: `applySynergies()`
+> (`packages/shared/src/game/synergies.ts:42`) devolve atributos e armas já modificados, e
+> `MainGameScene.ts:194-202` os aplica antes de a partida começar. O texto abaixo é o defeito como
+> era, mantido pela matriz de requisitos que ele aponta.
+
+Nenhum modificador de `build_metadata.synergies_unlocked` era aplicado em `PlayerShip`, `WeaponSystem`
+ou `MainGameScene`. A sinergia é anunciada no builder, calculada pelo MCP, gravada no spec — e ignorada
 pela engine. Ver [Spec 02](./02_BUILDER_AND_BUDGET_MECHANICS_SPEC.md) §6 para a matriz que precisa
 passar a ter efeito.
 
