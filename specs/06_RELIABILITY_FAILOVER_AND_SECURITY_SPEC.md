@@ -260,7 +260,8 @@ script sai com código diferente de zero se qualquer uma falhar:
 8. Nenhum processo MCP órfão de execuções anteriores.
 
 Note o que **saiu** da lista original: *"carregamento dos sound sprites no Howler.js"* verificaria uma
-biblioteca que o projeto não usa (**P8**). O `howler` continua no `package.json` e deve ser removido.
+biblioteca que o projeto não usa (**P8**). O `howler` ainda estava declarado no `package.json` quando
+esta linha foi escrita; foi removido em `01a3c99` e não há mais nenhuma biblioteca de áudio aqui.
 
 ---
 

@@ -36,9 +36,10 @@ escrito à mão: osciladores, envelopes e ruído gerados no cliente, sem nenhum 
 esta ativação é a decisão certa — zero bytes de asset, latência determinística e variação paramétrica
 por evento de jogo.
 
-**`howler` e `@types/howler` continuam no `package.json` do `player-app` e não são importados em lugar
-nenhum** (**D10**). Devem ser removidos: uma dependência não usada em uma lista de dependências é uma
-afirmação falsa sobre a arquitetura.
+**`howler` e `@types/howler` foram removidos** do `package.json` do `player-app` em `01a3c99`
+(**D10**). Estavam declarados sem serem importados em lugar nenhum, e uma dependência não usada em
+uma lista de dependências é uma afirmação falsa sobre a arquitetura. Hoje `grep -rn howler packages/`
+não retorna nada: as menções que sobram estão todas em `specs/`, como registro.
 
 ---
 

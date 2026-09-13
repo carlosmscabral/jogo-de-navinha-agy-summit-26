@@ -207,8 +207,9 @@ saídas de vídeo do host de três para duas.
 - Chromium em kiosk: `--kiosk --noerrdialogs --disable-infobars --autoplay-policy=no-user-gesture-required --user-data-dir=/tmp/player_kiosk`.
 - Desbloqueio de áudio via `audioManager.unlockAudio()` no primeiro `pointerdown`/`keydown`.
 
-> **Correções:** o desbloqueio de áudio usa o `AudioManager` próprio, não `Howler.ctx.resume()` —
-> `howler` é dependência declarada e nunca importada (**P8**, **D10**). E os scripts `setup_monitors.sh`
+> **Correções:** o desbloqueio de áudio usa o `AudioManager` próprio, não `Howler.ctx.resume()`. O
+> `howler` chegou a ser declarado sem nunca ser importado (**P8**, **D10**) e **já foi removido** do
+> `package.json` em `01a3c99` — hoje não há biblioteca de áudio nenhuma no repositório. E os scripts `setup_monitors.sh`
 > e `launch_kiosks.sh` **não existem** (**U4**); só `booth-terminal.sh` foi escrito. A Spec 06 §3 os
 > mantém como requisito.
 >
