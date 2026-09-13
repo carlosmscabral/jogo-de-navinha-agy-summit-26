@@ -45,9 +45,19 @@ export interface ModerationDeps {
 
 /**
  * Dispara a camada 2 em segundo plano e devolve imediatamente. `isValid` vem da camada 1: quando
- * ela já reprovou, `provisional` JÁ é um placeholder seguro por construção e perguntar ao modelo
- * não mudaria nada — só gastaria uma chamada de rede. É só no caminho "aprovado localmente" que
- * o insulto velado tem chance de passar, e é aí que a camada 2 existe para entrar.
+ * ela já reprovou, `provisional` JÁ é um nome seguro e perguntar ao modelo não mudaria nada — só
+ * gastaria uma chamada de rede. É só no caminho "aprovado localmente" que o insulto velado tem
+ * chance de passar, e é aí que a camada 2 existe para entrar.
+ *
+ * ESTE ATALHO TEM UM DONO. A garantia de que `provisional` é seguro não é deste arquivo: é a
+ * invariante de `safeSanitized`, em `packages/shared/src/utils/moderation.ts`. Até 2026-09-13 ela
+ * não existia e este docstring afirmava algo falso em 4 dos 6 motivos de recusa — um palavrão de
+ * 16 caracteres saía por `too_long` com os 15 primeiros e pulava a camada 2 aqui, contornando as
+ * duas de uma vez (issue #9). Se aquela invariante cair, este `if` volta a ser o buraco.
+ *
+ * Hoje há ainda uma terceira trava antes desta: o `/api/session/start` devolve 400 e nem chega a
+ * chamar esta função com `isValid === false`. O atalho fica porque `startModeration` é uma peça
+ * de uso geral e não pode depender de quem a chama ter validado antes.
  */
 export function startModeration(
   provisional: string,

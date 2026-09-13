@@ -80,6 +80,58 @@ describe('Moderation & Profanity Filter', () => {
     assert.notStrictEqual(tooShort.reasonCode, 'profanity');
     assert.strictEqual(tooShort.reasonCode, 'too_short');
   });
+
+  // ---------------------------------------------------------------------------------------
+  // Issue #9: `sanitized` é seguro em TODO caminho de recusa, não só nos dois que já eram.
+  //
+  // A ordem das checagens (tamanho, caracteres, repetição, palavrão) fazia com que as três
+  // primeiras devolvessem texto do visitante sem nunca ter passado pelo dicionário. Pior: o
+  // daemon pula a camada 2 justamente quando a camada 1 reprovou, então as duas camadas eram
+  // contornadas de uma vez (packages/daemon/src/services/pending-moderation.ts).
+  // ---------------------------------------------------------------------------------------
+
+  it('too_long: o corte em 15 caracteres não pode publicar o palavrão que sobrou', () => {
+    // 16 caracteres: sai por tamanho ANTES de o teste de palavrão ser alcançado, e o corte
+    // preserva a palavra inteira. Era este o caminho que levava um palavrão ao telão.
+    const r = validateCallsign('CARALHO_VOADOR_X');
+    assert.strictEqual(r.isValid, false);
+    assert.strictEqual(r.reasonCode, 'too_long');
+    assert.match(r.sanitized, /^PILOTO_\d{3}$/);
+  });
+
+  it('invalid_chars: filtrar a pontuação não pode revelar o palavrão que ela escondia', () => {
+    // A pontuação é o que torna o codinome inválido; removê-la é o que monta a palavra.
+    const r = validateCallsign('P.O.R.R.A!');
+    assert.strictEqual(r.isValid, false);
+    assert.strictEqual(r.reasonCode, 'invalid_chars');
+    assert.match(r.sanitized, /^PILOTO_\d{3}$/);
+  });
+
+  it('recusa inocente continua devolvendo o texto do visitante, não um placeholder', () => {
+    // A trava nova não pode virar um "tudo vira PILOTO_xxx": o `sanitized` de uma recusa comum
+    // ainda é o que a Tela 1 reexibe para o visitante corrigir.
+    assert.strictEqual(validateCallsign('AAAAAAA').sanitized, 'AAAAAAA');
+    assert.strictEqual(validateCallsign('AB').sanitized, 'AB');
+    assert.strictEqual(validateCallsign('FALCON_NINE_NINE_NINE').sanitized, 'FALCON_NINE_NIN');
+    assert.strictEqual(validateCallsign('ÁGUIA').sanitized, 'GUIA');
+  });
+
+  it('INVARIANTE: nenhum `sanitized`, de qualquer recusa, reprova no próprio dicionário', () => {
+    // É a garantia de que `pending-moderation.ts` cita por escrito para pular a camada 2. Se um
+    // caminho de recusa novo aparecer devolvendo texto cru, este teste cai.
+    const entradas = [
+      '', 'AB', 'PORRA', 'CARALHO_VOADOR_X', 'P.O.R.R.A!', 'AAAAAAA',
+      'FUCKING_PILOT_XX', 'F.U.C.K.E.R', 'sh1t_ace_voador_x', 'PILOTO'
+    ];
+    for (const entrada of entradas) {
+      const { sanitized } = validateCallsign(entrada);
+      assert.notStrictEqual(
+        validateCallsign(sanitized).reasonCode,
+        'profanity',
+        `sanitized inseguro para a entrada ${JSON.stringify(entrada)}: ${sanitized}`
+      );
+    }
+  });
 });
 
 describe('Proactive Company Normalizer & Fuzzy Matcher', () => {

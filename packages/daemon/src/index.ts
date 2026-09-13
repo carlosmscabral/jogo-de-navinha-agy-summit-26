@@ -315,6 +315,29 @@ app.post('/api/session/start', async (req, res) => {
     const { pilot, energy_sliders, selected_mcps, selected_subagents } = req.body;
 
     const validation = validateCallsign(pilot?.callsign || '');
+
+    // Spec 06 §170-174, em letra: "o servidor precisa rejeitar com 400, não confiar na validação
+    // do formulário". Até 2026-09-13 quem barrava era só o `RegistrationForm.tsx:39`, no
+    // navegador — exatamente a proteção que a spec diz não bastar (issue #9).
+    //
+    // Um visitante NUNCA vê este 400: o formulário chama a mesma `validateCallsign` e não deixa
+    // submeter. Quem chega aqui está contornando a tela — devtools no quiosque, ou um curl na
+    // máquina do estande. Para esse caso a resposta certa é fechar a porta, não sanitizar e
+    // seguir: sanitizar mantinha a sessão de pé com um nome que o visitante nunca digitou.
+    //
+    // Isto NÃO revive o 422 da camada 2 que o Gate M3 removeu (ver o bloco logo abaixo). Aquele
+    // caía em cima de um visitante legítimo, duas telas à frente, e virava "erro de conexão".
+    // Este cai antes de qualquer tela existir, sobre quem não passou pelo formulário. E o canal
+    // de sondagem que o 422 abria continua fechado: o que este 400 devolve é o veredito do
+    // dicionário LOCAL, que já vai inteiro no bundle do player-app e cujo texto o formulário já
+    // mostra na tela. A fronteira do modelo, essa sim sigilosa, segue sem emitir sinal nenhum.
+    if (!validation.isValid) {
+      return res.status(400).json({
+        error: validation.reason ?? 'Codinome inválido.',
+        reason_code: validation.reasonCode
+      });
+    }
+
     const callsign = validation.sanitized;
 
     // Tarefa C4 — camada 2, disparada aqui mas NÃO aguardada aqui (mudança de 2026-08-24, Gate

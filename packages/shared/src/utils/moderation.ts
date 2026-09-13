@@ -21,7 +21,7 @@ const BLOCKED_WORDS = [
 
 /**
  * Minimum length a blocked term needs before it is also searched as a *substring* of the dense
- * leet-normalized form. See the containment check in `validateCallsign` for why this is 5 and
+ * leet-normalized form. See the containment check in `containsProfanity` for why this is 5 and
  * not 4.
  */
 const CONTAINMENT_MIN_LENGTH = 5;
@@ -59,10 +59,61 @@ function normalizeLeetSpeak(input: string): string {
     .replace(/[^a-z0-9]/g, ''); // Keep only alphanumeric for dense match
 }
 
+/**
+ * Roda o dicionário (palavra exata, forma leet e containment) contra um texto qualquer.
+ *
+ * Extraída do corpo de `validateCallsign` em 2026-09-13 para fechar a issue #9. O corpo antigo só
+ * chegava a esta checagem depois de passar por tamanho, caracteres e repetição -- e cada uma
+ * dessas recusas devolvia em `sanitized` um pedaço do texto do próprio visitante, SEM nunca ter
+ * sido comparado ao dicionário. Um palavrão de 16 caracteres saía por `too_long` carregando os 15
+ * primeiros, e um palavrão pontuado saía por `invalid_chars` com a pontuação removida.
+ */
+function containsProfanity(text: string): boolean {
+  const denseLeet = normalizeLeetSpeak(text);
+  const words = text.toLowerCase().split(/[\s_-]+/);
+  // Per-word leet normalization keeps evasions like "p0rr4" or "sh1t" caught by exact match, so
+  // the substring pass below no longer has to reach down to 4-letter terms to stay useful.
+  const leetWords = words.map(normalizeLeetSpeak);
+
+  for (const blocked of BLOCKED_WORDS) {
+    // Exact word match, raw or leet-normalized
+    if (words.includes(blocked) || leetWords.includes(blocked)) {
+      return true;
+    }
+
+    // Substring search on the dense form catches profanity concatenated into a single token
+    // ("porraloka"), but it cannot tell a deliberate evasion from an innocent word that merely
+    // contains the term. At length 4 it blocked SKILLER, SKILL, KILLJOY (kill), COCKPIT (cock)
+    // and PICANHA (pica) -- all plausible callsigns (Spec 06, "o casamento por containment
+    // super-bloqueia"; confirmed live in Gate M3). Raising the floor to 5 drops exactly those
+    // false positives: the 4-letter terms stay covered by the exact-match pass above, and
+    // anything concatenated that still slips through is layer 2's job.
+    if (blocked.length >= CONTAINMENT_MIN_LENGTH && denseLeet.includes(blocked)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * A INVARIANTE desta função: `sanitized` é sempre um nome que pode ir ao telão, qualquer que
+ * tenha sido o motivo da recusa. `packages/daemon/src/services/pending-moderation.ts` depende
+ * disto por escrito para pular a camada 2 quando a camada 1 já reprovou -- se um dia um caminho
+ * de recusa voltar a devolver texto cru do visitante, aquele atalho vira um buraco, porque as
+ * duas camadas são contornadas de uma vez só (issue #9).
+ */
+function safeSanitized(candidate: string): string {
+  return containsProfanity(candidate) ? placeholderCallsign() : candidate;
+}
+
 export interface CallsignValidationResult {
   isValid: boolean;
   reason?: string;
   reasonCode?: 'empty' | 'too_short' | 'too_long' | 'invalid_chars' | 'repetitive' | 'profanity';
+  /**
+   * Nome seguro para exibição, SEMPRE -- inclusive quando `isValid` é false. Ver `safeSanitized`.
+   */
   sanitized: string;
 }
 
@@ -83,7 +134,7 @@ export function validateCallsign(rawCallsign: string): CallsignValidationResult 
       isValid: false,
       reason: 'O Callsign deve ter pelo menos 3 caracteres.',
       reasonCode: 'too_short',
-      sanitized: trimmed.toUpperCase()
+      sanitized: safeSanitized(trimmed.toUpperCase())
     };
   }
 
@@ -92,7 +143,7 @@ export function validateCallsign(rawCallsign: string): CallsignValidationResult 
       isValid: false,
       reason: 'O Callsign deve ter no máximo 15 caracteres.',
       reasonCode: 'too_long',
-      sanitized: trimmed.slice(0, 15).toUpperCase()
+      sanitized: safeSanitized(trimmed.slice(0, 15).toUpperCase())
     };
   }
 
@@ -103,7 +154,9 @@ export function validateCallsign(rawCallsign: string): CallsignValidationResult 
       isValid: false,
       reason: 'Caracteres especiais não permitidos (use apenas letras, números e traço).',
       reasonCode: 'invalid_chars',
-      sanitized: trimmed.replace(/[^A-Za-z0-9 _-]/g, '').toUpperCase().slice(0, 15) || 'PILOTO_001'
+      sanitized: safeSanitized(
+        trimmed.replace(/[^A-Za-z0-9 _-]/g, '').toUpperCase().slice(0, 15) || 'PILOTO_001'
+      )
     };
   }
 
@@ -114,43 +167,18 @@ export function validateCallsign(rawCallsign: string): CallsignValidationResult 
       isValid: false,
       reason: 'Por favor, escolha um codinome identificável para o telão.',
       reasonCode: 'repetitive',
-      sanitized: trimmed.toUpperCase()
+      sanitized: safeSanitized(trimmed.toUpperCase())
     };
   }
 
   // Check profanity against raw words and leet-speak normalized forms
-  const denseLeet = normalizeLeetSpeak(trimmed);
-  const words = trimmed.toLowerCase().split(/[\s_-]+/);
-  // Per-word leet normalization keeps evasions like "p0rr4" or "sh1t" caught by exact match, so
-  // the substring pass below no longer has to reach down to 4-letter terms to stay useful.
-  const leetWords = words.map(normalizeLeetSpeak);
-
-  for (const blocked of BLOCKED_WORDS) {
-    // Exact word match, raw or leet-normalized
-    if (words.includes(blocked) || leetWords.includes(blocked)) {
-      return {
-        isValid: false,
-        reason: 'Termo impróprio ou não permitido no evento.',
-        reasonCode: 'profanity',
-        sanitized: placeholderCallsign()
-      };
-    }
-
-    // Substring search on the dense form catches profanity concatenated into a single token
-    // ("porraloka"), but it cannot tell a deliberate evasion from an innocent word that merely
-    // contains the term. At length 4 it blocked SKILLER, SKILL, KILLJOY (kill), COCKPIT (cock)
-    // and PICANHA (pica) -- all plausible callsigns (Spec 06, "o casamento por containment
-    // super-bloqueia"; confirmed live in Gate M3). Raising the floor to 5 drops exactly those
-    // false positives: the 4-letter terms stay covered by the exact-match pass above, and
-    // anything concatenated that still slips through is layer 2's job.
-    if (blocked.length >= CONTAINMENT_MIN_LENGTH && denseLeet.includes(blocked)) {
-      return {
-        isValid: false,
-        reason: 'Termo impróprio ou não permitido no evento.',
-        reasonCode: 'profanity',
-        sanitized: placeholderCallsign()
-      };
-    }
+  if (containsProfanity(trimmed)) {
+    return {
+      isValid: false,
+      reason: 'Termo impróprio ou não permitido no evento.',
+      reasonCode: 'profanity',
+      sanitized: placeholderCallsign()
+    };
   }
 
   return {
