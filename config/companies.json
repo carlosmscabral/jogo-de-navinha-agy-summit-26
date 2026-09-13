@@ -1,5 +1,5 @@
 {
-  "_comment": "Catálogo de empresas para auto-complete e normalização. Editar e reiniciar o daemon; não exige rebuild. Sobrescrever o caminho com BOOTH_COMPANIES_FILE.",
+  "_comment": "Semente local do catálogo — NÃO é mais a fonte de verdade. Com a nuvem configurada, a fonte é `companies/catalog` no Firestore, editada pelo painel de admin: este arquivo semeia a tabela canonical_companies no start do daemon, e o pull do catalog-sync depois ESPELHA a nuvem, removendo o que não estiver lá. Editar aqui e reiniciar só dura até o próximo pull. A exceção é um estande sem nuvem (CLOUD_API_BASE ou token ausentes): ali o worker fica `disabled` e este arquivo volta a mandar. Caminho sobrescrito por BOOTH_COMPANIES_FILE.",
   "companies": [
     "Google", "Google Cloud", "Android", "YouTube", "Alphabet",
     "Itaú", "Bradesco", "Nubank", "Mercado Livre", "Stone",

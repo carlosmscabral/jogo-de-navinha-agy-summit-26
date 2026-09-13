@@ -116,8 +116,7 @@ Notas que valem mais que o diagrama:
 ├── specs/                  Especificações numeradas 00–15 — a fonte de verdade do projeto
 ├── scripts/                Operação do estande e da nuvem: subir, matar, deployar, semear
 ├── config/                 Catálogo de empresas do evento (dado, não código)
-│   ├── companies.json      Lista em uso; editar e reiniciar o daemon, sem rebuild
-│   └── companies.example.json  Modelo do formato, versionado como referência
+│   └── companies.json      Semente do catálogo; a fonte de verdade é `companies/catalog` na nuvem
 ├── .github/workflows/      CI: build, o portão de balanceamento e a suíte completa
 ├── firebase.json           Firestore nomeado + Hosting do telão, com as regras de cache
 ├── firebase.emulator.json  Config separada do emulador, usada só por `npm run test:cloud-api`
