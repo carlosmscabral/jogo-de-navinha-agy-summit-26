@@ -19,12 +19,15 @@ conviver com ele.
 |------|--------|--------|
 | **A** | Correções de integração, harness `agy`, daemon, failover, segurança (D1-D6, D8-D10, P1, P8) | Implementada e revisada. Gate **M0** fechado. |
 | **B** | Balanceamento medido, `balance.ts`, simulador headless, modo de desenvolvimento isolado, sinergias reais (Spec 09 inteira) | Implementada e revisada. Gates **M1** e **M2** **fechados** em 2026-08-22 — ver §3. |
-| **C** | Nuvem: Firestore, Cloud Run, Vertex AI (D7, U1-U3) | **Não iniciada.** |
-| **D** | Ensaio operacional do estande, soak, cronometragem do ciclo | **Não iniciada.** Gates M3, M4 e M5 em aberto. |
+| **C** | Nuvem: Firestore, Cloud Run, Vertex AI (D7, U1-U3) | Implementada e **em produção**. Gate **M3** fechado em 2026-08-24 — ver §3. |
+| **D** | Ensaio operacional do estande, soak, cronometragem do ciclo | **Não iniciada como fase.** Gates M4 e M5 em aberto. Parte do trabalho operacional (ensaio de dois estandes, telão v2) andou por fora do plano, pelas issues do repositório. |
 | **E** | Opcional, só depois de M0-M5 fechados | **Não iniciada.** |
 
-O jogo **funciona hoje de ponta a ponta em uma máquina local**: registro → builder → forja com `agy`
-real → voo → debriefing. O que falta na Fase C é a persistência em nuvem; hoje o placar é local.
+O jogo **funciona hoje de ponta a ponta**: registro → builder → forja com `agy` real → voo →
+debriefing → partida no Firestore → telão. A máquina do estande continua bastando sozinha se a rede
+cair — o buffer SQLite absorve e o worker drena depois —, mas a nuvem não é mais uma promessa: são
+dois serviços Cloud Run no ar (`jogo-navinha-api` e `jogo-navinha-cardgen`), o telão no Firebase
+Hosting e a moderação de camada 2 no Vertex AI.
 
 ---
 

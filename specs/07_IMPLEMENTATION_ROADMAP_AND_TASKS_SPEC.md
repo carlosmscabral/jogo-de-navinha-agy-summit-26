@@ -21,8 +21,8 @@
 | Local bridge | Node.js + Express 4 + `ws` 8 + `chokidar` 4 | **Sem `node-pty`.** O daemon não cria PTY. |
 | MCPs mockados | `@modelcontextprotocol/sdk` 1.6 sobre stdio + `zod` 3 | Três servidores, resposta local. |
 | Persistência local | `better-sqlite3` 11 | Buffer de partidas e catálogo de empresas. |
-| Nuvem | **Ausente** | Firestore e Admin SDK não instalados (**U1**). |
-| Modelo | **Ausente** | Alvo: `gemini-3.7-flash` via Vertex AI (**U2**). |
+| Nuvem | Firestore + `firebase-admin` em dois serviços Cloud Run | **U1 fechado na Fase C.** `packages/cloud-api` publica a API de ingestão e o gerador de cartão; o telão lê o Firestore direto pelo SDK web. |
+| Modelo | `gemini-3.7-flash` via Vertex AI, região `global` | **U2 fechado na Fase C.** `packages/cloud-api/src/vertex.ts`. Sem chave de API — ver a correção de modelo abaixo. |
 
 > **Correção de modelo.** Toda referência a *Gemini 1.5 Flash API* está superada. O consumo é
 > exclusivamente pelo flavor **Vertex AI / Gemini Enterprise Agent Platform**, com credencial de conta

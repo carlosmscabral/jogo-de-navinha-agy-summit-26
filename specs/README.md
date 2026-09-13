@@ -49,7 +49,7 @@ permanece e ganhou um ID de defeito.
 | **[02 Builder & Componentes](./02_BUILDER_AND_BUDGET_MECHANICS_SPEC.md)** | Sliders de 100 PU, 1–3 MCPs, sub-agentes, matriz de sinergias | Reconciliada |
 | **[03 Harness AGY](./03_AGY_HARNESS_AND_INTEGRATION_SPEC.md)** | Terminal nativo, geração de workspace, contrato de `ship_spec.json`, contenção de processos | Reconciliada |
 | **[04 Engine & Mecânicas](./04_GAME_ENGINE_AND_MECHANICS_SPEC.md)** | Phaser 3, texturas, balística, pacing, boss, score | Reconciliada |
-| **[05 Placar & Nuvem](./05_LEADERBOARD_AND_CLOUD_SPEC.md)** | Firestore, ingestão no Cloud Run, normalização de empresas, TV | Reconciliada; subsistema não construído |
+| **[05 Placar & Nuvem](./05_LEADERBOARD_AND_CLOUD_SPEC.md)** | Firestore, ingestão no Cloud Run, normalização de empresas, TV | Reconciliada; subsistema em produção desde o Gate M3 |
 | **[06 Resiliência & Segurança](./06_RELIABILITY_FAILOVER_AND_SECURITY_SPEC.md)** | Fallbacks, watchdogs, modo offline, moderação, runbook | Reconciliada; scripts ausentes |
 | **[07 Stack & Validação](./07_IMPLEMENTATION_ROADMAP_AND_TASKS_SPEC.md)** | Stack real, build, testes, Definition of Done | Reconciliada |
 | **[08 Topologia & Nuvem](./08_DEPLOYMENT_TOPOLOGY_AND_CLOUD_SPLIT.md)** | O que roda local e o que roda em GCP, e por quê | Nova |
@@ -118,7 +118,7 @@ projeto, em nenhum ambiente.
 - [ ] Execução do [plano de implementação](./10_IMPLEMENTATION_PLAN.md)
   - [x] **Fase A** — correções de integração, harness, daemon, failover (Gate M0 fechado)
   - [x] **Fase B** — balanceamento medido, simulador, modo dev, sinergias reais
-  - [ ] Gates **M1** e **M2** — exigem um humano num Mac: [Spec 12](./12_MANUAL_TEST_PLAN_MAC.md)
-  - [ ] **Fase C** — nuvem (Firestore, Cloud Run, Vertex AI)
-  - [ ] **Fase D** — ensaio operacional, soak (Gates M3-M5)
+  - [x] Gates **M1** e **M2** — fechados à mão em 2026-08-22: [Spec 12](./12_MANUAL_TEST_PLAN_MAC.md)
+  - [x] **Fase C** — nuvem (Firestore, Cloud Run, Vertex AI), com o Gate **M3** fechado em 2026-08-24
+  - [ ] **Fase D** — ensaio operacional, soak (Gates M4 e M5)
 - Lacunas, falhas conhecidas e itens adiados: [Spec 11](./11_KNOWN_GAPS_AND_OPEN_ITEMS.md)
