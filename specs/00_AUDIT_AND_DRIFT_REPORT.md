@@ -5,13 +5,31 @@
 > especificações 01–07 e o código efetivamente entregue em `packages/`, classificando cada item como
 > **defeito**, **pivô aceito**, **não construído** ou **requisito perdido**.
 
+> **COMO LER ESTE DOCUMENTO HOJE (2026-09-13)**
+>
+> Este é um **snapshot datado**, e a foto é de 2026-08-10. Ele descreve o código daquele dia, no
+> presente do indicativo, e **a maior parte do que ele denuncia já foi corrigida**: dos 17 defeitos
+> catalogados, **16 estão fechados** — só **D11** (watchdogs anti-abandono) continua aberto. Dos seis
+> itens "não construído", **U1, U2 e U3 fecharam na Fase C**.
+>
+> O corpo do texto **não foi reescrito de propósito**: a evidência e a aritmética de cada achado são
+> o que justifica as decisões que vieram depois, e apagá-las apagaria o porquê. O que foi acrescentado
+> é uma **coluna de estado** em cada tabela de IDs e um aviso no começo das seções cujo conteúdo
+> deixou de valer. Onde houver conflito entre este documento e o código, **o código ganha**; para o
+> estado do projeto hoje, a fonte é a [Spec 11](./11_KNOWN_GAPS_AND_OPEN_ITEMS.md).
+>
+> A arbitragem D/P/U/L e os IDs continuam valendo — é por eles que o plano de implementação
+> (`10_IMPLEMENTATION_PLAN.md`) e as specs reconciliadas se referem a cada achado.
+
 ---
 
 ## 1. Método e Escopo
 
 A auditoria leu integralmente as 7 especificações, o `USER_GUIDE.md`, o `INITIAL_IDEA.md`, os 44
 commits do histórico e as ≈7.800 linhas de código dos 5 pacotes (`shared`, `mcps`, `daemon`,
-`player-app`, `leaderboard-app`).
+`player-app`, `leaderboard-app`) **que existiam em 2026-08-10**. O repositório cresceu desde então:
+hoje são **8 pacotes** (mais `cloud-api`, `admin-app` e `sim`) e ≈20.100 linhas fora de testes. O
+`USER_GUIDE.md` foi removido em 2026-09-13 por duplicar as Specs 14 e 15.
 
 **Regra de arbitragem adotada (caso a caso):**
 
@@ -35,25 +53,28 @@ Cada item recebe um ID estável. As especificações reconciliadas e o plano de 
 
 ## 2. Defeitos (D) — a especificação está certa, o código precisa mudar
 
-| ID | Defeito | Evidência | Cláusula violada |
-| :--- | :--- | :--- | :--- |
-| **D1** | Validação de schema nunca executa | `daemon/src/services/file-watcher.ts:4,113,147` | 03 §3.3, §5.2 |
-| **D2** | Sem timeout de 15s do AGY nem injeção automática de preset | ausente no daemon; só botão manual em `HandoffTerminalScreen.tsx:433` | 06 §1.1, 03 §3.3 |
-| **D3** | Sem gate de auditoria MCP antes da decolagem | `file-watcher.ts:86` | 02 §3.2, 03 §3.3 |
-| **D4** | Reset mata PID único, não o process group | `daemon/src/index.ts:194-209` | 03 §5.1, §6 |
-| **D5** | Telemetria calculada e depois descartada | `player-app/src/App.tsx:112-133`, `sqlite-buffer.ts:232-250` | 05 §3.2 |
-| **D6** | Placar público nasce com 3 pilotos fictícios | `sqlite-buffer.ts:55,102` | 05 §4 |
-| **D7** | `localhost:3000` fixo no código de 4 arquivos | ver §2.7 | 08 (nova) |
-| **D8** | `npm test` não executa os testes do `player-app` | `package.json:16`, `player-app/package.json:10` | 07 §3 |
-| **D9** | Caminho do SQLite depende do diretório de invocação | `sqlite-buffer.ts:46` | 06 §1.2 |
-| **D10** | Código morto que sugere funcionalidade inexistente | `sqlite-buffer.ts:322,338`; `player-app/package.json:14` | 06 §1.2, 07 §1 |
-| **D11** | Nenhum watchdog anti-abandono; hotkey só no browser | `player-app/src/App.tsx:53-62` | 01 §4.1, §4.2 |
-| **D12** | **Nenhuma nave possível derrota o boss no tempo disponível** | aritmética em §2.11 | 04 §7 |
-| **D13** | Armas secundárias são inertes ou quase | `WeaponSystem.ts:100-166`, `MainGameScene.ts:638` | 02 §2, 04 §3 |
-| **D14** | Três contratos numéricos incompatíveis para os mesmos atributos | schema × `file-watcher.ts:193-209` × `WeaponSystem.ts:64-74` | 03 §4, 02 §1 |
-| **D15** | A matriz de sinergias não tem nenhum efeito no jogo | `MainGameScene.ts:423,520,598` | 02 §6 |
-| **D16** | O `GEMINI.md` gerado entrega ao modelo um `ship_spec.json` já preenchido | `workspace-generator.ts:170-208` | 03 §3.1 |
-| **D17** | O `svg_path_data` gerado pelo `aesthetic-designer` nunca é renderizado | `ShipTextureFactory.ts:17-145` | 04 §1, 02 §2 |
+As colunas **Estado** e **Onde fechou** foram acrescentadas em 2026-09-13, e só elas descrevem o
+código de hoje; as quatro primeiras são a foto de 2026-08-10 e não foram mexidas.
+
+| ID | Defeito | Evidência (2026-08-10) | Cláusula violada | Estado | Onde fechou |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **D1** | Validação de schema nunca executa | `daemon/src/services/file-watcher.ts:4,113,147` | 03 §3.3, §5.2 | ✅ | `file-watcher.ts:221`, com `onSpecRejected({ reason: 'SCHEMA_INVALID' })` |
+| **D2** | Sem timeout de 15s do AGY nem injeção automática de preset | ausente no daemon; só botão manual em `HandoffTerminalScreen.tsx:433` | 06 §1.1, 03 §3.3 | ✅ | `daemon/src/index.ts:74,78,94,95` — quatro relógios (135s / 30s / 90s, teto de 225s), não os 15s de uma versão antiga desta spec |
+| **D3** | Sem gate de auditoria MCP antes da decolagem | `file-watcher.ts:86` | 02 §3.2, 03 §3.3 | ✅ | `file-watcher.ts:134-179` |
+| **D4** | Reset mata PID único, não o process group | `daemon/src/index.ts:194-209` | 03 §5.1, §6 | ✅ | `killAgyProcessGroup()`, `daemon/src/index.ts:123` |
+| **D5** | Telemetria calculada e depois descartada | `player-app/src/App.tsx:112-133`, `sqlite-buffer.ts:232-250` | 05 §3.2 | ✅ | `player-app/src/App.tsx`, `match-record.ts` |
+| **D6** | Placar público nasce com 3 pilotos fictícios | `sqlite-buffer.ts:55,102` | 05 §4 | ✅ | `sqlite-buffer.ts:138`, atrás de `BOOTH_SEED_DEMO=1` |
+| **D7** | `localhost:3000` fixo no código de 4 arquivos | ver §2.7 | 08 (nova) | ✅ | `resolveEndpoints()`, `player-app/src/config.ts:2-4` |
+| **D8** | `npm test` não executa os testes do `player-app` | `package.json:16`, `player-app/package.json:10` | 07 §3 | ✅ | `package.json:17`, `--workspaces --if-present` |
+| **D9** | Caminho do SQLite depende do diretório de invocação | `sqlite-buffer.ts:46` | 06 §1.2 | ✅ | `SQLiteBufferService.defaultDbPath()`, `sqlite-buffer.ts:119` |
+| **D10** | Código morto que sugere funcionalidade inexistente | `sqlite-buffer.ts:322,338`; `player-app/package.json:14` | 06 §1.2, 07 §1 | ✅ | worker real em `daemon/src/services/cloud-sync.ts`; `howler` removido em `01a3c99` |
+| **D11** | Nenhum watchdog anti-abandono; hotkey só no browser | `player-app/src/App.tsx:53-62` | 01 §4.1, §4.2 | ⬜ **aberto** | nenhum dos quatro watchdogs existe; conferido em 2026-09-13 |
+| **D12** | **Nenhuma nave possível derrota o boss no tempo disponível** | aritmética em §2.11 | 04 §7 | ✅ | `shared/src/constants/balance.ts` (`boss.max_hp` 800, mitigação { 0,65; 0,70; 1,0 }); medido por `packages/sim` |
+| **D13** | Armas secundárias são inertes ou quase | `WeaponSystem.ts:100-166`, `MainGameScene.ts:638` | 02 §2, 04 §3 | ✅ | `MainGameScene.ts:947-956`, e teto próprio da secundária em `balance.ts:120` |
+| **D14** | Três contratos numéricos incompatíveis para os mesmos atributos | schema × `file-watcher.ts:193-209` × `WeaponSystem.ts:64-74` | 03 §4, 02 §1 | ✅ | contrato único em `shared/src/constants/balance.ts` |
+| **D15** | A matriz de sinergias não tem nenhum efeito no jogo | `MainGameScene.ts:423,520,598` | 02 §6 | ✅ | `shared/src/game/synergies.ts:42` + `MainGameScene.ts:194-202` |
+| **D16** | O `GEMINI.md` gerado entrega ao modelo um `ship_spec.json` já preenchido | `workspace-generator.ts:170-208` | 03 §3.1 | ✅ | `workspace-generator.ts:418`, "REGRA ZERO — PROIBIDO INVENTAR VALORES" |
+| **D17** | O `svg_path_data` gerado pelo `aesthetic-designer` nunca é renderizado | `ShipTextureFactory.ts:17-145` | 04 §1, 02 §2 | ✅ | `renderSvgShipTexture()`, chamado em `MainGameScene.ts:20` e `ShipPreviewCanvas.tsx:82` |
 
 ### 2.1. D1 — O contrato "estrito" nunca é aplicado
 
@@ -71,6 +92,11 @@ conteúdo semântico vira uma nave jogável, então o operador nunca descobre qu
 funcionar.
 
 ### 2.2. D2 — Não existe o timeout que sustenta a resiliência
+
+> **Fechado.** Hoje são quatro relógios em `daemon/src/index.ts:74,78,94,95` — 135s até a primeira
+> chamada de MCP, 30s de silêncio entre chamadas depois dela, 90s na fase pós-auditoria e um teto
+> rígido de 225s. **Os "15s" abaixo nunca descreveram o código entregue**; eram o número da Spec 06
+> na época. Quem for operar o estande deve olhar a Spec 15 §9, não esta linha.
 
 A Spec 06 §1.1 define timeout rígido de 15s com injeção de preset em <50ms. No daemon não há
 temporizador algum: `fileWatcher.startWatching()` (`index.ts:122`) observa indefinidamente. O único
@@ -173,6 +199,11 @@ Cobertura real hoje: 4 arquivos de teste, nenhum cobrindo `MainGameScene` (931 l
 
 ### 2.10. D11 — Sem proteção contra abandono
 
+> **O único defeito desta auditoria que continua ABERTO** (reconferido em 2026-09-13: nenhum
+> `setTimeout` de inatividade existe no `player-app`). A mitigação em vigor é humana — staff presente
+> — e o reset manual ganhou uma segunda porta que não depende do foco da janela:
+> `POST /api/session/reset` no daemon.
+
 A Spec 01 §4.1 define quatro watchdogs (registro 30s, builder 45s, terminal 30s, gameplay 15s).
 **Nenhum existe.** Um visitante que desiste no meio congela a estação até intervenção humana.
 
@@ -181,6 +212,13 @@ inoperante se o foco estiver no terminal da Tela 2 ou em qualquer outra janela �
 cenários em que o staff precisaria dele.
 
 ### 2.11. D12 — O boss é matematicamente invencível para todos os presets
+
+> **Fechado na Fase B, e com ele morre a aritmética desta seção inteira.** Toda a conta abaixo parte
+> de 15.000 HP e de mitigação de 0,50 na fase 1; `BALANCE.boss` hoje diz 800 HP e
+> { 0,65; 0,70; 1,0 }, e o teto de 45 por impacto deixou de valer para a secundária. Nenhum dos TTKs
+> da tabela é uma medição do jogo atual — quem mede é `packages/sim` (`combat-model.ts`), com o
+> resultado travado em CI por `balance-gate.test.ts`. A seção fica porque é ela que explica **por que
+> aquele portão existe**.
 
 Este é o achado mais grave da auditoria, e só aparece ao fazer a conta. A cadeia de dano é:
 
@@ -371,7 +409,14 @@ eventos de broadcast. O nome deve mudar para `/events`.
 
 ### 3.2. P3, P4, P5 — Rebalanceamento não documentado
 
-| Dimensão | Especificação 04 | Implementação | Evidência |
+> **Leia os valores da coluna "Implementação" como a foto de 2026-08-10.** A Fase B extraiu todos
+> eles para `packages/shared/src/constants/balance.ts` (fecha **D14**) e depois os remediu: o HP do
+> boss, por exemplo, saiu de 15.000 para **800**. Os arquivos também mudaram de lugar —
+> `game/objects/BossOverlord.ts`, `game/weapons/WeaponSystem.ts`,
+> `shared/src/game/score-calculator.ts`. Para qualquer número de tuning, a fonte é `BALANCE`; esta
+> tabela serve para mostrar **o tamanho da divergência que existia**, não para consultar valores.
+
+| Dimensão | Especificação 04 | Implementação em 2026-08-10 | Evidência (caminhos de 2026-08-10) |
 | :--- | :--- | :--- | :--- |
 | HP do Boss | 2.000 | 15.000 (22.000 hardcore) | `BossOverlord.ts:5-6,22` |
 | Transição de fase | Por tempo (60s/70s/80s) | Por limiar de HP (66% / 33%) | `BossOverlord.ts:312,316` |
@@ -386,7 +431,8 @@ eventos de broadcast. O nome deve mudar para `/events`.
 
 Os números foram calibrados por sensação ao longo de commits como `2decf9a` (7.500 HP) e `6f9a8f4`
 (bullet hell). **Nenhum deles foi medido.** O critério de aceitação da Spec 04 §7 — taxa de vitória
-entre 15% e 25% — não é hoje verificável por nenhum meio. É o que a Spec 09 resolve.
+entre 15% e 25% — não era, à época, verificável por nenhum meio. É o que a Spec 09 resolveu: hoje o
+simulador mede e `balance-gate.test.ts` reprova o build quando a banda é violada.
 
 ### 3.3. P6 — O orçamento virou tradeoff
 
@@ -399,14 +445,23 @@ incentivo em vez de proibição — mas está indocumentada.
 
 ## 4. Não Construído (U) — especificado, ausente
 
-| ID | Subsistema | Especificação | Situação |
-| :--- | :--- | :--- | :--- |
-| **U1** | Cloud Firestore + Firebase Admin SDK | 01 §2.7, 05 §1, 06 §1.2, 07 §1 | Zero código. Nenhuma dependência instalada. |
-| **U2** | Chamadas Gemini (moderação semântica + desambiguação de empresa) | 05 §2, 06 §2.2 | Zero código. Apenas regex e Levenshtein locais. |
-| **U3** | Worker de sincronização offline com backoff | 06 §1.2 | Ausente (ver D10). |
-| **U4** | `setup_monitors.sh`, `launch_kiosks.sh`, `reset_booth.sh` | 06 §3.1-3.3, 07 P2.2 | Ausentes. Só existe `booth-terminal.sh`. |
-| **U5** | `self_test.sh` (autoteste matinal) | 06 §3.4, 07 P2.4 | Ausente. |
-| **U6** | Teste de carga de 100 partidas / validação de SLA | 07 P2.5 | Ausente. |
+| ID | Subsistema | Especificação | Situação em 2026-08-10 | Estado |
+| :--- | :--- | :--- | :--- | :--- |
+| **U1** | Cloud Firestore + Firebase Admin SDK | 01 §2.7, 05 §1, 06 §1.2, 07 §1 | Zero código. Nenhuma dependência instalada. | ✅ Fase C: `packages/cloud-api` em dois serviços Cloud Run; telão lendo Firestore direto |
+| **U2** | Chamadas Gemini (moderação semântica + desambiguação de empresa) | 05 §2, 06 §2.2 | Zero código. Apenas regex e Levenshtein locais. | ✅ Fase C: `cloud-api/src/vertex.ts`, `gemini-3.7-flash` via Vertex AI |
+| **U3** | Worker de sincronização offline com backoff | 06 §1.2 | Ausente (ver D10). | ✅ `daemon/src/services/cloud-sync.ts` (e `catalog-sync.ts`, o caminho inverso) |
+| **U4** | `setup_monitors.sh`, `launch_kiosks.sh`, `reset_booth.sh` | 06 §3.1-3.3, 07 P2.2 | Ausentes. Só existe `booth-terminal.sh`. | ⬜ **continuam ausentes** |
+| **U5** | `self_test.sh` (autoteste matinal) | 06 §3.4, 07 P2.4 | Ausente. | ⬜ **continua ausente** |
+| **U6** | Teste de carga de 100 partidas / validação de SLA | 07 P2.5 | Ausente. | ⬜ aberto (Gate M5) |
+
+> **Atenção, operador:** `reset_booth.sh` nunca existiu. Se algum documento mandar rodá-lo, use
+> `Ctrl+Shift+F12` na Tela 1 ou `curl -X POST localhost:3000/api/session/reset`.
+
+Os três parágrafos abaixo são de 2026-08-10 e **descrevem um estado que passou**: U1 e U2 fecharam
+na Fase C, o `USER_GUIDE.md` foi removido do repositório em 2026-09-13, o modelo já é
+`gemini-3.7-flash` via Vertex AI, e a tensão de latência do último parágrafo foi resolvida exatamente
+como ele previa — a moderação de camada 2 saiu do caminho crítico do visitante
+(`packages/daemon/src/services/pending-moderation.ts`).
 
 Sobre **U1/U2**: o `USER_GUIDE.md:169` classifica corretamente a nuvem como "Milestone 2 — pendente",
 enquanto as Specs 01/05/06/07 a tratam como entregue e obrigatória. Os dois documentos se contradizem;
@@ -426,9 +481,12 @@ esticar o timeout.
 
 ## 5. Requisitos Perdidos (L)
 
-| ID | Requisito | Origem |
-| :--- | :--- | :--- |
-| **L1** | Qualidade do prompt do usuário deve influenciar a qualidade da nave | `INITIAL_IDEA.md:5` |
+| ID | Requisito | Origem | Estado |
+| :--- | :--- | :--- | :--- |
+| **L1** | Qualidade do prompt do usuário deve influenciar a qualidade da nave | `INITIAL_IDEA.md:5` | ⬜ **continua aberto** |
+
+> O único detalhe que mudou: a `InstructionsPromptScreen` citada abaixo não existe mais como arquivo.
+> O requisito em si segue sem implementação.
 
 O `INITIAL_IDEA.md` é explícito: *"O prompt de construção do usuário também deverá de alguma forma
 influenciar em uma nave melhor (melhor prompt, melhor nave)."*
@@ -445,6 +503,10 @@ visitante a escrever, mas nada avalia o que ele escreveu nem converte isso em va
 ## 6. Backlog Ordenado por Risco de Evento
 
 Ordenação por "o que quebra na frente de um visitante", não por esforço.
+
+> **Este backlog foi executado.** Tudo que está abaixo, menos **D11**, **U4**, **U5**, **U6** e
+> **L1**, já foi entregue — ver a coluna *Estado* das tabelas do §2 e do §4. A tabela fica como
+> registro de como o trabalho foi priorizado, não como lista de pendências.
 
 | Prioridade | Itens | Justificativa |
 | :--- | :--- | :--- |
