@@ -308,7 +308,7 @@ Custo não é fator de decisão aqui; disponibilidade e risco operacional são.
 | Token de ingestão expirado ou rotacionado | **Não é falha de rede** e não se resolve com retry: o worker marca `auth_failed` e `GET /api/sync/status` expõe isso distinguível de "sem sinal" (Spec 05 §5). Ação do staff é trocar o token, não esperar. |
 | Firestore inacessível para a TV | Leaderboard exibe o último snapshot e sinaliza estado degradado. |
 | Cloud Run fora do ar | Idêntico à queda de Wi-Fi: buffer local absorve. |
-| **AGY falha ou trava** | Timeout de 15s (D2) injeta preset de emergência. Não é uma falha de rede — é a razão pela qual o AGY fica local. |
+| **AGY falha ou trava** | O fallback (D2) injeta preset de emergência: morte do processo dispara na hora, e o silêncio dispara pelos quatro relógios da Spec 06 §1.1 (135s / 30s / 90s, teto de 225s). Não é uma falha de rede — é a razão pela qual o AGY fica local. |
 
 ---
 

@@ -368,7 +368,7 @@ máquina do estande". Satisfazer as duas exige Workload Identity Federation ou i
 planejada, e ambas precisam de uma credencial de usuário para começar. A contradição está aberta.
 
 **O modo de falha:** o token expira, ou a política da organização força reautenticação no meio do
-dia. O `agy` para de responder. O timeout de 15s da Tarefa A4 dispara. **Todo visitante a partir dali
+dia. O `agy` para de responder. Os relógios da Tarefa A4 disparam. **Todo visitante a partir dali
 recebe preset de emergência.** O jogo continua perfeito, o placar continua enchendo, ninguém no
 estande percebe nada — e a Forja, que é a razão de o estande existir, está morta. É a pior combinação
 possível: alto impacto, zero sintoma visível.

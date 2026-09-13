@@ -680,8 +680,16 @@ Comece uma sessão normal. Enquanto o `agy` ainda estiver trabalhando:
 echo '{ isto não é json' > /tmp/booth_session/ship_spec.json
 ```
 
-**Critério:** o preset de emergência entra **sozinho**, em menos de 15 segundos, e o visitante
-decola sem ver erro nenhum. O daemon deve logar o fallback; a Tela 1, não.
+**Critério:** o preset de emergência entra **sozinho** e o visitante decola sem ver erro nenhum. O
+daemon deve logar o fallback; a Tela 1, não.
+
+> **Quanto esperar.** Depende da fase em que o `agy` estava, porque são quatro relógios
+> (`packages/daemon/src/index.ts:74,78,94,95`): **30s** se ele já tinha chamado pelo menos uma tool
+> MCP (o caso normal deste passo, porque a corrupção acontece "enquanto o `agy` ainda estiver
+> trabalhando"), **135s** se ainda não tinha chamado nenhuma, **90s** se o gate de auditoria já
+> tinha sido satisfeito, e **225s** de teto absoluto desde `.session_active`. Este critério dizia
+> "menos de 15 segundos", número de uma versão antiga do daemon: quem cronometrasse 15s reprovaria
+> um estande que está funcionando exatamente como projetado.
 
 - [ ] **6.2 — Spec válida sem nenhuma linha de auditoria**
 

@@ -5782,8 +5782,8 @@ Conteúdo, sem nenhuma seção vaga:
 | Sintoma | Ação imediata |
 | :--- | :--- |
 | Visitante foi embora no meio | Nada. O watchdog reseta sozinho (30s a 120s conforme a etapa). |
-| Terminal travado, nave não sai | Aguardar 15s: o preset de emergência entra sozinho. Se não entrar, `./scripts/reset_booth.sh`. |
-| Tela 1 congelada | `Ctrl+Shift+F12`. Se o foco estiver na Tela 2, `./scripts/reset_booth.sh`. |
+| Terminal travado, nave não sai | Aguardar: o preset entra sozinho. Até 135s se o agente nem chegou a chamar uma tool, ≈30s se travou no meio, 90s depois da auditoria, teto absoluto de 225s (`daemon/src/index.ts:74,78,94,95`). Se passar disso, resetar a sessão. |
+| Tela 1 congelada | `Ctrl+Shift+F12` (`player-app/src/App.tsx:60`). Se o foco estiver na Tela 2 e a tecla não chegar na Tela 1, resetar pela API: `curl -s -X POST localhost:3000/api/session/reset`. |
 | Placar parado | Olhar o selo: `LOCAL` é degradação esperada; `SEM SINAL` pede verificar a rede. |
 | Fila de pendentes crescendo | `curl -s localhost:3000/api/sync/status`. Normal offline; avisar se passar de 50. |
 | `sync/status` diz `auth_failed` | **Não é a rede.** O token de ingestão expirou ou foi rotacionado. Trocar `BOOTH_INGEST_TOKEN` e aguardar até 5min — a fila drena sozinha, sem reiniciar. |
@@ -5811,7 +5811,7 @@ Conteúdo, sem nenhuma seção vaga:
 > começar.
 >
 > **O modo de falha é silencioso e total.** Token expira ou a política da organização força reauth no
-> meio do dia; o `agy` para de responder; o timeout de 15s da Tarefa A4 dispara; **todo visitante a
+> meio do dia; o `agy` para de responder; os relógios da Tarefa A4 disparam; **todo visitante a
 > partir dali recebe preset de emergência**. O jogo continua funcionando perfeitamente — o que morre é
 > a Forja, que é a razão de o estande existir. Ninguém percebe olhando a tela.
 >

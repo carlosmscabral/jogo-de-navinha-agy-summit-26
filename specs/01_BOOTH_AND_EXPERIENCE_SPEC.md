@@ -127,11 +127,16 @@ terminal e oferece prompts de inspiração copiáveis.
   pré-voo. Campo opcional: nave sem dica é nave válida e não renderiza painel algum.
 - O AGY grava `ship_spec.json` em menos de 8 segundos.
 
-**Requisitos de qualidade ainda em aberto nesta etapa** — permanecem obrigatórios:
+**Requisitos de qualidade desta etapa** — os três foram entregues na Fase A e permanecem
+obrigatórios:
 
-- **D1:** o `ship_spec.json` deve passar por validação Draft-07 estrita antes de virar nave.
-- **D2:** timeout rígido de 15s com injeção automática de preset de fallback. Hoje só existe um botão
-  de emergência que depende de o visitante perceber a falha.
+- **D1:** o `ship_spec.json` passa por validação Draft-07 estrita antes de virar nave.
+- **D2:** injeção automática de preset de fallback. **Não é um timeout só, são quatro relógios
+  independentes** (`packages/daemon/src/index.ts:74,78,94,95`): 135s até a primeira chamada de MCP,
+  30s de silêncio entre chamadas depois dela, 90s na fase pós-auditoria, e um teto rígido de 225s
+  desde `.session_active`. O primeiro que estourar injeta o preset e encerra o `agy`. Os valores
+  batem porque existe uma invariante entre o teto e a soma das fases; ver o `.env.example` do
+  daemon. O botão manual continua existindo, mas deixou de ser a única saída.
 - **D3:** gate de auditoria — sem chamadas de tool registradas em `mcp_audit.log`, a nave não decola.
 
 ### 2.6. `GAMEPLAY` — Partida no teclado físico

@@ -271,8 +271,9 @@ biblioteca que o projeto não usa (**P8**). O `howler` continua no `package.json
       da Tela 2**.
 - [ ] Nenhuma pontuação é perdida em queda de internet: derrubar o Wi-Fi por 5 minutos durante partidas
       e confirmar a sincronização completa na volta. Gate **M3**.
-- [ ] O fallback de 15s dispara sozinho quando o `agy` é morto no meio da forja, e o visitante conclui
-      a experiência sem intervenção. Gate **M2**.
+- [ ] O fallback dispara sozinho quando o `agy` é morto no meio da forja, e o visitante conclui a
+      experiência sem intervenção. Morte do processo é gatilho próprio e imediato, sem esperar
+      relógio nenhum (§1.1). Gate **M2**.
 - [ ] Os quatro watchdogs disparam nos tempos definidos, verificáveis um a um.
 - [ ] `self_test.sh` passa em macOS e na máquina do estande, ou falha com mensagem clara sobre o que
       não se aplica àquela plataforma.

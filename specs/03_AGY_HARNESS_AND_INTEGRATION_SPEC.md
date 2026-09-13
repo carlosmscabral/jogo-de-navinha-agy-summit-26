@@ -197,19 +197,26 @@ uma falha de escrita não derruba a tool.
 
 Ao detectar gravação de `ship_spec.json`, o daemon **deve**:
 
-1. **[D1]** Validar contra o schema Draft-07 com `validateShipSpecification()`. Hoje a função é
-   importada em `packages/daemon/src/services/file-watcher.ts:4` e **nunca chamada**. No lugar dela
-   roda `normalizeSpec()` (`:147`), que coage qualquer JSON — inclusive `{}` — em uma nave
-   aparentemente válida. O schema é, na prática, código morto fora do seu teste unitário.
-2. **[D3]** Exigir pelo menos uma execução registrada por servidor MCP ativo em `mcp_audit.log`. Hoje
-   o log é apenas transmitido como telemetria para a UI; nada o consulta como condição.
-3. **[D2]** Aplicar um **timeout de 15s** a partir de `.session_active` e, ao estourar, injetar o
-   preset de fallback correspondente ao perfil do visitante. Hoje só existe um botão manual em
-   `HandoffTerminalScreen.tsx`.
+1. **[D1]** Validar contra o schema Draft-07 com `validateShipSpecification()`. **Entregue:** a
+   chamada está em `packages/daemon/src/services/file-watcher.ts:221`, depois de `normalizeSpec()`
+   (`:214`) e do backfill de baseline (`:218`). A ordem é essa de propósito — saneamento primeiro,
+   veredito depois. Antes da Fase A a função era importada e nunca chamada, e o schema era código
+   morto fora do seu teste unitário.
+2. **[D3]** Exigir pelo menos uma execução registrada por servidor MCP ativo em `mcp_audit.log`.
+   **Entregue:** o gate está em `file-watcher.ts:134-179`, comparando o log contra os
+   `requiredMcps` da sessão. Antes da Fase A o log era só telemetria para a UI e nada o consultava
+   como condição.
+3. **[D2]** Injetar o preset de fallback correspondente ao perfil do visitante quando o agente
+   parar de progredir. **Entregue, e não como um timeout único:** são quatro relógios
+   (`packages/daemon/src/index.ts:74,78,94,95`) — 135s até a primeira chamada de MCP, 30s de
+   silêncio entre chamadas depois dela, 90s depois de o gate de auditoria ser satisfeito, e um teto
+   rígido de 225s. O "timeout de 15s" que esta linha trazia é de uma versão anterior desta spec e
+   nunca descreveu o código entregue.
 
 A ordem importa: sem 1 e 2, o fallback de 3 nunca dispara, porque qualquer coisa que o modelo grave
-passa. E `normalizeSpec()` **não deve ser removido** — ele continua útil como camada de saneamento
-depois da validação, para specs válidas mas com valores fora de faixa.
+passa. E `normalizeSpec()` **não deve ser removido** — ele é a camada de saneamento que roda ANTES
+do veredito (`file-watcher.ts:214`), para que uma spec legítima com valores fora de faixa seja
+corrigida em vez de recusada. Quem recusa é a validação, sobre o resultado já saneado.
 
 ---
 
@@ -353,8 +360,8 @@ malformado para tentar de novo no ciclo seguinte.
 - [ ] Um `ship_spec.json` gravado sem nenhuma linha correspondente em `mcp_audit.log` é rejeitado.
 - [ ] O `GEMINI.md` gerado não contém nenhum valor numérico de atributo, dano ou cadência que possa
       ser copiado como resposta final.
-- [ ] Passados 15s sem spec válida, o fallback entra automaticamente e a UI avança sem intervenção do
-      staff.
+- [ ] Estourado o relógio da fase em curso (135s pré-MCP, 30s entre chamadas, 90s pós-auditoria, ou
+      o teto de 225s), o fallback entra automaticamente e a UI avança sem intervenção do staff.
 - [ ] Após 20 ciclos de sessão e reset, `pgrep -f 'mcps/dist'` retorna vazio.
 - [ ] A transição do `EVENT_SHIP_READY` até o canvas do Phaser com foco ocorre em menos de 500ms.
 - [ ] O canal WebSocket se chama `/events`, e `grep -rn "'/pty'" packages/` não retorna nada.
