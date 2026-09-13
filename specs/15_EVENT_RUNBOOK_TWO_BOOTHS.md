@@ -447,5 +447,5 @@ curl -s -u admin:"$SENHA" "$BASE/v1/admin/health" | jq '.stationActivity'
 | :--- | :--- |
 | Instalar do zero, com explicação | [`14_INSTALLATION_GUIDE.md`](./14_INSTALLATION_GUIDE.md) |
 | Testar a fundo antes do evento | [`12_MANUAL_TEST_PLAN_MAC.md`](./12_MANUAL_TEST_PLAN_MAC.md), Bloco 26 |
-| Operar o painel no detalhe | [`../USER_GUIDE.md`](../USER_GUIDE.md) |
+| Operar o painel no detalhe | [`../packages/cloud-api/README.md`](../packages/cloud-api/README.md), "Endpoints administrativos" |
 | Falhas conhecidas | [`11_KNOWN_GAPS_AND_OPEN_ITEMS.md`](./11_KNOWN_GAPS_AND_OPEN_ITEMS.md) |

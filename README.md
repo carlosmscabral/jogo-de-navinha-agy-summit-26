@@ -8,7 +8,7 @@ segundos contra ondas de inimigos e um chefe, e vê a pontuação subir num plac
 numa TV do estande.
 
 Isto **não é um produto** — nem um produto Google oficialmente suportado (ver
-[§9](#9-aviso)). É uma ativação de evento, com prazo, hardware específico e um ciclo-alvo de 2m30s
+[§10](#10-aviso)). É uma ativação de evento, com prazo, hardware específico e um ciclo-alvo de 2m30s
 por visitante. O repositório é dirigido por especificação: as decisões de projeto, os números de
 balanceamento e a topologia de nuvem moram em [`specs/`](./specs/), e o código é a execução delas.
 
@@ -125,7 +125,6 @@ Notas que valem mais que o diagrama:
 ├── firestore.indexes.json  Índices e exclusões de indexação dos campos grandes do SVG
 ├── .firebaserc.example     Modelo do `.firebaserc` — o arquivo real não é versionado
 ├── package.json            Workspaces e todos os scripts npm (ver §6)
-├── USER_GUIDE.md           Guia operacional do estande, com o desenho físico das telas
 ├── LICENSE                 Apache License 2.0
 └── NOTICE                  Aviso de copyright no formato Apache
 ```
@@ -179,8 +178,8 @@ como é: ela audita, com evidência em `arquivo:linha`, cada divergência entre 
 > **A instalação de verdade está na [Spec 14 — Guia de Instalação](./specs/14_INSTALLATION_GUIDE.md).**
 > Ela cobre pré-requisitos, a conta do `agy`, os segredos, o deploy em GCP e as conferências
 > pós-instalação, e é o único lugar onde essa sequência é mantida. Esta seção é só o mapa dos
-> scripts. Para a operação física do estande, veja também o [`USER_GUIDE.md`](./USER_GUIDE.md) e a
-> [Spec 15](./specs/15_EVENT_RUNBOOK_TWO_BOOTHS.md).
+> scripts. Para a operação física do estande no dia — montagem, pre-flight, virada de dia — o
+> documento é a [Spec 15](./specs/15_EVENT_RUNBOOK_TWO_BOOTHS.md).
 
 Um caminho mínimo, depois de `npm install`:
 
@@ -271,14 +270,20 @@ sua**. O contexto está na [Spec 09](./specs/09_GAME_BALANCE_AND_DEV_MODE.md) e 
 
 ---
 
-## 8. Licença
+## 8. Contato
+
+Responsável: Carlos Cabral (`carloscabral@google.com`).
+
+---
+
+## 9. Licença
 
 Distribuído sob a **Apache License 2.0**. O texto integral está em [`LICENSE`](./LICENSE) e o aviso
 de copyright em [`NOTICE`](./NOTICE).
 
 ---
 
-## 9. Aviso
+## 10. Aviso
 
 Este repositório **não é um produto Google oficialmente suportado**. O código aqui existe para fins
 demonstrativos: é a ativação de um estande de evento, construída sob prazo, e não recebe SLA,

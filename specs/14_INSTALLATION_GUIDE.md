@@ -493,6 +493,6 @@ deliberada, não efeito colateral de um script.
 | Instalar num **Chromebook** (Crostini) | [`13_CHROMEBOOK_AND_CROSTINI_SPEC.md`](./13_CHROMEBOOK_AND_CROSTINI_SPEC.md) §6 |
 | **Testar** a instalação a fundo | [`12_MANUAL_TEST_PLAN_MAC.md`](./12_MANUAL_TEST_PLAN_MAC.md) |
 | Entender a **topologia** de nuvem | [`08_DEPLOYMENT_TOPOLOGY_AND_CLOUD_SPLIT.md`](./08_DEPLOYMENT_TOPOLOGY_AND_CLOUD_SPLIT.md) |
-| **Operar** o estande no dia a dia | [`../USER_GUIDE.md`](../USER_GUIDE.md) |
+| **Operar** o estande no dia a dia | [`15_EVENT_RUNBOOK_TWO_BOOTHS.md`](./15_EVENT_RUNBOOK_TWO_BOOTHS.md) §6 e §9 |
 | Detalhes da **API de nuvem** | [`../packages/cloud-api/README.md`](../packages/cloud-api/README.md) |
 | **Falhas conhecidas** | [`11_KNOWN_GAPS_AND_OPEN_ITEMS.md`](./11_KNOWN_GAPS_AND_OPEN_ITEMS.md) |

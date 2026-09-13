@@ -14,7 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Mesma resolução de SQLiteBufferService.defaultDbPath() (packages/daemon/src/services/sqlite-buffer.ts):
 # BOOTH_DB_PATH tem prioridade; sem ela, o default é packages/daemon/data/booth_buffer.sqlite
-# a partir da raiz do pacote daemon (documentado em USER_GUIDE.md).
+# a partir da raiz do pacote daemon (documentado em packages/daemon/.env.example).
 if [ -n "${BOOTH_DB_PATH:-}" ]; then
   DB="$BOOTH_DB_PATH"
 else
