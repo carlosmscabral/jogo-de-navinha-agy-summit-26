@@ -2357,7 +2357,7 @@ script são todas sobre convergência na nuvem e o mesmo código de daemon roda 
 | 26.6 | Atividade por estação legível; filtro por Mac funciona | ✅ | Saúde passou de primeira: `ensaio-booth-b` 5 / `ensaio-booth-a` 3, com data legível. Partidas ❌ na primeira tentativa: **não havia coluna nem filtro de estação na tela** — o `?station=` já existia no `listMatches` desde a Fase 5, mas o `admin-app` nunca o expôs, e este passo do plano descrevia uma UI que não existia. Coluna e filtro entregues em `2fb0c4a`; depois do redeploy a coluna apareceu e o clique filtrou |
 | 26.7 | Empresa nova no autocomplete dos dois estandes, mesma versão | ✅ | `Ensaio Empresa Tardia` apareceu nos dois na mesma `appliedVersion` 43 (26 empresas) e sumiu dos dois na 44 (de volta a 25), sempre com `state: ok`. Curiosidade sem consequência: o cadastro pulou 41 → **43**, dois incrementos para um "Salvar"; a remoção foi 43 → 44, um só. O espelhamento só depende de a versão mudar, não de quanto |
 | 26.8 | `station_id` distinto no boot dos dois Macs | [ ] | |
-| Fim | Partidas de ensaio apagadas e catálogo conferido | [ ] | Catálogo ✅: `Ensaio Empresa Tardia` já saiu no próprio 26.7 e os dois estandes voltaram a 25 empresas na versão 44. **Resíduo vivo em `vibe-cabral`**: as partidas `ENSAIO*` da 3ª execução, incluindo `ENSAIOREC1` (4300) e `ENSAIOREC2` (4400) — estas duas estão **acima do recorde real (4200)** e sequestrariam a celebração do primeiro visitante. Apagar pelo painel antes de abrir o estande |
+| Fim | Partidas de ensaio apagadas e catálogo conferido | [x] | Catálogo ✅: `Ensaio Empresa Tardia` já saiu no próprio 26.7 e os dois estandes voltaram a 25 empresas na versão 44. Partidas ✅ em **2026-09-13**: o resíduo `ENSAIO*` da 3ª execução foi apagado pelo painel, incluindo `ENSAIOREC1` (4300) e `ENSAIOREC2` (4400), que estavam **acima do recorde real (4200)** e sequestrariam a celebração do primeiro visitante |
 
 ---
 
@@ -2548,7 +2548,7 @@ Executado em **2026-09-12**, na TV do estande, contra o Hosting, com 25 partidas
 | 27.4 | Ciclo automático 1m30 / 1m com as 3 seções | [x] | |
 | 27.5 | Seta segura o painel; Esc volta ao placar na hora | [x] | Teclado e os botões do cabeçalho, os dois caminhos |
 | 27.6 | **Volta sozinho ao placar por inatividade** | [x] | |
-| 27.7 | Recorde top-3 corta para o placar e celebra | [x] | Pelo seeder, com `--recorde`. O ensaio `--recordes` não serve aqui — ver a nota do passo |
+| 27.7 | Recorde top-3 corta para o placar e celebra | [x] | Selo `MODO APRESENTAÇÃO` **confirmado na tela** antes do disparo, então havia mesmo uma retenção para ser vencida. Pelo seeder, com `--recorde`. O ensaio `--recordes` não serve aqui — ver a nota do passo |
 | 27.8 | Ticker nas duas visões; nenhum QR falso na tela | [x] | Ticker no rodapé nas duas; nenhum vestígio do QR desenhado à mão |
 | 27.9 | 15 min sem deriva de rolagem, relógio ou memória | [x] | Heap estável entre dois snapshots; `(compiled code)` domina o retido, que é o bundle, não vazamento |
-| Fim | Partidas de ensaio do 27.7 apagadas | [ ] | Painel → Partidas → Estação `demo-telao`. **Mais** os 2 do ensaio, que têm outro `station_id`: `ENSAIOREC1` e `ENSAIOREC2`, empresa fictícia "Ensaio Recorde" |
+| Fim | Partidas de ensaio do 27.7 apagadas | [x] | Feito em **2026-09-13**, pelo painel: estação `demo-telao` limpa, mais os 2 do ensaio do Bloco 26 que têm outro `station_id` (`ENSAIOREC1`, `ENSAIOREC2`, empresa fictícia "Ensaio Recorde"). O placar entra no evento zerado de dado de ensaio |
