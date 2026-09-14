@@ -77,11 +77,11 @@ function normalizeLeetSpeak(input: string): string {
  * veredito do dicionário e não tem uso para `sanitized` nenhum.
  */
 export function containsProfanity(text: string): boolean {
-  const denseLeet = normalizeLeetSpeak(text);
-  const words = text.toLowerCase().split(/[\s_-]+/);
+  const words = text.toLowerCase().split(/[\s_-]+/).filter(Boolean);
   // Per-word leet normalization keeps evasions like "p0rr4" or "sh1t" caught by exact match, so
   // the substring pass below no longer has to reach down to 4-letter terms to stay useful.
-  const leetWords = words.map(normalizeLeetSpeak);
+  const leetWords = words.map(normalizeLeetSpeak).filter(Boolean);
+  const dense = denseForm(leetWords);
 
   for (const blocked of BLOCKED_WORDS) {
     // Exact word match, raw or leet-normalized
@@ -95,12 +95,69 @@ export function containsProfanity(text: string): boolean {
     // and PICANHA (pica) -- all plausible callsigns (Spec 06, "o casamento por containment
     // super-bloqueia"; confirmed live in Gate M3). Raising the floor to 5 drops exactly those
     // false positives: the 4-letter terms stay covered by the exact-match pass above, and
-    // anything concatenated that still slips through is layer 2's job.
-    if (blocked.length >= CONTAINMENT_MIN_LENGTH && denseLeet.includes(blocked)) {
+    // anything concatenated that still slips through is layer 2's job. Onde o casamento pode
+    // cair dentro da forma densa é assunto de `containsAtWordBoundary` (issue #33).
+    if (blocked.length >= CONTAINMENT_MIN_LENGTH && containsAtWordBoundary(dense, blocked)) {
       return true;
     }
   }
 
+  return false;
+}
+
+interface DenseForm {
+  /** As palavras já normalizadas, concatenadas -- a forma em que a busca por containment roda. */
+  text: string;
+  /** Onde cada palavra começa e termina dentro de `text`. */
+  spans: Array<{ start: number; end: number }>;
+  starts: Set<number>;
+  ends: Set<number>;
+}
+
+function denseForm(leetWords: string[]): DenseForm {
+  const spans: Array<{ start: number; end: number }> = [];
+  let cursor = 0;
+  for (const word of leetWords) {
+    spans.push({ start: cursor, end: cursor + word.length });
+    cursor += word.length;
+  }
+  return {
+    text: leetWords.join(''),
+    spans,
+    starts: new Set(spans.map((s) => s.start)),
+    ends: new Set(spans.map((s) => s.end))
+  };
+}
+
+/**
+ * Containment na forma densa, mas só onde ele quer dizer alguma coisa.
+ *
+ * `normalizeLeetSpeak` apaga os separadores, e é isso que dá ao containment o poder de pegar o
+ * palavrão escrito com espaço no meio. O preço, até 2026-09-14, era casar TAMBÉM através da
+ * fronteira entre duas palavras, em pedaços que não existem em nenhuma delas: "TURBO STAR" virava
+ * `turbostar` e reprovava por "bosta", "NOVA DIAG" por "vadia", "VAPOR RAPIDO" por "porra". No
+ * campo callsign o visitante levava "Termo impróprio" na cara sem entender por quê; no campo
+ * empresa, depois da issue #26 estender o dicionário aos nomes longos, "Nova Diagnósticos" virava
+ * `Independente` no telão (issue #33).
+ *
+ * O que separa a evasão do acaso é o ALINHAMENTO. Um casamento vale quando:
+ *
+ *  (a) cabe inteiro dentro de UMA palavra -- é a concatenação deliberada, "porraloka"; ou
+ *  (b) consome um número inteiro de palavras, começando no início de uma e terminando no fim de
+ *      outra -- é a evasão por separador, "P O R R A Ltda" e "Po rra Consultoria".
+ *
+ * O que sobra -- entrar pela metade de uma palavra e sair pela metade de outra -- nunca é evasão,
+ * porque quem quer burlar o filtro não tem motivo para enterrar letras de sobra nas duas pontas.
+ * É só acaso, e é exatamente o acaso que reprovava nomes legítimos.
+ */
+function containsAtWordBoundary(dense: DenseForm, blocked: string): boolean {
+  for (let at = dense.text.indexOf(blocked); at !== -1; at = dense.text.indexOf(blocked, at + 1)) {
+    const until = at + blocked.length;
+    const dentroDeUmaPalavra = dense.spans.some((s) => s.start <= at && until <= s.end);
+    if (dentroDeUmaPalavra || (dense.starts.has(at) && dense.ends.has(until))) {
+      return true;
+    }
+  }
   return false;
 }
 

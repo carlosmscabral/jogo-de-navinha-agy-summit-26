@@ -366,6 +366,32 @@ describe('moderação do campo empresa', () => {
     buffer.close();
   });
 
+  // -------------------------------------------------------------------------------------
+  // Issue #33: o outro lado da moeda. Estender o dicionário aos nomes longos (#26) também
+  // estendeu o super-bloqueio dele, que casava na emenda entre duas palavras. Um nome de
+  // empresa tem muito mais emendas que um callsign, e o bloqueio aqui grava alias `override`
+  // com confiança 1.0 -- ou seja, nem entra na fila de revisão do painel.
+  // -------------------------------------------------------------------------------------
+
+  it('não bloqueia o nome cujo palavrão só existe na emenda entre duas palavras', () => {
+    const buffer = new SQLiteBufferService(tempDb());
+    assert.equal(buffer.resolveCompany('Nova Diagnósticos').canonical, 'Nova Diagnósticos');
+    assert.equal(buffer.resolveCompany('Vapor Rápido Logística').canonical, 'Vapor Rápido Logística');
+    // O sufixo corporativo só é removido quando casa contra o catálogo; no ramo `fallback` o
+    // nome fica como o visitante digitou. O que este teste afirma é que ele não vira
+    // `Independente`.
+    assert.equal(buffer.resolveCompany('Turbo Star Ltda').canonical, 'Turbo Star Ltda');
+    buffer.close();
+  });
+
+  it('mas continua bloqueando o palavrão partido por separador', () => {
+    // O par do teste acima: a evasão consome palavras inteiras, o acaso entra e sai pela metade.
+    const buffer = new SQLiteBufferService(tempDb());
+    assert.equal(buffer.resolveCompany('Po rra Consultoria').canonical, 'Independente');
+    assert.equal(buffer.resolveCompany('P O R R A Ltda').canonical, 'Independente');
+    buffer.close();
+  });
+
   it('trata o override de profanidade como confiança 1.0 -- é uma decisão deliberada, não incerteza', () => {
     const buffer = new SQLiteBufferService(tempDb());
     assert.equal(buffer.resolveCompany('PORRA LTDA').confidence, 1.0);

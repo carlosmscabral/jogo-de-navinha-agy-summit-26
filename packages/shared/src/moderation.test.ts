@@ -173,6 +173,50 @@ describe('containsProfanity', () => {
   });
 });
 
+// -----------------------------------------------------------------------------------------
+// Issue #33: o containment na forma densa casava ATRAVÉS da fronteira entre palavras.
+//
+// Os dois primeiros testes são as duas metades da mesma decisão e têm que ser lidos juntos: o
+// alinhamento é o que permite liberar o acaso sem liberar a evasão. Quem mexer num tem que
+// conferir o outro.
+// -----------------------------------------------------------------------------------------
+
+describe('containsProfanity: fronteira entre palavras', () => {
+  it('libera o nome legítimo cujo palavrão só existe na emenda de duas palavras', () => {
+    // Todos estes eram reprovados na main até 2026-09-14. O pedaço casado nasce da emenda e não
+    // existe em nenhuma das duas palavras: turbo|star -> "bosta", nova|diag -> "vadia",
+    // vapor|rapido -> "porra", robo|stark -> "bosta", chuva|diagonal -> "vadia".
+    for (const texto of [
+      'TURBO STAR', 'NOVA DIAG', 'VAPOR RAPIDO', 'ROBO STARK', 'CHUVA DIAGONAL',
+      'Nova Diagnósticos', 'Vapor Rápido Logística', 'Turbo Star Ltda'
+    ]) {
+      assert.strictEqual(containsProfanity(texto), false, texto);
+    }
+    // E o callsign, que é o campo onde o visitante via a recusa na cara.
+    assert.strictEqual(validateCallsign('TURBO STAR').isValid, true);
+    assert.strictEqual(validateCallsign('NOVA DIAG').isValid, true);
+  });
+
+  it('continua pegando o palavrão partido por separador, que é a razão de a forma densa existir', () => {
+    // A evasão consome palavras INTEIRAS -- começa no início de uma e termina no fim de outra.
+    // É isso que a distingue do acaso do teste acima, e é a única coisa que o containment na
+    // forma densa sempre esteve lá para pegar.
+    for (const texto of [
+      'P O R R A', 'P O R R A Ltda', 'Po rra Consultoria', 'p-o-r-r-a',
+      'C A R A L H O S.A.', 'F O D A S E Ltda', 'Vaga Bundo Ltda'
+    ]) {
+      assert.strictEqual(containsProfanity(texto), true, texto);
+    }
+  });
+
+  it('continua pegando o palavrão concatenado dentro de uma palavra só', () => {
+    // O outro caso que o containment sempre pegou: nada de separador, tudo num token.
+    for (const texto of ['porraloka', 'porraloka consultoria', 'Consultoria Porraloka']) {
+      assert.strictEqual(containsProfanity(texto), true, texto);
+    }
+  });
+});
+
 describe('Proactive Company Normalizer & Fuzzy Matcher', () => {
   const seedCatalog = [
     'Google', 'Google Cloud', 'Itaú', 'Bradesco', 'Nubank',
