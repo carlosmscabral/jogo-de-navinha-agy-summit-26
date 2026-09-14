@@ -5,9 +5,9 @@ import { fileURLToPath } from 'node:url';
 import {
   MatchRecord,
   calculateSimilarity,
+  containsProfanity,
   isValidFirestoreDocId,
-  resolveCompanyFromCatalog,
-  validateCallsign
+  resolveCompanyFromCatalog
 } from '@jogo/shared';
 
 // dist/services/ -> dist/ -> raiz do pacote daemon (mesmo cálculo de SQLiteBufferService.defaultDbPath)
@@ -436,8 +436,11 @@ export class SQLiteBufferService {
           skipped++;
           continue;
         }
-        const check = validateCallsign(canonical);
-        if (!check.isValid && check.reasonCode === 'profanity') {
+        // Mesmo conserto da issue #26 aplicado em `resolveCompany`: o docstring acima promete que
+        // o canonical da nuvem passa pelo MESMO filtro de profanidade do caminho local, e com
+        // `validateCallsign` isso era falso para qualquer nome acima de 15 caracteres. Um alias
+        // ofensivo e longo, digitado no painel, entrava por aqui e vencia o caminho local.
+        if (containsProfanity(canonical)) {
           console.warn(`[SQLiteBuffer] alias da nuvem "${raw}" -> "${canonical}" barrado pelo filtro local.`);
           skipped++;
           continue;
@@ -509,8 +512,12 @@ export class SQLiteBufferService {
     // curado. Só o fallback — texto cru do visitante — precisa passar pelo filtro,
     // porque é o único caminho em que texto arbitrário chega ao telão.
     if (resolution.matchedBy === 'fallback') {
-      const check = validateCallsign(resolution.canonical);
-      if (!check.isValid && check.reasonCode === 'profanity') {
+      // `containsProfanity`, e não `validateCallsign`: até 2026-09-14 esta linha rodava o
+      // validador de CALLSIGN sobre um nome de EMPRESA, e o teto de 15 caracteres dele fazia
+      // "Porra Consultoria Ltda" sair por `too_long` sem nunca tocar o dicionário — o palavrão ia
+      // inteiro para o telão público (issue #26). Aqui não há limite de tamanho a aplicar: a única
+      // pergunta é se o dicionário reprova o texto.
+      if (containsProfanity(resolution.canonical)) {
         // 'override', não 'local': este bloqueio precisa VENCER um alias vindo da nuvem.
         // Sem essa precedência, o pull ressuscitaria o nome ofensivo no telão.
         this.cacheAlias(raw, 'Independente', 'override');

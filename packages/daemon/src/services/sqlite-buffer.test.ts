@@ -329,6 +329,43 @@ describe('moderação do campo empresa', () => {
     buffer.close();
   });
 
+  // -------------------------------------------------------------------------------------
+  // Issue #26: os testes acima só usavam nomes CURTOS, e era exatamente aí que o buraco se
+  // escondia. `resolveCompany` rodava `validateCallsign` — um validador de callsign, com teto
+  // de 15 caracteres — sobre um nome de empresa, e qualquer coisa mais longa saía por
+  // `too_long` sem nunca ser comparada ao dicionário. Mesmo defeito da #9, no outro campo.
+  // -------------------------------------------------------------------------------------
+
+  it('bloqueia palavrão em nome de empresa LONGO, que o teto de 15 caracteres escondia', () => {
+    const buffer = new SQLiteBufferService(tempDb());
+    for (const entrada of [
+      'Porra Consultoria Ltda',          // 22 caracteres: saía por `too_long`
+      'Caralho Tecnologia S.A.',         // idem, e com pontuação
+      'Consultoria Porra Participações'  // o palavrão no meio, longe do corte de 15
+    ]) {
+      assert.equal(buffer.resolveCompany(entrada).canonical, 'Independente', entrada);
+    }
+    buffer.close();
+  });
+
+  it('bloqueia palavrão com pontuação, que saía por invalid_chars antes de chegar ao dicionário', () => {
+    const buffer = new SQLiteBufferService(tempDb());
+    assert.equal(buffer.resolveCompany('P.O.R.R.A Participações').canonical, 'Independente');
+    buffer.close();
+  });
+
+  it('não bloqueia nome de empresa longo e inofensivo', () => {
+    // A trava nova não pode virar um "tudo longo vira Independente": é o mesmo cuidado que a
+    // #9 tomou com `sanitized`.
+    const buffer = new SQLiteBufferService(tempDb());
+    assert.equal(
+      buffer.resolveCompany('Companhia Brasileira de Distribuição').canonical,
+      'Companhia Brasileira De Distribuição'
+    );
+    assert.equal(buffer.resolveCompany('Skiller Solutions').canonical, 'Skiller Solutions');
+    buffer.close();
+  });
+
   it('trata o override de profanidade como confiança 1.0 -- é uma decisão deliberada, não incerteza', () => {
     const buffer = new SQLiteBufferService(tempDb());
     assert.equal(buffer.resolveCompany('PORRA LTDA').confidence, 1.0);
@@ -535,6 +572,23 @@ describe('merge de aliases da nuvem', () => {
     assert.equal(result.skipped, 3);
     assert.equal(buffer.getAlias('bom')?.canonical, 'Empresa Boa');
     assert.equal(buffer.getAlias('ofensivo'), null);
+    buffer.close();
+  });
+
+  it('e também quando o alias ofensivo da nuvem é LONGO (issue #26)', () => {
+    // O docstring de `mergeCloudAliases` promete que o canonical da nuvem passa pelo MESMO
+    // filtro de profanidade do caminho local. Com `validateCallsign` isso era falso acima de 15
+    // caracteres: um alias assim, digitado no painel, entrava aqui e — por ser `cloud` — vencia
+    // o `local` na precedência de `cacheAlias`.
+    const buffer = new SQLiteBufferService(tempDb());
+
+    const result = buffer.mergeCloudAliases([
+      { raw: 'longo', canonical: 'Porra Consultoria Ltda', resolved_at: '2026-09-01T10:00:00.000Z' }
+    ]);
+
+    assert.equal(result.applied, 0);
+    assert.equal(result.skipped, 1);
+    assert.equal(buffer.getAlias('longo'), null);
     buffer.close();
   });
 

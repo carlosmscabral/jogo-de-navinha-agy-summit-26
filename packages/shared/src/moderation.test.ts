@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { validateCallsign, placeholderCallsign } from './utils/moderation.js';
+import { validateCallsign, placeholderCallsign, containsProfanity } from './utils/moderation.js';
 import {
   resolveCompanyFromCatalog,
   isValidFirestoreDocId
@@ -130,6 +130,45 @@ describe('Moderation & Profanity Filter', () => {
         'profanity',
         `sanitized inseguro para a entrada ${JSON.stringify(entrada)}: ${sanitized}`
       );
+    }
+  });
+});
+
+// -----------------------------------------------------------------------------------------
+// Issue #26: o dicionário como função própria, para quem modera texto que NÃO é um callsign.
+// -----------------------------------------------------------------------------------------
+
+describe('containsProfanity', () => {
+  it('não tem teto de tamanho -- é o que separa esta função de validateCallsign', () => {
+    // O caso exato da issue #26: 22 caracteres. Pelo validador de callsign isto sai por
+    // `too_long`, sem nunca consultar o dicionário; aqui o tamanho não é pergunta nenhuma.
+    assert.strictEqual(containsProfanity('Porra Consultoria Ltda'), true);
+    assert.strictEqual(containsProfanity('Caralho Tecnologia da Informação S.A.'), true);
+    assert.strictEqual(validateCallsign('Porra Consultoria Ltda').reasonCode, 'too_long');
+  });
+
+  it('não tem alfabeto restrito: pontuação e acento não escondem o palavrão', () => {
+    // Pelo validador de callsign estes saem por `invalid_chars`, também antes do dicionário.
+    assert.strictEqual(containsProfanity('P.O.R.R.A Participações'), true);
+    assert.strictEqual(containsProfanity('Ítaú'), false);
+  });
+
+  it('aprova nome de empresa comum, longo e com sufixo corporativo', () => {
+    for (const nome of [
+      'Mercado Livre Tecnologia Ltda',
+      'Companhia Brasileira de Distribuição',
+      'Itaú Unibanco S.A.',
+      'Startup do João'
+    ]) {
+      assert.strictEqual(containsProfanity(nome), false, nome);
+    }
+  });
+
+  it('mantém o piso de containment em 5: SKILLER e COCKPIT não são palavrão', () => {
+    // A mesma decisão da #9 vale aqui, e por um motivo mais forte: um nome de empresa tem
+    // muito mais texto em que um termo de 4 letras pode aparecer por acaso.
+    for (const nome of ['Skiller Solutions', 'Cockpit Digital', 'Picanha Burger Ltda']) {
+      assert.strictEqual(containsProfanity(nome), false, nome);
     }
   });
 });

@@ -67,8 +67,16 @@ function normalizeLeetSpeak(input: string): string {
  * dessas recusas devolvia em `sanitized` um pedaço do texto do próprio visitante, SEM nunca ter
  * sido comparado ao dicionário. Um palavrão de 16 caracteres saía por `too_long` carregando os 15
  * primeiros, e um palavrão pontuado saía por `invalid_chars` com a pontuação removida.
+ *
+ * EXPORTADA em 2026-09-14 pela issue #26. Quem precisa moderar um texto que NÃO é um callsign --
+ * o nome de empresa, em `SQLiteBufferService.resolveCompany` -- tem que chamar isto, e não
+ * `validateCallsign`. O campo empresa não tem teto de 15 caracteres nem alfabeto restrito, então
+ * rodar o validador de callsign nele fazia `reasonCode` sair como `too_long` ANTES de o dicionário
+ * ser consultado: "Porra Consultoria Ltda" passava inteiro para o telão. É o mesmo defeito da #9,
+ * no outro campo -- lá a correção foi tornar `sanitized` seguro; aqui, quem chama só quer o
+ * veredito do dicionário e não tem uso para `sanitized` nenhum.
  */
-function containsProfanity(text: string): boolean {
+export function containsProfanity(text: string): boolean {
   const denseLeet = normalizeLeetSpeak(text);
   const words = text.toLowerCase().split(/[\s_-]+/);
   // Per-word leet normalization keeps evasions like "p0rr4" or "sh1t" caught by exact match, so
