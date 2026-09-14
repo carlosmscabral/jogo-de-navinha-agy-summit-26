@@ -65,6 +65,48 @@ export function cleanCompanyName(input: string): string {
     .toLowerCase();
 }
 
+/**
+ * Piso de tamanho do TERMO DO CATÁLOGO procurado como substring no passo 3, contado em letras e
+ * dígitos. Mesma ideia do `CONTAINMENT_MIN_LENGTH` de `moderation.ts`, e pela mesma razão: termo
+ * curto demais cabe dentro de qualquer coisa.
+ *
+ * O piso é 3, e não 4, porque o catálogo do evento é feito de sigla brasileira de três letras --
+ * TIM, SAP, GOL, CVC, MRV, CSN, UOL, OLX, FGV, PRF. Medido sobre 1287 linhas de um CRM real:
+ * exigir 4 letras tirava 73 entradas do passo 3 e custava 49 linhas para economizar 3.
+ *
+ * Contar LETRAS, e não caracteres, é o que fecha o caso patológico. `cleanCompanyName` come o
+ * sufixo "tech" e transforma "J&F Tech" em "j f" -- três caracteres, duas letras -- que casava
+ * dentro de "N J F INDUSTRIA E COMERCIO DE MOVEIS". Pior: transforma "Brasil Tecnologia" em
+ * string VAZIA, e `''` é substring de tudo, então aquela entrada casava com TODA empresa.
+ */
+const CONTAINMENT_MIN_WORD_CHARS = 3;
+
+function countWordChars(s: string): number {
+  return (s.match(/[\p{L}\p{N}]/gu) || []).length;
+}
+
+function isWordChar(ch: string | undefined): boolean {
+  return ch !== undefined && /[\p{L}\p{N}]/u.test(ch);
+}
+
+/**
+ * Containment que só vale quando o termo cai alinhado às duas bordas de uma palavra do texto.
+ * É a mesma regra que a issue #33 trouxe para a moderação (`containsAtWordBoundary` em
+ * `moderation.ts`), aqui aplicada a string crua em vez da forma leet densa: sem ela, o catálogo
+ * tem "Cora" e "Três Corações Alimentos" vira Cora.
+ *
+ * `\p{L}` e não `[a-z]`: com a classe ASCII, o "ç" de "Corações" conta como separador e o
+ * alinhamento passa a valer justamente onde não deveria.
+ */
+function includesAtWordBoundary(haystack: string, needle: string): boolean {
+  if (!needle) return false;
+  for (let at = haystack.indexOf(needle); at !== -1; at = haystack.indexOf(needle, at + 1)) {
+    const until = at + needle.length;
+    if (!isWordChar(haystack[at - 1]) && !isWordChar(haystack[until])) return true;
+  }
+  return false;
+}
+
 export interface CompanyResolutionResult {
   raw: string;
   canonical: string;
@@ -162,16 +204,49 @@ export function resolveCompanyFromCatalog(
   }
 
   // 3. Substring Containment (e.g. "Mercado Livre Brasil" contains "Mercado Livre")
+  //
+  // Junta TODOS os candidatos contidos e fica com o MAIS ESPECÍFICO -- o de termo mais longo --
+  // em vez de devolver o primeiro que aparecer. Devolver o primeiro fazia a ORDEM DO CATÁLOGO
+  // escolher o vencedor em silêncio, e essa ordem não é decisão de ninguém: `getCanonicalList()`
+  // em `packages/daemon/src/services/sqlite-buffer.ts` a tira de um `ORDER BY name ASC`. Contra
+  // o catálogo do evento, só reordenar a lista mexia em dezenas de linhas do resultado.
+  //
+  // Isto importa mais do que parece porque 0.90 está ACIMA do corte de revisão
+  // (`needsCompanyReview` usa `< 0.80`): um casamento errado aqui não passa pela fila do
+  // operador -- vai direto para o telão e para `company_rankings`.
+  //
+  // Empate de termo -- "Unimed" e "Seguros Unimed" limpam os dois para "unimed" -- fica com o
+  // nome cru mais curto, que é o que o telão lê melhor.
+  let best: string | null = null;
+  let bestTermLength = -1;
+  let bestNameLength = Infinity;
+
   for (const canon of canonicalCatalog) {
     const cLower = canon.toLowerCase();
-    if (rawLower.includes(cLower) || (cleanedInput.length >= 4 && cleanedInput.includes(cleanCompanyName(canon)))) {
-      return {
-        raw: rawTrimmed,
-        canonical: canon,
-        confidence: 0.90,
-        matchedBy: 'suffix_strip'
-      };
+    const cleanedCanon = cleanCompanyName(canon);
+
+    const rawHit =
+      countWordChars(cLower) >= CONTAINMENT_MIN_WORD_CHARS && includesAtWordBoundary(rawLower, cLower);
+    const cleanedHit =
+      countWordChars(cleanedCanon) >= CONTAINMENT_MIN_WORD_CHARS &&
+      includesAtWordBoundary(cleanedInput, cleanedCanon);
+    if (!rawHit && !cleanedHit) continue;
+
+    const termLength = Math.max(rawHit ? cLower.length : 0, cleanedHit ? cleanedCanon.length : 0);
+    if (termLength > bestTermLength || (termLength === bestTermLength && canon.length < bestNameLength)) {
+      best = canon;
+      bestTermLength = termLength;
+      bestNameLength = canon.length;
     }
+  }
+
+  if (best) {
+    return {
+      raw: rawTrimmed,
+      canonical: best,
+      confidence: 0.90,
+      matchedBy: 'suffix_strip'
+    };
   }
 
   // 4. Fuzzy Levenshtein Match against catalog

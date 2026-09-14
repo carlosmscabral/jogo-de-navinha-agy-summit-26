@@ -294,6 +294,63 @@ describe('Proactive Company Normalizer & Fuzzy Matcher', () => {
   });
 });
 
+/**
+ * O passo 3 (containment) devolve 0.90, e o corte de revisão em
+ * `packages/daemon/src/services/sqlite-buffer.ts` é `< 0.80` -- então tudo que este passo erra vai
+ * direto ao telão e a `company_rankings`, sem passar pela fila do operador. Cada caso abaixo é uma
+ * patologia medida contra o catálogo real do evento (≈1000 nomes) e 1287 linhas de um CRM.
+ */
+describe('Company Normalizer — containment do passo 3', () => {
+  it('escolhe o candidato MAIS ESPECÍFICO, não o primeiro do catálogo', () => {
+    const r = resolveCompanyFromCatalog('Distribuidora Gran Coffee do Sul', ['Gran', 'Gran Coffee']);
+    assert.strictEqual(r.canonical, 'Gran Coffee');
+    assert.strictEqual(r.confidence, 0.9);
+  });
+
+  it('não deixa a ORDEM do catálogo decidir o vencedor', () => {
+    // `getCanonicalList()` serve o catálogo por `ORDER BY name ASC`; ninguém escolheu essa ordem
+    // de propósito, e ela não pode ser o que define a empresa que aparece no telão.
+    const entrada = 'Corretora Porto Seguro Vida';
+    const crescente = resolveCompanyFromCatalog(entrada, ['Porto', 'Porto Seguro']);
+    const decrescente = resolveCompanyFromCatalog(entrada, ['Porto Seguro', 'Porto']);
+    assert.strictEqual(crescente.canonical, 'Porto Seguro');
+    assert.strictEqual(decrescente.canonical, crescente.canonical);
+  });
+
+  it('exige alinhamento de palavra, inclusive quando a borda é uma letra acentuada', () => {
+    // Com `[a-z]` no lugar de `\p{L}`, o "ç" conta como separador e "Cora" casa em "Corações".
+    const r = resolveCompanyFromCatalog('Três Corações Alimentos', ['Cora']);
+    assert.notStrictEqual(r.canonical, 'Cora');
+    assert.strictEqual(r.matchedBy, 'fallback');
+  });
+
+  it('ignora a entrada cujo nome limpo fica VAZIO, em vez de casá-la com tudo', () => {
+    // `cleanCompanyName('Brasil Tecnologia')` é '' -- e '' é substring de qualquer string, então
+    // sem o piso essa única entrada do catálogo capturava toda empresa que chegasse ao passo 3.
+    const r = resolveCompanyFromCatalog('Petrobras Distribuidora', ['Brasil Tecnologia']);
+    assert.notStrictEqual(r.canonical, 'Brasil Tecnologia');
+    assert.strictEqual(r.matchedBy, 'fallback');
+  });
+
+  it('ignora o termo que sobra com menos de três letras depois da limpeza', () => {
+    // `cleanCompanyName('J&F Tech')` é 'j f': três caracteres, duas letras. O piso conta letras.
+    const r = resolveCompanyFromCatalog('N J F Industria e Comercio de Moveis Ltda', ['J&F Tech']);
+    assert.notStrictEqual(r.canonical, 'J&F Tech');
+    assert.strictEqual(r.matchedBy, 'fallback');
+  });
+
+  it('continua achando a sigla de três letras, que é metade do catálogo brasileiro', () => {
+    for (const [entrada, sigla] of [
+      ['TIM Celular Participações', 'TIM'],
+      ['GOL Linhas Aéreas Inteligentes', 'GOL'],
+      ['CSN Mineração', 'CSN']
+    ]) {
+      const r = resolveCompanyFromCatalog(entrada, [sigla]);
+      assert.strictEqual(r.canonical, sigla, `"${entrada}" deveria achar ${sigla}`);
+    }
+  });
+});
+
 describe('isValidFirestoreDocId', () => {
   it('recusa barra, "." exato, ".." exato e o padrão reservado __*__', () => {
     assert.strictEqual(isValidFirestoreDocId('Ambev/InBev'), false);
